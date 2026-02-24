@@ -127,4 +127,4 @@ ENV/
 logs
 log
 outputs
-.history
+.historyflash_attn-*.whl
