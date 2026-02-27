@@ -268,6 +268,9 @@ class RayPPOTrainer:
         self.hybrid_engine = config.actor_rollout_ref.hybrid_engine
         assert self.hybrid_engine, "Currently, only support hybrid engine"
 
+        # Detect joint training mode from config
+        self._is_joint_training = config.actor_rollout_ref.model.get("joint_training", False)
+
         if self.hybrid_engine:
             assert Role.ActorRollout in role_worker_mapping or Role.ActorRolloutRef in role_worker_mapping, (
                 f"{role_worker_mapping.keys()=}"
@@ -494,6 +497,11 @@ class RayPPOTrainer:
         return batch_reward
 
     def _validate(self, merged: bool = False):
+        # Joint training: switch to model2-only weights for evaluation
+        is_joint = getattr(self, "_is_joint_training", False)
+        if is_joint:
+            self.checkpoint_manager.update_weights(eval_only=True)
+
         data_source_lst = []
         reward_extra_infos_dict: dict[str, list] = defaultdict(list)
 
@@ -609,6 +617,9 @@ class RayPPOTrainer:
 
         if merged:
             print("_merge_validation_results validate result will be merged")
+            # Joint training: restore full joint model weights after eval
+            if is_joint:
+                self.checkpoint_manager.update_weights()
             return {
                 "data_sources": data_source_lst,
                 "sample_uids": sample_uids,
@@ -616,7 +627,13 @@ class RayPPOTrainer:
                 "reward_extra_infos_dict": reward_extra_infos_dict,
             }
         data_sources = np.concatenate(data_source_lst, axis=0)
-        return self._val_metrics_update(data_sources, sample_uids, reward_extra_infos_dict, sample_turns)
+        result = self._val_metrics_update(data_sources, sample_uids, reward_extra_infos_dict, sample_turns)
+
+        # Joint training: restore full joint model weights after eval
+        if is_joint:
+            self.checkpoint_manager.update_weights()
+
+        return result
 
     def _val_metrics_update(self, data_sources, sample_uids, reward_extra_infos_dict, sample_turns):
         data_src2var2metric2val = process_validation_metrics(data_sources, sample_uids, reward_extra_infos_dict)

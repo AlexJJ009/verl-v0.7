@@ -737,8 +737,13 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
         # For async mode, we can't call run_until_complete here, so we will switch to trainer mode in AgentLoopManager.
         # Note: sync mode is deprecated and rejected in RolloutConfig.__post_init__
 
-    async def rollout_mode(self):
-        """Context switch hybridengine to rollout mode."""
+    async def rollout_mode(self, eval_only=False):
+        """Context switch hybridengine to rollout mode.
+
+        Args:
+            eval_only: If True and model is a joint model, only sync model2 weights
+                       (for evaluation). Otherwise sync full joint model weights.
+        """
         aggressive_empty_cache(force_sync=True)
 
         log_gpu_memory_usage("Before load_fsdp_model_to_gpu", logger=logger)
@@ -763,6 +768,17 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
         params = convert_weight_keys(
             params, getattr(self.actor_module_fsdp, "_fsdp_wrapped_module", self.actor_module_fsdp)
         )
+
+        # Joint training: extract model2 weights for eval-only mode
+        if eval_only:
+            from verl.models.joint_model.weight_utils import (
+                extract_sub_model_weights,
+                is_joint_model_state_dict,
+            )
+
+            if is_joint_model_state_dict(params):
+                logger.info("Joint training eval mode: extracting model2 weights only")
+                params = extract_sub_model_weights(params, sub_model_index=1)
 
         # Special handling for LoRA with sleep_level=2:
         # When sleep_level=2, base model weights are destroyed during each sleep cycle.
@@ -1719,6 +1735,6 @@ class CriticWorker(Worker, DistProfilerExtension):
 # ================================= Async related workers =================================
 class AsyncActorRolloutRefWorker(ActorRolloutRefWorker):
     @register(dispatch_mode=Dispatch.ONE_TO_ALL, blocking=False)
-    async def update_weights(self):
-        await self.rollout_mode()
+    async def update_weights(self, eval_only=False):
+        await self.rollout_mode(eval_only=eval_only)
         return True
