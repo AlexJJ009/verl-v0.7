@@ -66,6 +66,7 @@ verl/
 │   ├── grpo_trainer/              # GRPO training examples
 │   ├── remax_trainer/             # ReMax training examples
 │   ├── rloo_trainer/              # RLOO training examples
+│   ├── joint_training/            # Joint training examples
 │   ├── sft/                       # Supervised fine-tuning examples
 │   ├── sglang_multiturn/          # Multi-turn dialogue examples
 │   ├── split_placement/           # GPU placement examples
@@ -76,6 +77,7 @@ verl/
 │   ├── prime/                     # PRIME algorithm
 │   ├── r1/                        # R1-style reasoning
 │   ├── sppo/                      # Self-play preference optimization
+│   ├── joint_training/            # Joint training algorithm
 │   ├── entropy/                   # Entropy mechanism experiments
 │   └── open_math_reasoning/       # Math reasoning recipes
 │
@@ -138,7 +140,7 @@ The user is working with this repository to:
 - **Models**: Qwen-3, Llama3.1, Gemma2, DeepSeek, etc.
 
 ### Supported Algorithms
-PPO, GRPO, GSPO, ReMax, REINFORCE++, RLOO, PRIME, DAPO, DrGRPO, PF-PPO, and more
+PPO, GRPO, GSPO, ReMax, REINFORCE++, RLOO, PRIME, DAPO, DrGRPO, PF-PPO, Joint Training, and more
 
 ## Environment Setup
 
