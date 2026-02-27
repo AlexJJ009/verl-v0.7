@@ -1,0 +1,112 @@
+"""QwenJointForCausalLM: Joint training model with logit fusion.
+
+Two Qwen3ForCausalLM sub-models perform independent forward passes.
+Their logits are fused: logits = (1 - λ) * logits_0 + λ * logits_1
+Gradients flow to both models weighted by (1-λ) and λ respectively.
+
+For evaluation, pass eval_only=True to get only model2's logits.
+"""
+
+import torch
+import torch.nn as nn
+from transformers import Qwen3ForCausalLM
+from transformers.modeling_outputs import CausalLMOutputWithPast
+from transformers.modeling_utils import PreTrainedModel
+
+from verl.models.joint_model.configuration_joint_qwen3 import QwenJointConfig
+
+
+class QwenJointForCausalLM(PreTrainedModel):
+    config_class = QwenJointConfig
+    base_model_prefix = "sub_models"
+    supports_gradient_checkpointing = True
+
+    def __init__(self, config: QwenJointConfig):
+        super().__init__(config)
+        self.sub_models = nn.ModuleList(
+            [Qwen3ForCausalLM(config) for _ in range(config.num_sub_models)]
+        )
+        self.fusion_lambda = config.fusion_lambda
+
+        if config.freeze_model1:
+            for param in self.sub_models[0].parameters():
+                param.requires_grad = False
+
+        self.post_init()
+
+    def forward(
+        self,
+        input_ids=None,
+        attention_mask=None,
+        position_ids=None,
+        past_key_values=None,
+        inputs_embeds=None,
+        labels=None,
+        use_cache=None,
+        cache_position=None,
+        logits_to_keep=0,
+        eval_only=False,
+        **kwargs,
+    ):
+        if eval_only:
+            return self.sub_models[1](
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                past_key_values=past_key_values,
+                inputs_embeds=inputs_embeds,
+                labels=labels,
+                use_cache=use_cache,
+                cache_position=cache_position,
+                logits_to_keep=logits_to_keep,
+                **kwargs,
+            )
+
+        outputs_list = []
+        for sub_model in self.sub_models:
+            out = sub_model(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                past_key_values=past_key_values,
+                inputs_embeds=inputs_embeds,
+                labels=None,
+                use_cache=use_cache,
+                cache_position=cache_position,
+                logits_to_keep=logits_to_keep,
+                **kwargs,
+            )
+            outputs_list.append(out)
+
+        lam = self.fusion_lambda
+        logits = (1 - lam) * outputs_list[0].logits + lam * outputs_list[1].logits
+
+        loss = None
+        if labels is not None:
+            loss = self.sub_models[0].loss_function(
+                logits=logits,
+                labels=labels,
+                vocab_size=self.config.vocab_size,
+            )
+
+        return CausalLMOutputWithPast(
+            loss=loss,
+            logits=logits,
+            past_key_values=outputs_list[1].past_key_values,
+            hidden_states=outputs_list[1].hidden_states,
+            attentions=outputs_list[1].attentions,
+        )
+
+    def get_input_embeddings(self):
+        return self.sub_models[0].get_input_embeddings()
+
+    def set_input_embeddings(self, value):
+        for sub_model in self.sub_models:
+            sub_model.set_input_embeddings(value)
+
+    def get_output_embeddings(self):
+        return self.sub_models[0].get_output_embeddings()
+
+    def set_output_embeddings(self, new_embeddings):
+        for sub_model in self.sub_models:
+            sub_model.set_output_embeddings(new_embeddings)

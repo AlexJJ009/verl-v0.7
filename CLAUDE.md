@@ -163,6 +163,46 @@ Always activate this environment before:
 3. **After coding**: Ensure all tests pass and no regressions introduced
 4. **Code review**: Check for cleanliness, organization, and adherence to patterns
 
+## Current Development Goal: Joint Training with GRPO
+
+### Overview
+Implement a joint training algorithm using GRPO as the loss function. Two models perform independent forward passes, their logits are weighted-fused, and the fused logits are used for both rollout generation and policy gradient computation. Only model2 is used for evaluation.
+
+### Algorithm Design
+```
+logits_fused = (1 - λ) × logits_model1 + λ × logits_model2
+```
+
+- **Rollout (Training)**: Use fused logits from both models for token generation
+- **compute_log_prob**: Use fused logits to compute old_log_probs
+- **update_policy**: Use fused logits to compute new_log_probs, then standard GRPO policy loss
+- **Evals (Testing)**: Use only model2 weights for evaluation (assess standalone capability)
+- **Gradient flow**: Both models receive gradients weighted by (1-λ) and λ respectively
+
+### Key Files to Create/Modify
+| File | Action | Purpose |
+|------|--------|---------|
+| `verl/models/joint_model/modeling_joint_qwen3.py` | Create | QwenJointForCausalLM model class |
+| `verl/models/joint_model/configuration_joint_qwen3.py` | Create | Joint model config class |
+| `verl/workers/fsdp_workers.py` | Modify | Dual-mode weight sync (rollout vs evals) |
+| `verl/trainer/ppo/ray_trainer.py` | Modify | Eval-mode switching coordination |
+| `recipe/joint_training/` | Create | Training scripts and configs |
+| `tests/joint_training/feat/` | Create | Feature tests for new components |
+| `tests/joint_training/regression/` | Create | Regression tests |
+
+### Models and Data
+- **Model**: `Qwen/Qwen3-1.7B-Base` (both model1 and model2 use this)
+- **Cache**: `.cache/huggingface`
+- **Dataset**: `/data-1/dataset/gsm8k`
+
+### Progress Tracking
+- Task list: Managed via Claude's todo system
+- Progress log: `docs/joint_training/progress.md`
+
+### Reference Documents
+- Investigation report: `docs/joint_training/verl_joint_training_investigation_report.md`
+- Target specification: `docs/joint_training/GRPO_Joint_Training_Target_v1.md`
+
 ## Important Notes
 
 - This is a research and production framework used by ByteDance Seed Team
