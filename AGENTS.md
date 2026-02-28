@@ -1,171 +1,86 @@
-# verl: Volcano Engine Reinforcement Learning for LLMs
+# AGENTS.md — Quick Reference for Coding Agents
 
-verl is a flexible, efficient, and production-ready RL training framework for large language models, supporting diverse algorithms (PPO, GRPO, DAPO, etc.) with seamless integration of FSDP, Megatron-LM, vLLM, and SGLang.
+> See `CLAUDE.md` for full project context. This file is a concise reference for any agent working in this codebase.
 
-## Repository Information
-
-- **Your Fork**: https://github.com/AlexJJ009/verl-v0.7 (stable v0.7.0 version)
-- **Old Fork**: https://github.com/AlexJJ009/verl (older version, for reference)
-- **Upstream**: https://github.com/verl-project/verl (original project)
-
-### Git Remote Configuration
-```bash
-origin   -> https://github.com/AlexJJ009/verl-v0.7.git (your fork)
-upstream -> https://github.com/verl-project/verl.git (original)
-```
-
-### Multi-Node Setup Purpose
-This repository is configured for multi-node distributed training/inference across multiple devices with identical hardware configurations. Each compute node will clone from your fork to ensure consistent codebase versions.
-
-## Directory Structure
-
-```
-verl/
-├── verl/                          # Core package
-│   ├── single_controller/         # Hybrid controller for RL dataflows
-│   │   ├── base/                  # Base controller implementations
-│   │   └── ray/                   # Ray-based distributed controller
-│   ├── trainer/                   # Training orchestration
-│   │   ├── ppo/                   # PPO trainer implementation
-│   │   └── config/                # Training configuration templates
-│   ├── workers/                   # Distributed worker implementations
-│   │   ├── actor/                 # Actor model workers (policy)
-│   │   ├── critic/                # Critic model workers (value function)
-│   │   ├── rollout/               # Rollout generation workers
-│   │   ├── reward_model/          # Reward model workers
-│   │   ├── reward_manager/        # Reward computation management
-│   │   ├── engine/                # Backend engine abstractions
-│   │   ├── sharding_manager/      # Model sharding utilities
-│   │   └── config/                # Worker configuration
-│   ├── models/                    # Model implementations
-│   │   ├── llama/                 # LLaMA model support
-│   │   ├── qwen2/                 # Qwen2 model support
-│   │   ├── transformers/          # HuggingFace transformers integration
-│   │   └── mcore/                 # Megatron-Core integration
-│   ├── utils/                     # Utilities
-│   │   ├── checkpoint/            # Checkpoint management
-│   │   ├── dataset/               # Dataset processing
-│   │   ├── logger/                # Logging utilities
-│   │   ├── metric/                # Metrics computation
-│   │   ├── reward_score/          # Reward scoring utilities
-│   │   ├── vllm/                  # vLLM integration utilities
-│   │   ├── sglang/                # SGLang integration utilities
-│   │   ├── megatron/              # Megatron utilities
-│   │   ├── kernel/                # Custom CUDA kernels
-│   │   └── profiler/              # Performance profiling
-│   ├── interactions/              # RL interaction protocols
-│   ├── third_party/               # Third-party integrations
-│   │   ├── vllm/                  # vLLM patches and extensions
-│   │   └── torch/                 # PyTorch extensions
-│   ├── tools/                     # CLI tools and utilities
-│   ├── model_merger/              # Model merging utilities
-│   └── experimental/              # Experimental features
-│
-├── examples/                      # Training examples
-│   ├── ppo_trainer/               # PPO training examples
-│   ├── grpo_trainer/              # GRPO training examples
-│   ├── remax_trainer/             # ReMax training examples
-│   ├── rloo_trainer/              # RLOO training examples
-│   ├── joint_training/            # Joint training examples
-│   ├── sft/                       # Supervised fine-tuning examples
-│   ├── sglang_multiturn/          # Multi-turn dialogue examples
-│   ├── split_placement/           # GPU placement examples
-│   └── tuning/                    # Hyperparameter tuning examples
-│
-├── recipe/                        # Algorithm recipes and research implementations
-│   ├── dapo/                      # DAPO (AIME 50 points)
-│   ├── prime/                     # PRIME algorithm
-│   ├── r1/                        # R1-style reasoning
-│   ├── sppo/                      # Self-play preference optimization
-│   ├── joint_training/            # Joint training algorithm
-│   ├── entropy/                   # Entropy mechanism experiments
-│   └── open_math_reasoning/       # Math reasoning recipes
-│
-├── tests/                         # Test suite
-│   ├── single_controller/         # Controller tests
-│   ├── trainer/                   # Trainer tests
-│   ├── workers/                   # Worker tests
-│   ├── models/                    # Model tests
-│   ├── utils/                     # Utility tests
-│   ├── special_e2e/               # End-to-end tests
-│   └── special_distributed/       # Distributed training tests
-│
-├── docs/                          # Documentation
-├── docker/                        # Docker configurations
-└── scripts/                       # Utility scripts
-```
-
-## Key Development Principles
-
-### 1. Test-Driven Development (TDD)
-- Write tests BEFORE implementing new features
-- Maintain two test categories:
-  - **Feature tests**: Validate new functionality works as intended
-  - **Regression tests**: Ensure existing functionality remains intact
-- Test cases co-evolve with the development lifecycle
-- Run tests frequently during development: `pytest tests/`
-- For distributed tests: `pytest tests/special_distributed/`
-- For end-to-end tests: `pytest tests/special_e2e/`
-
-### 2. Documentation Discipline
-- Write documentation ONLY when explicitly requested by the user
-- Code should be self-documenting through clear naming and structure
-- Focus on code quality over documentation quantity
-
-### 3. Codebase Hygiene
-- Keep the repository clean and organized
-- Remove unused code and dependencies
-- Follow existing code patterns and conventions
-- Use pre-commit hooks: `.pre-commit-config.yaml`
-- Maintain consistent formatting and style
-
-## User Objectives
-
-The user is working with this repository to:
-
-1. **Develop custom RL/SFT algorithms**: Build new training pipelines and algorithms on top of verl's infrastructure
-2. **Reuse existing code**: Leverage verl's modular architecture, configurations, and implementations
-3. **Learn software engineering**: Study verl's design patterns to advance from junior to expert developer level
-
-## Key Technical Concepts
-
-### Hybrid Controller Architecture
-- Decouples computation and data dependencies
-- Enables flexible RL dataflow representation (PPO, GRPO, etc.)
-- Supports various device mappings for efficient resource utilization
-
-### Backend Integrations
-- **Training**: FSDP, FSDP2, Megatron-LM
-- **Inference**: vLLM (≥0.8.2), SGLang (0.5.6), HuggingFace Transformers
-- **Models**: Qwen-3, Llama3.1, Gemma2, DeepSeek, etc.
-
-### Supported Algorithms
-PPO, GRPO, GSPO, ReMax, REINFORCE++, RLOO, PRIME, DAPO, DrGRPO, PF-PPO, Joint Training, and more
-
-## Environment Setup
-
-**CRITICAL**: All code and scripts MUST be run within the Miniconda environment:
+## Environment
 
 ```bash
-conda activate verl07
+conda activate verl07          # REQUIRED before any Python/pytest command
 ```
 
-Always activate this environment before:
-- Running any Python scripts or training jobs
-- Executing tests
-- Installing dependencies
-- Running examples or recipes
+## Repo Layout (key paths only)
 
-## Development Workflow
+```
+verl/trainer/ppo/ray_trainer.py     # Main training loop (fit_and_evaluate)
+verl/trainer/ppo/core_algos.py      # GRPO/PPO loss, advantage computation
+verl/workers/fsdp_workers.py        # FSDP hybrid engine (init_model, rollout_mode, update_weights)
+verl/workers/actor/dp_actor.py      # Actor forward/backward (_forward_micro_batch, compute_log_prob, update_policy)
+verl/checkpoint_engine/base.py      # Weight sync coordinator (CheckpointEngineManager)
+verl/utils/torch_functional.py      # logprobs_from_logits, log_probs_from_logits_all_rmpad
+verl/models/joint_model/            # ★ Joint training model (QwenJointForCausalLM)
+recipe/                             # Git SUBMODULE — commit separately: cd recipe && git add/commit
+tests/joint_training/               # Joint training tests (feat/ and regression/)
+docs/joint_training/                # Investigation report, target spec, progress tracker
+```
 
-1. **Before coding**: Write tests that define expected behavior
-2. **During coding**: Run tests iteratively to validate implementation
-3. **After coding**: Ensure all tests pass and no regressions introduced
-4. **Code review**: Check for cleanliness, organization, and adherence to patterns
+## Joint Training Architecture
 
-## Important Notes
+```
+logits_fused = (1 - λ) * logits_model1 + λ * logits_model2
+```
 
-- This is a research and production framework used by ByteDance Seed Team
-- The codebase scales to 671B parameter models and hundreds of GPUs
-- Performance is critical for on-policy RL algorithms
-- Follow the [performance tuning guide](https://verl.readthedocs.io/en/latest/perf/perf_tuning.html) when optimizing
+- Model class: `verl/models/joint_model/modeling_joint_qwen3.py` — `QwenJointForCausalLM`
+- Two `Qwen3ForCausalLM` sub-models in `nn.ModuleList`, fused in `forward()`
+- `forward(eval_only=True)` returns model2-only logits (for evaluation)
+- Fusion is transparent to upper layers — `core_algos.py` and `dp_actor.py` are **unchanged**
+- Joint mode activated via Hydra config: `+actor_rollout_ref.model.joint_training=True`
+- Weight extraction: `verl/models/joint_model/weight_utils.py` (extract_sub_model_weights)
+- Eval flow: `ray_trainer._validate()` → `update_weights(eval_only=True)` → `rollout_mode(eval_only=True)` → extracts model2 weights for vLLM
+
+## Modified Files (from upstream)
+
+| File | What changed |
+|------|-------------|
+| `verl/workers/fsdp_workers.py` | `rollout_mode(eval_only=False)` param, joint weight extraction block |
+| `verl/trainer/ppo/ray_trainer.py` | `_is_joint_training` flag, `_validate()` eval-only weight sync |
+| `verl/checkpoint_engine/base.py` | `update_weights(eval_only=False)` param passthrough |
+
+## Running Tests
+
+```bash
+pytest tests/joint_training/ -v          # All joint training tests (46 pass, 2 skip)
+pytest tests/joint_training/feat/ -v     # Feature tests only
+pytest tests/joint_training/regression/ -v  # Regression tests only
+```
+
+## Preparing Joint Model Weights
+
+```bash
+python -m verl.models.joint_model.prepare_joint_weights \
+    --base_model_path Qwen/Qwen3-1.7B-Base \
+    --output_path .cache/huggingface/QwenJoint-1.7B \
+    --fusion_lambda 0.5
+```
+
+## Training
+
+```bash
+bash recipe/joint_training/run_joint_grpo_qwen3_1.7b.sh
+```
+
+## Data
+
+- **Dataset**: `/data-1/dataset/gsm8k` — `train.parquet` (7473 rows), `test.parquet`
+- **Columns**: `data_source`, `prompt` (chat format), `ability`, `reward_model` (has `ground_truth`), `extra_info`
+
+## Known Issues
+
+- HuggingFace model download stalls behind SOCKS proxy — prepare weights manually when network is available
+- `AutoModelForVision2Seq` import error in transformers — pre-existing env issue, causes 2 test skips
+- `recipe/` is a git submodule — always commit inside it separately
+
+## Pending Work (Phase 2)
+
+1. Download and prepare Qwen3-1.7B-Base joint weights
+2. vLLM integration for joint model rollout
+3. End-to-end GPU training validation
