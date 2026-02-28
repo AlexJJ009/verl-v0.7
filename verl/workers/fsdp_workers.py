@@ -709,9 +709,14 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
 
         # 4. build rollout model
         log_gpu_memory_usage(f"Before building {self.config.rollout.name} rollout", logger=logger)
-        self.rollout = get_rollout_class(rollout_config.name, rollout_config.mode)(
-            config=rollout_config, model_config=model_config, device_mesh=rollout_device_mesh
-        )
+        if rollout_name == "hf":
+            from verl.workers.rollout.hf_rollout import HFRollout
+
+            self.rollout = HFRollout(module=self.actor_module_fsdp, config=rollout_config)
+        else:
+            self.rollout = get_rollout_class(rollout_config.name, rollout_config.mode)(
+                config=rollout_config, model_config=model_config, device_mesh=rollout_device_mesh
+            )
         log_gpu_memory_usage(f"After building {self.config.rollout.name} rollout", logger=logger)
 
         # Full params
@@ -750,6 +755,16 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
         if self._is_offload_param:
             load_fsdp_model_to_gpu(self.actor_module_fsdp)
         log_gpu_memory_usage("After load_fsdp_model_to_gpu", logger=logger)
+
+        # HF rollout: shared model instance, no weight sync needed
+        from verl.workers.rollout.hf_rollout import HFRollout
+
+        if isinstance(self.rollout, HFRollout):
+            # Set eval_only mode for joint model (checked in forward())
+            unwrapped = getattr(self.actor_module_fsdp, "_fsdp_wrapped_module", self.actor_module_fsdp)
+            if hasattr(unwrapped, "fusion_lambda"):
+                unwrapped._eval_only_mode = eval_only
+            return
 
         peft_config = None
         peft_model = getattr(self.actor_module_fsdp, "_fsdp_wrapped_module", self.actor_module_fsdp)
@@ -858,6 +873,22 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
         log_gpu_memory_usage("After resume kv_cache", logger=logger)
 
         self.base_sync_done = True
+        set_expandable_segments(True)
+
+    async def trainer_mode(self):
+        """Context switch from rollout back to trainer mode."""
+        from verl.workers.rollout.hf_rollout import HFRollout
+
+        # Reset eval_only for joint model
+        if isinstance(self.rollout, HFRollout):
+            unwrapped = getattr(self.actor_module_fsdp, "_fsdp_wrapped_module", self.actor_module_fsdp)
+            if hasattr(unwrapped, "_eval_only_mode"):
+                unwrapped._eval_only_mode = False
+
+        if self._is_offload_param:
+            offload_fsdp_model_to_cpu(self.actor_module_fsdp)
+
+        aggressive_empty_cache(force_sync=True)
         set_expandable_segments(True)
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)

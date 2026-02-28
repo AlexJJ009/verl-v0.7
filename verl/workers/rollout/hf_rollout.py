@@ -38,9 +38,19 @@ __all__ = ["HFRollout"]
 
 class HFRollout(BaseRollout):
     def __init__(self, module: nn.Module, config):
-        super().__init__()
+        # Skip BaseRollout.__init__ which requires (config, model_config, device_mesh)
+        # HFRollout uses the FSDP module directly, not the async rollout server pattern
         self.config = config
         self.module = module
+
+    async def resume(self, tags: list[str]):
+        pass  # HFRollout shares the FSDP model, no separate GPU state to resume
+
+    async def update_weights(self, weights, **kwargs):
+        pass  # HFRollout shares the FSDP model, weights are always in sync
+
+    async def release(self):
+        pass  # Nothing to release
 
     def generate_sequences(self, prompts: DataProto) -> DataProto:
         batch_size = prompts.batch.batch_size[0]

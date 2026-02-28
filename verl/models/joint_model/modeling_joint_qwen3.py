@@ -10,13 +10,14 @@ For evaluation, pass eval_only=True to get only model2's logits.
 import torch
 import torch.nn as nn
 from transformers import Qwen3ForCausalLM
+from transformers.generation.utils import GenerationMixin
 from transformers.modeling_outputs import CausalLMOutputWithPast
 from transformers.modeling_utils import PreTrainedModel
 
 from verl.models.joint_model.configuration_joint_qwen3 import QwenJointConfig
 
 
-class QwenJointForCausalLM(PreTrainedModel):
+class QwenJointForCausalLM(PreTrainedModel, GenerationMixin):
     config_class = QwenJointConfig
     base_model_prefix = "sub_models"
     supports_gradient_checkpointing = True
@@ -48,6 +49,9 @@ class QwenJointForCausalLM(PreTrainedModel):
         eval_only=False,
         **kwargs,
     ):
+        # Support eval_only via model attribute (for HF generate() which can't pass custom kwargs)
+        eval_only = eval_only or getattr(self, '_eval_only_mode', False)
+
         if eval_only:
             return self.sub_models[1](
                 input_ids=input_ids,

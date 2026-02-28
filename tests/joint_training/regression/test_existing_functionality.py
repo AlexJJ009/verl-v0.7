@@ -90,34 +90,37 @@ class TestCoreAlgosUnchanged:
     def test_grpo_advantage_computation(self):
         """GRPO advantage computation should work correctly."""
         pytest.importorskip("verl.trainer.ppo.core_algos",
-                            reason="core_algos import chain requires full env")
+                            reason="core_algos import chain requires full env",
+                            exc_type=ImportError)
         from verl.trainer.ppo.core_algos import compute_grpo_outcome_advantage
 
         batch_size = 8
-        token_level_scores = torch.zeros(batch_size, 16)
-        token_level_scores[:, -1] = torch.tensor([1.0, 0.0, 1.0, 0.0, 0.5, 0.5, 1.0, 0.0])
+        token_level_rewards = torch.zeros(batch_size, 16)
+        token_level_rewards[:, -1] = torch.tensor([1.0, 0.0, 1.0, 0.0, 0.5, 0.5, 1.0, 0.0])
 
         response_mask = torch.ones(batch_size, 16)
         # 2 groups of 4 (simulating n=4 per prompt)
-        index = torch.tensor([0, 0, 0, 0, 1, 1, 1, 1])
+        index = torch.tensor([0, 0, 0, 0, 1, 1, 1, 1]).numpy()
 
         advantages, _ = compute_grpo_outcome_advantage(
-            token_level_scores=token_level_scores,
-            eos_mask=response_mask,
+            token_level_rewards=token_level_rewards,
+            response_mask=response_mask,
             index=index,
         )
 
         assert advantages.shape == (batch_size, 16)
         # Advantages should be normalized within groups
         group0_adv = advantages[:4, -1]
-        group1_adv = advantages[4:, -1]
         # Within each group, mean should be ~0 (normalized)
         assert abs(group0_adv.mean().item()) < 0.1
 
     def test_policy_loss_function(self):
         """Vanilla policy loss should still compute correctly."""
         pytest.importorskip("verl.trainer.ppo.core_algos",
-                            reason="core_algos import chain requires full env")
+                            reason="core_algos import chain requires full env",
+                            exc_type=ImportError)
+        from types import SimpleNamespace
+
         from verl.trainer.ppo.core_algos import get_policy_loss_fn
 
         loss_fn = get_policy_loss_fn("vanilla")
@@ -128,16 +131,24 @@ class TestCoreAlgosUnchanged:
         advantages = torch.randn(batch_size, seq_len)
         response_mask = torch.ones(batch_size, seq_len)
 
-        loss_info = loss_fn(
+        config = SimpleNamespace(
+            clip_ratio=0.2,
+            clip_ratio_low=0.2,
+            clip_ratio_high=0.28,
+            clip_ratio_c=10.0,
+            global_batch_info={},
+        )
+        config.get = lambda key, default=None: getattr(config, key, default)
+
+        loss, loss_info = loss_fn(
             old_log_prob=old_log_prob,
             log_prob=log_prob,
             advantages=advantages,
             response_mask=response_mask,
-            cliprange=0.2,
+            config=config,
         )
 
-        assert "pg_loss" in loss_info
-        assert loss_info["pg_loss"].ndim == 0  # scalar
+        assert loss.ndim == 0  # scalar
 
 
 class TestLogProbsComputation:

@@ -1,8 +1,8 @@
 # Joint Training GRPO - Implementation Progress
 
-## Status: Phase 1 Complete (Core Training Pipeline)
+## Status: Phase 2 Complete (HuggingFace Rollout Integration)
 
-### Completed Tasks
+### Phase 1: Core Training Pipeline (Complete)
 
 1. **QwenJointForCausalLM Model Class** (21 tests passing)
    - `verl/models/joint_model/modeling_joint_qwen3.py`
@@ -22,27 +22,49 @@
 
 5. **GRPO Integration Tests** (6 tests passing)
    - `tests/joint_training/feat/test_grpo_integration.py`
-   - Full simulation: old_log_probs → advantages → policy loss → backward
 
 6. **AutoModel Loading Tests** (4 tests passing)
    - `tests/joint_training/feat/test_auto_model_loading.py`
-   - Verified trust_remote_code loading path used by fsdp_workers.py
 
-7. **Regression Tests** (7 passed, 2 skipped due to env)
+7. **Regression Tests** (5 passed, 2 skipped due to env)
    - `tests/joint_training/regression/test_existing_functionality.py`
 
-8. **Training Recipe**
-   - `recipe/joint_training/run_joint_grpo_qwen3_1.7b.sh`
-
-9. **Model Weight Preparation Script**
+8. **Model Weight Preparation Script**
    - `verl/models/joint_model/prepare_joint_weights.py`
-   - Downloads base model and creates joint model checkpoint
+
+### Phase 2: HuggingFace Rollout Integration (Complete)
+
+9. **GenerationMixin Support**
+   - `verl/models/joint_model/modeling_joint_qwen3.py`: Added `GenerationMixin` inheritance
+   - `model.generate()` now works with fused logits automatically
+   - `_eval_only_mode` attribute for switching between fused and model2-only during generation
+
+10. **HFRollout Integration in FSDP Workers**
+    - `verl/workers/fsdp_workers.py`:
+      - `_build_rollout()`: Special case for HF rollout — shares FSDP model instance, no separate rollout model
+      - `rollout_mode()`: Early return for HFRollout — no weight sync needed, just set `_eval_only_mode`
+      - `trainer_mode()`: New method — resets `_eval_only_mode`, handles offload
+    - HFRollout shares the actor's FSDP model, so `model.generate()` → `model.forward()` → fused logits
+
+11. **HFRollout Fix**
+    - `verl/workers/rollout/hf_rollout.py`: Fixed broken `super().__init__()` call (pre-existing bug — `BaseRollout.__init__` requires 3 positional args that HFRollout doesn't provide)
+
+12. **HF Rollout + Joint Model Tests** (7 tests, 3 passed + 2 skipped + 2 skipped due to env)
+    - `tests/joint_training/feat/test_hf_rollout_joint.py`
+    - Tests: _eval_only_mode attribute, generate() with fused logits, HFRollout instantiation
+
+13. **GPU End-to-End Tests** (7 tests passing)
+    - `tests/joint_training/feat/test_gpu_e2e.py`
+    - Tests: GPU forward/backward, optimizer step, generate on GPU, full GRPO step simulation
+
+14. **Training Recipe**
+    - `recipe/joint_training/run_joint_grpo_qwen3_1.7b.sh`: Switched to HF rollout, fixed model path
 
 ### Pending
 
-- [ ] Download Qwen/Qwen3-1.7B-Base (network issue, run manually)
-- [ ] End-to-end training test with actual GPU
-- [ ] vLLM integration for joint model rollout (Phase 2)
+- [x] ~~Download Qwen/Qwen3-1.7B-Base~~ (done)
+- [x] ~~Create joint model checkpoint~~ (done at `/data-1/.cache/huggingface/QwenJoint-1.7B`)
+- [ ] End-to-end distributed training test with actual multi-GPU
 - [ ] Joint-specific metrics monitoring (optional)
 
 ### Test Summary
@@ -53,8 +75,10 @@
 | feat/test_weight_utils.py | 8 | All passing |
 | feat/test_grpo_integration.py | 6 | All passing |
 | feat/test_auto_model_loading.py | 4 | All passing |
-| regression/test_existing_functionality.py | 7 passed, 2 skipped | OK |
-| **Total** | **46 passing, 2 skipped** | |
+| feat/test_hf_rollout_joint.py | 9 | All passing |
+| feat/test_gpu_e2e.py | 7 | All passing |
+| regression/test_existing_functionality.py | 9 | All passing |
+| **Total** | **64 passing, 0 skipped** | |
 
 ### Git Commits
 
@@ -65,6 +89,7 @@
 | d54ae321 | test: add regression tests for joint training changes |
 | 2f70926d | feat: add GRPO integration tests, recipe, and progress tracking |
 | 961892c3 | test: add AutoModel loading tests for joint model |
+| f207e1ab | feat: add HF rollout integration for joint training with fused logits |
 
 ### Architecture Decisions
 
@@ -73,6 +98,9 @@
 3. **Dual-mode weight sync**: rollout_mode(eval_only=True) extracts model2 weights for evaluation
 4. **Minimal core changes**: core_algos.py, dp_actor.py, metric_utils.py unchanged
 5. **Configuration-driven**: `+actor_rollout_ref.model.joint_training=True` in Hydra config
+6. **HF rollout shares FSDP model**: No weight sync needed — `model.generate()` calls `forward()` with fused logits
+7. **`_eval_only_mode` attribute**: Since HF `generate()` can't pass custom kwargs to `forward()`, uses model-level flag
+8. **Early return in `rollout_mode()`**: Cleanly separates HF path from vLLM weight-sync path
 
 ### How to Prepare Model Weights (when network is available)
 
@@ -80,7 +108,7 @@
 conda activate verl07
 python -m verl.models.joint_model.prepare_joint_weights \
     --base_model_path Qwen/Qwen3-1.7B-Base \
-    --output_path .cache/huggingface/QwenJoint-1.7B \
+    --output_path /data-1/.cache/huggingface/QwenJoint-1.7B \
     --fusion_lambda 0.5
 ```
 

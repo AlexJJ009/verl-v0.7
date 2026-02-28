@@ -33,12 +33,16 @@ from transformers import (
     AutoModelForImageTextToText,
     AutoModelForSequenceClassification,
     AutoModelForTokenClassification,
-    AutoModelForVision2Seq,
     GenerationConfig,
     MistralForSequenceClassification,
     PretrainedConfig,
     PreTrainedModel,
 )
+
+try:
+    from transformers import AutoModelForVision2Seq
+except ImportError:
+    AutoModelForVision2Seq = None
 from transformers.modeling_outputs import CausalLMOutputWithPast
 
 from verl.models.registry import ModelRegistry
@@ -619,7 +623,12 @@ def patch_valuehead_model(model) -> None:
 
 
 def load_valuehead_model(local_path, torch_dtype, model_config, trust_remote_code):
-    from transformers import AutoModelForCausalLM, AutoModelForTokenClassification, AutoModelForVision2Seq
+    from transformers import AutoModelForCausalLM, AutoModelForTokenClassification
+
+    try:
+        from transformers import AutoModelForVision2Seq as _AutoModelForVision2Seq
+    except ImportError:
+        _AutoModelForVision2Seq = None
 
     try:
         model = AutoModelForTokenClassification.from_pretrained(
@@ -640,8 +649,8 @@ def load_valuehead_model(local_path, torch_dtype, model_config, trust_remote_cod
 
     from trl import AutoModelForCausalLMWithValueHead
 
-    if type(model_config) in AutoModelForVision2Seq._model_mapping.keys():
-        module_class = AutoModelForVision2Seq
+    if _AutoModelForVision2Seq is not None and type(model_config) in _AutoModelForVision2Seq._model_mapping.keys():
+        module_class = _AutoModelForVision2Seq
     else:
         module_class = AutoModelForCausalLM
     ori_model = module_class.from_pretrained(
