@@ -348,8 +348,12 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
             AutoModel,
             AutoModelForCausalLM,
             AutoModelForImageTextToText,
-            AutoModelForVision2Seq,
         )
+
+        try:
+            from transformers import AutoModelForVision2Seq
+        except ImportError:
+            AutoModelForVision2Seq = AutoModelForImageTextToText
 
         from verl.utils.model import get_generation_config, print_model_size, update_model_config
         from verl.utils.torch_dtypes import PrecisionType
@@ -890,6 +894,16 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
 
         aggressive_empty_cache(force_sync=True)
         set_expandable_segments(True)
+
+    async def generate_sequences_hf(self, *args, **kwargs):
+        """Generate sequences using HF rollout."""
+        from verl.workers.rollout.hf_rollout import HFRollout
+
+        if not isinstance(self.rollout, HFRollout):
+            raise RuntimeError(f"Expected HFRollout, got {type(self.rollout)}")
+
+        # Call the rollout's generate method
+        return await self.rollout.generate(*args, **kwargs)
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def init_model(self):

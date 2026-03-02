@@ -208,11 +208,6 @@ class TestHFRolloutInstantiation:
 
     def test_hf_rollout_instantiation(self):
         """HFRollout should accept a joint model module."""
-        pytest.importorskip(
-            "verl.workers.rollout.hf_rollout",
-            reason="HFRollout import fails due to AutoModelForVision2Seq env issue",
-            exc_type=ImportError,
-        )
         from omegaconf import OmegaConf
 
         from verl.workers.rollout.hf_rollout import HFRollout
@@ -235,11 +230,6 @@ class TestHFRolloutInstantiation:
 
     def test_hf_rollout_is_base_rollout_instance(self):
         """HFRollout should be recognized as BaseRollout subclass."""
-        pytest.importorskip(
-            "verl.workers.rollout.hf_rollout",
-            reason="HFRollout import fails due to AutoModelForVision2Seq env issue",
-            exc_type=ImportError,
-        )
         from verl.workers.rollout.base import BaseRollout
         from verl.workers.rollout.hf_rollout import HFRollout
 

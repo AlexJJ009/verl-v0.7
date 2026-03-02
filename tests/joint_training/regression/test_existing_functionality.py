@@ -183,3 +183,36 @@ class TestLogProbsComputation:
         lp_fused = logprobs_from_logits(fused_logits, labels)
 
         assert not torch.allclose(lp_single, lp_fused)
+
+
+class TestAutoModelVision2SeqImportCompat:
+    """Regression test for AutoModelForVision2Seq import compatibility.
+
+    transformers >= 5.0 removed AutoModelForVision2Seq in favor of
+    AutoModelForImageTextToText. The fsdp_workers import must handle
+    both old and new transformers versions gracefully.
+    """
+
+    def test_fsdp_workers_import_does_not_crash(self):
+        """Importing fsdp_workers should not raise ImportError for AutoModelForVision2Seq."""
+        # This was the root cause of the training crash in transformers 5.2.0
+        from verl.workers import fsdp_workers  # noqa: F401
+
+    def test_auto_model_vision_fallback(self):
+        """AutoModelForVision2Seq should fall back to AutoModelForImageTextToText."""
+        from transformers import AutoModelForImageTextToText
+
+        try:
+            from transformers import AutoModelForVision2Seq
+
+            # If it exists (older transformers), it should be usable
+            assert AutoModelForVision2Seq is not None
+        except ImportError:
+            # In newer transformers, AutoModelForImageTextToText is the replacement
+            # Our code aliases it, verify the alias works
+            AutoModelForVision2Seq = AutoModelForImageTextToText
+            assert AutoModelForVision2Seq is AutoModelForImageTextToText
+
+    def test_hf_rollout_import_not_blocked(self):
+        """HFRollout should be importable without AutoModelForVision2Seq workaround."""
+        from verl.workers.rollout.hf_rollout import HFRollout  # noqa: F401

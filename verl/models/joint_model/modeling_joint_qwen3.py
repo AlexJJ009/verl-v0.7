@@ -21,6 +21,11 @@ class QwenJointForCausalLM(PreTrainedModel, GenerationMixin):
     config_class = QwenJointConfig
     base_model_prefix = "sub_models"
     supports_gradient_checkpointing = True
+    _supports_flash_attn = True
+    _supports_sdpa = True
+    _supports_flex_attn = True
+    _supports_attention_backend = True
+    _no_split_modules = ["Qwen3DecoderLayer"]
 
     def __init__(self, config: QwenJointConfig):
         super().__init__(config)

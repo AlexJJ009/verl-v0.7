@@ -141,6 +141,9 @@ class HFModelConfig(BaseConfig):
 
     mtp: MtpConfig = field(default_factory=MtpConfig)
 
+    # Joint training configuration
+    joint_training: bool = False
+
     def __post_init__(self):
         import_external_libs(self.external_lib)
 
