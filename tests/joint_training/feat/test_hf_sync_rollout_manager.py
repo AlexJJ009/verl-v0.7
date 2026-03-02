@@ -103,7 +103,63 @@ class TestHFSyncRolloutManagerSelection:
         )
 
 
-class TestLoopAlreadyRunningFix:
+class TestGetGenBatchForHFRollout:
+    """Verify _get_gen_batch includes tensor keys when using HF rollout (async_rollout_mode=False)."""
+
+    def _make_batch(self):
+        import numpy as np
+        import torch
+        from tensordict import TensorDict
+
+        batch_td = TensorDict(
+            {
+                "input_ids": torch.zeros(4, 8, dtype=torch.long),
+                "attention_mask": torch.ones(4, 8, dtype=torch.long),
+                "position_ids": torch.arange(8).unsqueeze(0).expand(4, -1),
+                "token_level_scores": torch.zeros(4, 8),
+            },
+            batch_size=4,
+        )
+        return DataProto(
+            batch=batch_td,
+            non_tensor_batch={"prompt": np.array(["hello"] * 4), "reward_model": np.array([{}] * 4)},
+        )
+
+    def test_hf_rollout_gen_batch_has_input_ids(self):
+        """When async_rollout_mode=False, gen_batch must have input_ids for HFRollout."""
+        from verl.trainer.ppo.ray_trainer import HFSyncRolloutManager
+
+        # Build a minimal trainer-like object with async_rollout_mode=False
+        trainer = MagicMock()
+        trainer.async_rollout_mode = False
+
+        batch = self._make_batch()
+
+        # Call _get_gen_batch as an unbound method with our mock trainer
+        from verl.trainer.ppo.ray_trainer import RayPPOTrainer
+
+        gen_batch = RayPPOTrainer._get_gen_batch(trainer, batch)
+
+        assert gen_batch.batch is not None, "gen_batch.batch must not be None for HF rollout"
+        assert "input_ids" in gen_batch.batch.keys()
+        assert "attention_mask" in gen_batch.batch.keys()
+        assert "position_ids" in gen_batch.batch.keys()
+        # token_level_scores should NOT be in gen_batch (not in the HF-needed keys)
+        assert "token_level_scores" not in gen_batch.batch.keys()
+
+    def test_agent_loop_gen_batch_has_no_tensor_keys(self):
+        """When async_rollout_mode=True (AgentLoopManager), gen_batch has no tensor keys."""
+        trainer = MagicMock()
+        trainer.async_rollout_mode = True
+
+        batch = self._make_batch()
+
+        from verl.trainer.ppo.ray_trainer import RayPPOTrainer
+
+        gen_batch = RayPPOTrainer._get_gen_batch(trainer, batch)
+
+        # async path: no tensor keys in gen_batch
+        assert gen_batch.batch is None or len(gen_batch.batch.keys()) == 0
     """Verify generate_sequences() handles event loop already running (async Ray actor case)."""
 
     def test_rollout_mode_and_trainer_mode_runnable_via_asyncio_run(self):
