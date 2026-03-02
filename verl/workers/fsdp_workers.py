@@ -1120,6 +1120,15 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
             log_gpu_memory_usage("After switch to rollout mode", logger=logger)
 
         with simple_timer("generate_sequences", timing_generate):
+            # HFRollout needs pre-tokenized input_ids/attention_mask/position_ids.
+            # RLHFDataset was redesigned for async AgentLoop and provides raw_prompt text,
+            # not pre-tokenized tensors. Tokenize here when HFRollout is in use.
+            from verl.workers.rollout.hf_rollout import HFRollout as _HFRollout
+
+            if isinstance(self.rollout, _HFRollout) and (
+                prompts.batch is None or "input_ids" not in prompts.batch.keys()
+            ):
+                prompts = self._tokenize_raw_prompts_for_hf(prompts)
             output = self.rollout.generate_sequences(prompts=prompts)
 
         if self._is_actor:
@@ -1149,6 +1158,60 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
         # clear kv cache
         get_torch_device().empty_cache()
         return output
+
+    def _tokenize_raw_prompts_for_hf(self, prompts: DataProto) -> DataProto:
+        """Tokenize raw_prompt text to input_ids/attention_mask/position_ids for HFRollout.
+
+        RLHFDataset returns raw_prompt (list of chat message dicts) for AgentLoop
+        compatibility. HFRollout.generate_sequences() needs pre-tokenized tensors.
+        This method bridges the gap by tokenizing on the worker side.
+        """
+        from tensordict import TensorDict
+
+        raw_prompts = prompts.non_tensor_batch.get("raw_prompt")
+        if raw_prompts is None:
+            return prompts
+
+        # Apply chat template to convert message dicts to formatted strings
+        formatted = []
+        for p in raw_prompts:
+            if isinstance(p, (list, dict)):
+                formatted.append(
+                    self.tokenizer.apply_chat_template(p, tokenize=False, add_generation_prompt=True)
+                )
+            else:
+                formatted.append(str(p))
+
+        max_len = self.config.rollout.prompt_length
+        old_padding_side = self.tokenizer.padding_side
+        self.tokenizer.padding_side = "left"
+        try:
+            tokenized = self.tokenizer(
+                formatted,
+                return_tensors="pt",
+                padding="max_length",
+                truncation=True,
+                max_length=max_len,
+            )
+        finally:
+            self.tokenizer.padding_side = old_padding_side
+
+        device = torch.cuda.current_device()
+        input_ids = tokenized["input_ids"].to(device)
+        attention_mask = tokenized["attention_mask"].to(device)
+        # Compute position_ids from attention_mask (0-indexed from first real token)
+        position_ids = attention_mask.long().cumsum(dim=-1) - 1
+        position_ids.masked_fill_(attention_mask == 0, 0)
+
+        prompts.batch = TensorDict(
+            source={
+                "input_ids": input_ids,
+                "attention_mask": attention_mask,
+                "position_ids": position_ids,
+            },
+            batch_size=len(formatted),
+        )
+        return prompts
 
     @register(dispatch_mode=make_nd_compute_dataproto_dispatch_fn(mesh_name="actor"))
     @DistProfiler.annotate(color="blue", role="actor_compute_log_prob")
