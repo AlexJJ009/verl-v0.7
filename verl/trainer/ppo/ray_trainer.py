@@ -218,6 +218,28 @@ def compute_advantage(
     return data
 
 
+class HFSyncRolloutManager:
+    """Synchronous rollout manager for HFRollout (in-process FSDP hybrid mode).
+
+    Used when rollout.name=hf to bypass the AgentLoopManager (which expects
+    a server-based rollout API). Delegates directly to the FSDP worker group's
+    synchronous generate_sequences(), which calls HFRollout.generate_sequences().
+    """
+
+    def __init__(self, worker_group):
+        self.worker_group = worker_group
+        self.rollout_replicas = []  # no separate replicas for in-process rollout
+
+    def generate_sequences(self, prompts: DataProto) -> DataProto:
+        return self.worker_group.generate_sequences(prompts)
+
+    def start_profile(self, **kwargs):
+        pass
+
+    def stop_profile(self):
+        pass
+
+
 class RayPPOTrainer:
     """Distributed PPO trainer using Ray for scalable reinforcement learning.
 
@@ -827,31 +849,39 @@ class RayPPOTrainer:
             rm_resource_pool=resource_pool,
         )
 
-        # create async rollout manager and request scheduler
-        # Note: mode is always "async" since sync mode is deprecated
-        self.async_rollout_mode = True
-
-        # Support custom AgentLoopManager via config
-        manager_class_fqn = self.config.actor_rollout_ref.rollout.get("agent", {}).get("agent_loop_manager_class")
-        if manager_class_fqn:
-            AgentLoopManager = load_class_from_fqn(manager_class_fqn, "AgentLoopManager")
+        # create rollout manager
+        # HFRollout runs in-process (FSDP hybrid mode) — use synchronous manager
+        # vLLM/SGLang/TRTLLM run as separate server processes — use async AgentLoopManager
+        rollout_name = self.config.actor_rollout_ref.rollout.name
+        if rollout_name == "hf":
+            self.async_rollout_mode = False
+            self.async_rollout_manager = HFSyncRolloutManager(worker_group=self.actor_rollout_wg)
         else:
-            from verl.experimental.agent_loop import AgentLoopManager
+            self.async_rollout_mode = True
 
-        # infrastructure overview: https://verl.readthedocs.io/en/latest/advance/reward_loop.html#architecture-design
-        # agent_reward_loop: streaming reward computation with actor rollout
-        # two conditions satisfied: (1) no reward model, or (2) reward model with extra resource pool
-        enable_agent_reward_loop = not self.use_rm or self.config.reward.reward_model.enable_resource_pool
+            # Support custom AgentLoopManager via config
+            manager_class_fqn = self.config.actor_rollout_ref.rollout.get("agent", {}).get("agent_loop_manager_class")
+            if manager_class_fqn:
+                AgentLoopManager = load_class_from_fqn(manager_class_fqn, "AgentLoopManager")
+            else:
+                from verl.experimental.agent_loop import AgentLoopManager
 
-        # if enable_agent_reward_loop, we directly pass reward_loop_workers to agent loop manager
-        # to stream reward computation with actor rollout
-        reward_loop_worker_handles = self.reward_loop_manager.reward_loop_workers if enable_agent_reward_loop else None
-        self.async_rollout_manager = AgentLoopManager(
-            config=self.config,
-            worker_group=self.actor_rollout_wg,
-            rollout_resource_pool=actor_rollout_resource_pool,
-            reward_loop_worker_handles=reward_loop_worker_handles,
-        )
+            # infrastructure overview: https://verl.readthedocs.io/en/latest/advance/reward_loop.html#architecture-design
+            # agent_reward_loop: streaming reward computation with actor rollout
+            # two conditions satisfied: (1) no reward model, or (2) reward model with extra resource pool
+            enable_agent_reward_loop = not self.use_rm or self.config.reward.reward_model.enable_resource_pool
+
+            # if enable_agent_reward_loop, we directly pass reward_loop_workers to agent loop manager
+            # to stream reward computation with actor rollout
+            reward_loop_worker_handles = (
+                self.reward_loop_manager.reward_loop_workers if enable_agent_reward_loop else None
+            )
+            self.async_rollout_manager = AgentLoopManager(
+                config=self.config,
+                worker_group=self.actor_rollout_wg,
+                rollout_resource_pool=actor_rollout_resource_pool,
+                reward_loop_worker_handles=reward_loop_worker_handles,
+            )
 
         self.checkpoint_manager = CheckpointEngineManager(
             backend=self.config.actor_rollout_ref.rollout.checkpoint_engine.backend,

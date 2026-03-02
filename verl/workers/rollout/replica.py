@@ -338,42 +338,32 @@ RolloutReplicaRegistry.register("trtllm", _load_trtllm)
 
 
 # Loader function for HFRollout (HuggingFace Transformer rollout for joint training)
+# NOTE: HFRolloutReplica is NOT used by RayPPOTrainer when rollout.name=hf.
+# The trainer uses HFSyncRolloutManager (in ray_trainer.py) which calls the FSDP
+# worker group's generate_sequences() directly, bypassing AgentLoopManager.
+# This registry entry is kept for completeness and potential future use.
 def _load_hf():
     class HFRolloutReplica(RolloutReplica):
-        """HuggingFace Transformer-based rollout replica for joint training.
-        Uses HYBRID mode where rollout and training share the same FSDP process.
-        HFRollout is initialized during init_model() in FSDPWorker.
+        """HuggingFace Transformer-based rollout replica (not active in normal training).
+        HF rollout uses HFSyncRolloutManager in ray_trainer.py instead.
         """
 
         async def launch_servers(self):
-            """Initialize HF rollout servers in HYBRID mode.
-            For HYBRID mode, the servers are the FSDP workers that have both
-            the model and the HFRollout engine initialized.
-            """
-            # For HYBRID mode, the FSDP workers themselves are the servers
-            # They have both model and rollout initialized in init_model()
-            self.servers = self.workers
-            if self.servers:
-                self._server_handle = self.servers[0]
-            logger.info(f"HF rollout replica {self.replica_rank} ready on {len(self.servers)} workers in HYBRID mode")
+            pass
 
         async def generate_sequences(self, *args, **kwargs):
-            """Generate sequences using HF rollout (delegates to worker)."""
-            # For hybrid mode, use the server handle to call generate
-            if self._server_handle is None:
-                raise RuntimeError("HFRolloutReplica not properly initialized")
-            return await self._server_handle.generate_sequences_hf.remote(*args, **kwargs)
+            raise NotImplementedError(
+                "HFRolloutReplica.generate_sequences should not be called. "
+                "Use HFSyncRolloutManager in ray_trainer.py instead."
+            )
 
         async def sleep(self):
-            """Sleep the server (no-op for HF rollout, since it's in-process)."""
             pass
 
         async def wake(self):
-            """Wake the server (no-op for HF rollout, since it's in-process)."""
             pass
 
         def get_ray_class_with_init_args(self):
-            """Ray class initialization for HF rollout."""
             from verl.workers.fsdp_workers import FSDPWorker
 
             return RayClassWithInitArgs(
