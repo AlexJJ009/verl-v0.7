@@ -1,8 +1,8 @@
 # Joint Training GRPO - Implementation Progress
 
-## Status: Phase 2 Complete (HuggingFace Rollout Integration)
+## Status: Phase 2 Debugging - Environment Fixes Complete, Rollout Architecture Refactoring Needed
 
-### Phase 1: Core Training Pipeline (Complete)
+### Phase 1: Core Training Pipeline (Complete - 64 tests passing)
 
 1. **QwenJointForCausalLM Model Class** (21 tests passing)
    - `verl/models/joint_model/modeling_joint_qwen3.py`
@@ -26,59 +26,92 @@
 6. **AutoModel Loading Tests** (4 tests passing)
    - `tests/joint_training/feat/test_auto_model_loading.py`
 
-7. **Regression Tests** (5 passed, 2 skipped due to env)
+7. **Regression Tests** (9 tests passing)
    - `tests/joint_training/regression/test_existing_functionality.py`
+   - Fixed API incompatibilities with updated core_algos
 
 8. **Model Weight Preparation Script**
    - `verl/models/joint_model/prepare_joint_weights.py`
 
-### Phase 2: HuggingFace Rollout Integration (Complete)
+### Phase 2A: HuggingFace Rollout Integration (Partial)
 
-9. **GenerationMixin Support**
+9. **GenerationMixin Support** ✅
    - `verl/models/joint_model/modeling_joint_qwen3.py`: Added `GenerationMixin` inheritance
-   - `model.generate()` now works with fused logits automatically
+   - `model.generate()` works with fused logits automatically
    - `_eval_only_mode` attribute for switching between fused and model2-only during generation
 
-10. **HFRollout Integration in FSDP Workers**
+10. **HFRollout Integration in FSDP Workers** ✅
     - `verl/workers/fsdp_workers.py`:
-      - `_build_rollout()`: Special case for HF rollout — shares FSDP model instance, no separate rollout model
-      - `rollout_mode()`: Early return for HFRollout — no weight sync needed, just set `_eval_only_mode`
-      - `trainer_mode()`: New method — resets `_eval_only_mode`, handles offload
-    - HFRollout shares the actor's FSDP model, so `model.generate()` → `model.forward()` → fused logits
+      - `_build_rollout()`: Special case for HF rollout — shares FSDP model instance
+      - `rollout_mode()`: Early return for HFRollout — sets `_eval_only_mode`
+      - `trainer_mode()`: New method — resets `_eval_only_mode`
+      - `generate_sequences_hf()`: New remote-callable method for agent loop
 
-11. **HFRollout Fix**
-    - `verl/workers/rollout/hf_rollout.py`: Fixed broken `super().__init__()` call (pre-existing bug — `BaseRollout.__init__` requires 3 positional args that HFRollout doesn't provide)
+11. **HFRollout Bug Fix** ✅
+    - `verl/workers/rollout/hf_rollout.py`: Fixed `super().__init__()` call
 
-12. **HF Rollout + Joint Model Tests** (7 tests, 3 passed + 2 skipped + 2 skipped due to env)
+12. **HF Rollout + Joint Model Tests** (9 tests passing) ✅
     - `tests/joint_training/feat/test_hf_rollout_joint.py`
-    - Tests: _eval_only_mode attribute, generate() with fused logits, HFRollout instantiation
 
-13. **GPU End-to-End Tests** (7 tests passing)
+13. **GPU End-to-End Tests** (7 tests passing) ✅
     - `tests/joint_training/feat/test_gpu_e2e.py`
-    - Tests: GPU forward/backward, optimizer step, generate on GPU, full GRPO step simulation
 
-14. **Training Recipe**
-    - `recipe/joint_training/run_joint_grpo_qwen3_1.7b.sh`: Switched to HF rollout, fixed model path
+14. **HFRolloutReplica Registration** ⚠️ Partial
+    - `verl/workers/rollout/replica.py`: Registered HFRolloutReplica for 'hf' mode
+    - Implemented HYBRID mode support
+    - **Issue**: Architectural mismatch between HFRollout (in-process FSDP) and AgentLoopManager (async remote servers)
+
+### Phase 2B: Environment Fixes (Complete)
+
+**Flash Attention & Dependencies:**
+- ✅ Installed flash_attn v2.7.4 via conda-forge
+- ✅ Fixed torch/torchvision version mismatch (torch 2.6.0 → 2.5.1, torchvision 0.23.0 → 0.21.0)
+- ✅ Patched torchvision NMS operator registration for torch 2.5.1
+
+**Import & Configuration Fixes:**
+- ✅ Fixed AutoModelForVision2Seq import (conditional try/except wrapper)
+- ✅ Disabled torch.compile (incompatible with torch 2.5.1)
+- ✅ Added `joint_training` field to HFModelConfig
+
+### Current Blocker: AgentLoopManager Architecture Mismatch
+
+**Issue**: Training script hits architectural incompatibility when trying to initialize rollout:
+- **Root Cause**: HFRollout designed for in-process FSDP HYBRID mode (shared process with trainer)
+- **Expected Architecture**: AgentLoopManager expects remote async servers (vLLM, SGLang, TRT-LLM)
+- **Error**: AgentLoopManager calls `server.generate.remote()` but FSDPWorker has `generate_sequences_hf()`
+- **Impact**: Training script loads model weights successfully but fails at validation/rollout generation
+
+**Resolution Options**:
+1. **Option A (Recommended)**: Implement vLLM backend with joint logit fusion support
+   - Pros: Maintains async architecture, can scale to multi-node, proven vLLM infrastructure
+   - Cons: Requires vLLM custom kernel development for fusion
+
+2. **Option B**: Refactor trainer to support HYBRID in-process rollout for HFRollout
+   - Pros: Uses existing HFRollout without new kernels
+   - Cons: Architectural change, breaks async pattern, single-node only
+
+3. **Option C**: Create vLLM rollout wrapper that delegates to HFRollout
+   - Pros: Minimal changes to trainer
+   - Cons: Redundant code, still doesn't solve kernel issues
 
 ### Pending
 
-- [x] ~~Download Qwen/Qwen3-1.7B-Base~~ (done)
-- [x] ~~Create joint model checkpoint~~ (done at `/data-1/.cache/huggingface/QwenJoint-1.7B`)
-- [ ] End-to-end distributed training test with actual multi-GPU
+- [ ] Resolve AgentLoopManager/HFRollout architectural incompatibility
+- [ ] End-to-end distributed training test
 - [ ] Joint-specific metrics monitoring (optional)
 
 ### Test Summary
 
 | Category | Tests | Status |
 |----------|-------|--------|
-| feat/test_joint_model.py | 21 | All passing |
-| feat/test_weight_utils.py | 8 | All passing |
-| feat/test_grpo_integration.py | 6 | All passing |
-| feat/test_auto_model_loading.py | 4 | All passing |
-| feat/test_hf_rollout_joint.py | 9 | All passing |
-| feat/test_gpu_e2e.py | 7 | All passing |
-| regression/test_existing_functionality.py | 9 | All passing |
-| **Total** | **64 passing, 0 skipped** | |
+| feat/test_joint_model.py | 21 | ✅ All passing |
+| feat/test_weight_utils.py | 8 | ✅ All passing |
+| feat/test_grpo_integration.py | 6 | ✅ All passing |
+| feat/test_auto_model_loading.py | 4 | ✅ All passing |
+| feat/test_hf_rollout_joint.py | 9 | ✅ All passing |
+| feat/test_gpu_e2e.py | 7 | ✅ All passing |
+| regression/test_existing_functionality.py | 9 | ✅ All passing |
+| **Total** | **64 passing** | |
 
 ### Git Commits
 
@@ -90,31 +123,20 @@
 | 2f70926d | feat: add GRPO integration tests, recipe, and progress tracking |
 | 961892c3 | test: add AutoModel loading tests for joint model |
 | f207e1ab | feat: add HF rollout integration for joint training with fused logits |
+| 1cbdd086 | fix(joint_training): Phase 2 debugging - environment and training setup |
 
-### Architecture Decisions
+### Architecture Notes
 
-1. **Logit fusion in model class**: Encapsulated inside QwenJointForCausalLM, transparent to upper layers
-2. **Eval-only via parameter**: `eval_only=True` on forward() returns model2-only logits
-3. **Dual-mode weight sync**: rollout_mode(eval_only=True) extracts model2 weights for evaluation
-4. **Minimal core changes**: core_algos.py, dp_actor.py, metric_utils.py unchanged
-5. **Configuration-driven**: `+actor_rollout_ref.model.joint_training=True` in Hydra config
-6. **HF rollout shares FSDP model**: No weight sync needed — `model.generate()` calls `forward()` with fused logits
-7. **`_eval_only_mode` attribute**: Since HF `generate()` can't pass custom kwargs to `forward()`, uses model-level flag
-8. **Early return in `rollout_mode()`**: Cleanly separates HF path from vLLM weight-sync path
+1. **Logit fusion**: `logits = (1-λ) * forward(model1) + λ * forward(model2)`
+2. **HFRollout design**: Shares FSDP model instance, calls `model.generate()` → `model.forward()`
+3. **Eval-only mode**: `_eval_only_mode` attribute checked in `forward()` for eval-only switching
+4. **FSDP integration**: rollout_mode/trainer_mode context switching in FSDPWorker
+5. **Configuration**: `+actor_rollout_ref.model.joint_training=True` enables feature
 
-### How to Prepare Model Weights (when network is available)
-
-```bash
-conda activate verl07
-python -m verl.models.joint_model.prepare_joint_weights \
-    --base_model_path Qwen/Qwen3-1.7B-Base \
-    --output_path /data-1/.cache/huggingface/QwenJoint-1.7B \
-    --fusion_lambda 0.5
-```
-
-### How to Run Training
+### How to Run Training (when resolved)
 
 ```bash
 conda activate verl07
 bash recipe/joint_training/run_joint_grpo_qwen3_1.7b.sh
 ```
+
