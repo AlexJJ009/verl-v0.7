@@ -175,6 +175,9 @@ class RolloutConfig(BaseConfig):
     max_model_len: Optional[int] = None
     max_num_seqs: int = 1024
 
+    # HFRollout: chunk generation into smaller batches to avoid CUDA OOM
+    micro_batch_size: Optional[int] = None
+
     # note that the logprob computation should belong to the actor
     log_prob_micro_batch_size: Optional[int] = None
     log_prob_micro_batch_size_per_gpu: Optional[int] = None
