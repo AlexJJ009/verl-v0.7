@@ -1098,14 +1098,36 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
         timing_generate = {}
         if self._is_actor:  # For rollout only, we do not switch context.
             loop = get_event_loop()
-            loop.run_until_complete(self.rollout_mode())
+            loop_is_running = loop.is_running()
+            if loop_is_running:
+                # Called from within an async Ray actor event loop.
+                # run_until_complete() would raise "event loop already running".
+                # Run the coroutine in a thread with its own event loop + CUDA device.
+                import asyncio
+                import concurrent.futures
+                import torch
+
+                device_id = torch.cuda.current_device()
+
+                def _run_in_new_loop(coro_factory):
+                    torch.cuda.set_device(device_id)
+                    asyncio.run(coro_factory())
+
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                    pool.submit(_run_in_new_loop, self.rollout_mode).result()
+            else:
+                loop.run_until_complete(self.rollout_mode())
             log_gpu_memory_usage("After switch to rollout mode", logger=logger)
 
         with simple_timer("generate_sequences", timing_generate):
             output = self.rollout.generate_sequences(prompts=prompts)
 
         if self._is_actor:
-            loop.run_until_complete(self.trainer_mode())
+            if loop_is_running:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                    pool.submit(_run_in_new_loop, self.trainer_mode).result()
+            else:
+                loop.run_until_complete(self.trainer_mode())
             log_gpu_memory_usage("After switch to trainer mode", logger=logger)
 
         # We calculate the average timing across all ranks
