@@ -576,15 +576,17 @@ class RayPPOTrainer:
             test_gen_batch_padded, pad_size = pad_dataproto_to_divisor(test_gen_batch, size_divisor)
             test_output_gen_batch_padded = self.async_rollout_manager.generate_sequences(test_gen_batch_padded)
 
-            if self.use_rm and "rm_scores" not in test_output_gen_batch_padded.batch.keys():
-                # for colocate reward models, we need to sleep rollout model
-                # to spare GPU memory for reward model
-                self.checkpoint_manager.sleep_replicas()
+            if "rm_scores" not in test_output_gen_batch_padded.batch.keys():
+                if self.use_rm:
+                    # for colocate reward models, we need to sleep rollout model
+                    # to spare GPU memory for reward model
+                    self.checkpoint_manager.sleep_replicas()
                 batch_reward = self._compute_reward_colocate(test_output_gen_batch_padded)
                 test_output_gen_batch_padded = test_output_gen_batch_padded.union(batch_reward)
-                # wake up rollout model
-                # replace with wake_up method once supported
-                self.checkpoint_manager.update_weights()
+                if self.use_rm:
+                    # wake up rollout model
+                    # replace with wake_up method once supported
+                    self.checkpoint_manager.update_weights()
 
             # unpad
             test_output_gen_batch = unpad_dataproto(test_output_gen_batch_padded, pad_size=pad_size)
@@ -1420,7 +1422,7 @@ class RayPPOTrainer:
                     batch.meta_info["images_seqlens"] = images_seqlens_all
                     with marked_timer("reward", timing_raw, color="yellow"):
                         # compute reward model score
-                        if self.use_rm and "rm_scores" not in batch.batch.keys():
+                        if "rm_scores" not in batch.batch.keys():
                             batch_reward = self._compute_reward_colocate(batch)
                             batch = batch.union(batch_reward)
 
