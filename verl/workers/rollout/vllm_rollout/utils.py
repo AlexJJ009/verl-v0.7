@@ -26,6 +26,7 @@ from typing import Any, Callable, Literal, TypedDict, get_args
 import torch
 import zmq
 
+from verl.models.joint_model.vllm_registry import register_joint_vllm_model_architectures
 from verl.utils.device import get_torch_device, is_npu_available
 from verl.utils.vllm import TensorLoRARequest, VLLMHijack
 from verl.utils.vllm.patch import patch_vllm_moe_model_weight_loader
@@ -40,6 +41,76 @@ VLLM_LORA_NAME = "123"
 VLLM_LORA_PATH = "simon_lora_path"
 
 VLLM_ASCEND_REQUIRED_ENV_VARS = {"VLLM_ALL2ALL_BACKEND": "flashinfer_all2allv", "VLLM_ASCEND_ENABLE_NZ": "0"}
+
+# Register custom joint-model architectures early so both the server process
+# and spawned vLLM worker processes can resolve them lazily.
+register_joint_vllm_model_architectures()
+
+
+def _collect_all_special_tokens_extended(tokenizer) -> list[Any]:
+    seen = set()
+    all_tokens = []
+
+    for attr in getattr(tokenizer, "SPECIAL_TOKENS_ATTRIBUTES", ()):
+        value = getattr(tokenizer, "_special_tokens_map", {}).get(attr)
+        if value is None:
+            continue
+        token_str = str(value)
+        if token_str not in seen:
+            all_tokens.append(value)
+            seen.add(token_str)
+
+    for token in getattr(tokenizer, "_extra_special_tokens", ()):
+        token_str = str(token)
+        if token_str not in seen:
+            all_tokens.append(token)
+            seen.add(token_str)
+
+    return all_tokens
+
+
+def patch_transformers_tokenizers_backend_compat(tokenizer_backend_cls=None):
+    if tokenizer_backend_cls is None:
+        try:
+            from transformers.tokenization_utils_tokenizers import TokenizersBackend
+        except ImportError:
+            return
+        tokenizer_backend_cls = TokenizersBackend
+
+    if hasattr(tokenizer_backend_cls, "all_special_tokens_extended"):
+        return
+
+    @property
+    def all_special_tokens_extended(self):
+        return _collect_all_special_tokens_extended(self)
+
+    tokenizer_backend_cls.all_special_tokens_extended = all_special_tokens_extended
+
+
+patch_transformers_tokenizers_backend_compat()
+
+
+def _process_vllm_weights_after_loading(model, model_config, target_device) -> None:
+    process_weights_after_loading = None
+
+    try:
+        from vllm.model_executor.model_loader.utils import process_weights_after_loading
+    except ImportError:
+        pass
+
+    if process_weights_after_loading is None:
+        try:
+            from vllm.model_executor.model_loader.loader import (
+                _process_weights_after_loading as process_weights_after_loading,
+            )
+        except ImportError:
+            pass
+
+    if process_weights_after_loading is None:
+        logger.warning("Skipping vLLM post-load weight processing because no compatible loader hook was found")
+        return
+
+    process_weights_after_loading(model, model_config, target_device)
 
 
 def set_death_signal():
@@ -157,6 +228,7 @@ class vLLMColocateWorkerExtension:
 
     def __new__(cls, **kwargs):
         set_death_signal()
+        register_joint_vllm_model_architectures()
 
         # 1. patch for Lora
         VLLMHijack.hijack()
@@ -266,11 +338,9 @@ class vLLMColocateWorkerExtension:
             logger.info("QAT: process_weights_after_loading completed")
         elif use_standard_weight_load:
             # Some post-load transforms are non-idempotent; run once after all buckets.
-            from vllm.model_executor.model_loader.utils import process_weights_after_loading
-
             model = self.model_runner.model
             model_config = self.model_runner.vllm_config.model_config
-            process_weights_after_loading(model, model_config, self.device)
+            _process_vllm_weights_after_loading(model, model_config, self.device)
 
         # clean up
         socket.close()

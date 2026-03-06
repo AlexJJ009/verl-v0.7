@@ -27,7 +27,6 @@ from packaging import version
 from ray.actor import ActorHandle
 from vllm import SamplingParams
 from vllm.engine.arg_utils import AsyncEngineArgs
-from vllm.entrypoints.cli.serve import run_headless
 from vllm.entrypoints.openai.api_server import build_app, init_app_state
 from vllm.inputs import TokensPrompt
 from vllm.lora.request import LoRARequest
@@ -36,6 +35,7 @@ from vllm.usage.usage_lib import UsageContext
 from vllm.v1.engine.async_llm import AsyncLLM
 
 from verl.single_controller.ray import RayClassWithInitArgs
+from verl.models.joint_model.vllm_registry import register_joint_vllm_model_architectures
 from verl.utils.config import omega_conf_to_dataclass
 from verl.utils.device import get_resource_name, get_visible_devices_keyword
 from verl.utils.net_utils import get_free_port, is_valid_ipv6_address
@@ -55,6 +55,7 @@ from verl.workers.rollout.vllm_rollout.utils import (
 )
 
 _VLLM_VERSION = version.parse(vllm.__version__)
+_RUN_HEADLESS = getattr(vllm.entrypoints.cli.serve, "run_headless", None)
 
 if _VLLM_VERSION > version.parse("0.11.0"):
     from vllm.utils.argparse_utils import FlexibleArgumentParser
@@ -76,6 +77,42 @@ else:
 
 logger = logging.getLogger(__file__)
 logger.setLevel(logging.INFO)
+
+
+def _build_vllm_cli_parser():
+    parser = FlexibleArgumentParser(description="vLLM CLI")
+    subparsers = parser.add_subparsers(required=False, dest="subparser")
+    cmds = {}
+    serve_parser = None
+
+    for cmd_module in [vllm.entrypoints.cli.serve]:
+        for cmd in cmd_module.cmd_init():
+            subparser = cmd.subparser_init(subparsers)
+            subparser.set_defaults(dispatch_function=cmd.cmd)
+            cmds[cmd.name] = cmd
+            if cmd.name == "serve":
+                serve_parser = subparser
+
+    if serve_parser is None:
+        raise RuntimeError("vLLM CLI did not register a 'serve' subcommand")
+
+    return parser, cmds, serve_parser
+
+
+def _filter_supported_vllm_cli_config(
+    config: dict[str, Any], serve_parser: argparse.ArgumentParser
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    supported = {action.dest for action in serve_parser._actions if action.option_strings}
+    filtered = {}
+    dropped = {}
+
+    for key, value in config.items():
+        if key in supported:
+            filtered[key] = value
+        else:
+            dropped[key] = value
+
+    return filtered, dropped
 
 
 class vLLMHttpServer:
@@ -204,6 +241,8 @@ class vLLMHttpServer:
             self._master_address = master_address
             self._master_port = master_port
             self._dp_rpc_port = dp_rpc_port
+
+        register_joint_vllm_model_architectures()
 
         # 1. setup vllm serve cli args
         engine_kwargs = self.config.get("engine_kwargs", {}).get("vllm", {}) or {}
@@ -402,20 +441,19 @@ class vLLMHttpServer:
         if self.config.enable_rollout_routing_replay:
             args.update({"enable_return_routed_experts": True})
 
+        parser, cmds, serve_parser = _build_vllm_cli_parser()
+        args, dropped_args = _filter_supported_vllm_cli_config(args, serve_parser)
+        if dropped_args:
+            logger.warning(
+                "Dropping unsupported vLLM serve args for installed vLLM %s: %s",
+                vllm.__version__,
+                sorted(dropped_args),
+            )
+
         server_args = ["serve", self.model_config.local_path] + build_cli_args_from_config(args)
 
         if self.replica_rank == 0:
             pprint(server_args)
-
-        CMD_MODULES = [vllm.entrypoints.cli.serve]
-        parser = FlexibleArgumentParser(description="vLLM CLI")
-        subparsers = parser.add_subparsers(required=False, dest="subparser")
-        cmds = {}
-        for cmd_module in CMD_MODULES:
-            new_cmds = cmd_module.cmd_init()
-            for cmd in new_cmds:
-                cmd.subparser_init(subparsers).set_defaults(dispatch_function=cmd.cmd)
-                cmds[cmd.name] = cmd
         server_args = parser.parse_args(args=server_args)
         server_args.model = server_args.model_tag
         if server_args.subparser in cmds:
@@ -446,7 +484,11 @@ class vLLMHttpServer:
         engine_client = AsyncLLM.from_vllm_config(vllm_config=vllm_config, usage_context=usage_context, **kwargs)
 
         # Don't keep the dummy data in memory
-        await engine_client.reset_mm_cache()
+        reset_mm_cache = getattr(engine_client, "reset_mm_cache", None)
+        if callable(reset_mm_cache):
+            maybe_awaitable = reset_mm_cache()
+            if inspect.isawaitable(maybe_awaitable):
+                await maybe_awaitable
         await engine_client.collective_rpc(
             method="monkey_patch_model", kwargs={"vocab_size": len(self.model_config.tokenizer)}
         )
@@ -475,9 +517,16 @@ class vLLMHttpServer:
     async def run_headless(self, args: argparse.Namespace):
         """Run headless server in a separate thread."""
 
+        if _RUN_HEADLESS is None:
+            raise RuntimeError(
+                f"vLLM {vllm.__version__} does not expose run_headless(). "
+                "Native HTTP rollout supports this legacy vLLM build for single-node replicas, "
+                "but multi-node/headless replicas require vLLM >= 0.11.0."
+            )
+
         def run_headless_wrapper():
             with SuppressSignalInThread():
-                run_headless(args)
+                _RUN_HEADLESS(args)
 
         def on_run_headless_done(future: asyncio.Future):
             try:
@@ -534,12 +583,15 @@ class vLLMHttpServer:
         sampling_params = SamplingParams(max_tokens=max_tokens, **sampling_params)
         prompt_ids = _qwen2_5_vl_dedup_image_tokens(prompt_ids, self.model_config.processor)
         multi_modal_data = {}
-        if image_data is not None:
+        if image_data is not None and len(image_data) > 0:
             multi_modal_data["image"] = image_data
-        if video_data is not None:
+        if video_data is not None and len(video_data) > 0:
             multi_modal_data["video"] = video_data
 
-        prompt = TokensPrompt(prompt_token_ids=prompt_ids, multi_modal_data=multi_modal_data)
+        prompt_kwargs = {"prompt_token_ids": prompt_ids}
+        if multi_modal_data:
+            prompt_kwargs["multi_modal_data"] = multi_modal_data
+        prompt = TokensPrompt(**prompt_kwargs)
 
         # Add lora request
         lora_request = None
@@ -648,7 +700,11 @@ class vLLMHttpServer:
             await self.engine.reset_prefix_cache()
 
     async def wait_for_requests_to_drain(self):
-        await self.engine.wait_for_requests_to_drain()
+        wait_for_requests_to_drain = getattr(self.engine, "wait_for_requests_to_drain", None)
+        if callable(wait_for_requests_to_drain):
+            maybe_awaitable = wait_for_requests_to_drain()
+            if inspect.isawaitable(maybe_awaitable):
+                await maybe_awaitable
 
     async def abort_all_requests(self, reset_prefix_cache: bool = True) -> dict[str, Any]:
         """Abort all ongoing generation requests.

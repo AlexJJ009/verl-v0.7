@@ -402,7 +402,7 @@ class CheckpointEngineManager:
         self.build_process_group(rollout)
 
         # 4. update weights of all workers
-        ray.get(trainer.update_weights() + rollout.update_weights())
+        ray.get(trainer.update_weights(eval_only=eval_only) + rollout.update_weights())
 
         # 5. finalize all workers
         ray.get(
