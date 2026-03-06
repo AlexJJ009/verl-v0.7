@@ -374,6 +374,7 @@ class RayPPOTrainer:
         val_batch_size = self.config.data.val_batch_size  # Prefer config value if set
         if val_batch_size is None:
             val_batch_size = len(self.val_dataset)
+        self.val_batch_size = val_batch_size
 
         self.val_dataloader = StatefulDataLoader(
             dataset=self.val_dataset,
@@ -386,6 +387,18 @@ class RayPPOTrainer:
 
         assert len(self.train_dataloader) >= 1, "Train dataloader is empty!"
         assert len(self.val_dataloader) >= 1, "Validation dataloader is empty!"
+
+        if (
+            self.config.actor_rollout_ref.rollout.name == "hf"
+            and self.val_batch_size == len(self.val_dataset)
+            and len(self.val_dataset) > 256
+        ):
+            print(
+                "[validate_config] data.val_batch_size is unset, so HF rollout will validate the full "
+                f"{len(self.val_dataset)}-sample dataset in a single batch. "
+                "This can look stalled because generation logs stay quiet until the batch returns. "
+                "Set data.val_batch_size or data.val_max_samples to reduce validation latency."
+            )
 
         print(
             f"Size of train dataloader: {len(self.train_dataloader)}, Size of val dataloader: "
@@ -542,8 +555,15 @@ class RayPPOTrainer:
         sample_turns = []
         sample_uids = []
 
-        for test_data in self.val_dataloader:
+        total_val_batches = len(self.val_dataloader)
+        for batch_idx, test_data in enumerate(self.val_dataloader, start=1):
             test_batch = DataProto.from_single_dict(test_data)
+            prompt_count = test_batch.batch.batch_size[0]
+            print(
+                f"validation batch {batch_idx}/{total_val_batches} start: "
+                f"prompts={prompt_count}, repeat_times={self.config.actor_rollout_ref.rollout.val_kwargs.n}, "
+                f"rollout_workers={self.config.actor_rollout_ref.rollout.agent.num_workers}"
+            )
 
             if "uid" not in test_batch.non_tensor_batch:
                 test_batch.non_tensor_batch["uid"] = np.array(
@@ -574,32 +594,37 @@ class RayPPOTrainer:
             # pad to be divisible by dp_size
             size_divisor = self.config.actor_rollout_ref.rollout.agent.num_workers
             test_gen_batch_padded, pad_size = pad_dataproto_to_divisor(test_gen_batch, size_divisor)
+            padded_prompt_count = test_gen_batch_padded.batch.batch_size[0]
+            print(
+                f"validation batch {batch_idx}/{total_val_batches} dispatch: "
+                f"prompts={padded_prompt_count}, pad_size={pad_size}, size_divisor={size_divisor}"
+            )
             test_output_gen_batch_padded = self.async_rollout_manager.generate_sequences(test_gen_batch_padded)
 
-            if "rm_scores" not in test_output_gen_batch_padded.batch.keys():
+            # unpad
+            test_output_gen_batch = unpad_dataproto(test_output_gen_batch_padded, pad_size=pad_size)
+
+            print(f"validation batch {batch_idx}/{total_val_batches} generation end")
+
+            test_batch = test_batch.union(test_output_gen_batch)
+            test_batch.meta_info["validate"] = True
+
+            if "rm_scores" not in test_batch.batch.keys():
                 if self.use_rm:
                     # for colocate reward models, we need to sleep rollout model
                     # to spare GPU memory for reward model
                     self.checkpoint_manager.sleep_replicas()
-                batch_reward = self._compute_reward_colocate(test_output_gen_batch_padded)
-                test_output_gen_batch_padded = test_output_gen_batch_padded.union(batch_reward)
+                batch_reward = self._compute_reward_colocate(test_batch)
+                test_batch = test_batch.union(batch_reward)
                 if self.use_rm:
                     # wake up rollout model
                     # replace with wake_up method once supported
                     self.checkpoint_manager.update_weights()
 
-            # unpad
-            test_output_gen_batch = unpad_dataproto(test_output_gen_batch_padded, pad_size=pad_size)
-
-            print("validation generation end")
-
             # Store generated outputs
-            output_ids = test_output_gen_batch.batch["responses"]
+            output_ids = test_batch.batch["responses"]
             output_texts = [self.tokenizer.decode(ids, skip_special_tokens=True) for ids in output_ids]
             sample_outputs.extend(output_texts)
-
-            test_batch = test_batch.union(test_output_gen_batch)
-            test_batch.meta_info["validate"] = True
 
             # Store original inputs
             input_ids = test_batch.batch["prompts"]

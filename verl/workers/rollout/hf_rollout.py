@@ -55,10 +55,23 @@ class HFRollout(BaseRollout):
     def generate_sequences(self, prompts: DataProto) -> DataProto:
         batch_size = prompts.batch.batch_size[0]
         micro_batch_size = self.config.get("micro_batch_size", batch_size)
+        is_validate = prompts.meta_info.get("validate", False)
+        total_chunks = (batch_size + micro_batch_size - 1) // micro_batch_size
+        should_log_progress = is_validate and total_chunks > 1
+        if should_log_progress and torch.distributed.is_initialized():
+            should_log_progress = torch.distributed.get_rank() == 0
+        if should_log_progress:
+            print(
+                "[HFRollout.validate] "
+                f"generating {batch_size} prompts in {total_chunks} micro-batches "
+                f"(micro_batch_size={micro_batch_size}, response_length={self.config.response_length})"
+            )
         # Use slice-based iteration so the last chunk can be smaller than micro_batch_size
         outputs = []
-        for start in range(0, batch_size, micro_batch_size):
+        for chunk_idx, start in enumerate(range(0, batch_size, micro_batch_size), start=1):
             end = min(start + micro_batch_size, batch_size)
+            if should_log_progress and (chunk_idx == 1 or chunk_idx == total_chunks or chunk_idx % 10 == 0):
+                print(f"[HFRollout.validate] micro-batch {chunk_idx}/{total_chunks} ({start}:{end})")
             outputs.append(self._generate_minibatch(prompts.slice(start, end)))
         return DataProto.concat(outputs)
 
@@ -102,9 +115,6 @@ class HFRollout(BaseRollout):
                 "num_return_sequences": 1,
             }
 
-        # make config according to generate mode
-        generation_config = GenerationConfig(**kwargs)
-
         idx = prompts.batch["input_ids"]  # (bs, prompt_length)
         prompt_length = idx.size(1)
         attention_mask = prompts.batch["attention_mask"]  # left-padded attention_mask
@@ -113,6 +123,15 @@ class HFRollout(BaseRollout):
         # used to construct attention_mask
         eos_token_id = prompts.meta_info["eos_token_id"]
         pad_token_id = prompts.meta_info["pad_token_id"]
+        generation_config = GenerationConfig(
+            max_new_tokens=response_length,
+            eos_token_id=eos_token_id,
+            pad_token_id=pad_token_id,
+            output_scores=False,
+            return_dict_in_generate=True,
+            use_cache=True,
+            **kwargs,
+        )
 
         self.module.eval()
         param_ctx = contextlib.nullcontext()
@@ -125,14 +144,7 @@ class HFRollout(BaseRollout):
                 input_ids=idx,
                 attention_mask=attention_mask,
                 position_ids=position_ids,
-                do_sample=do_sample,
-                max_new_tokens=response_length,
-                eos_token_id=eos_token_id,
-                pad_token_id=pad_token_id,
                 generation_config=generation_config,
-                output_scores=False,  # this is potentially very large
-                return_dict_in_generate=True,
-                use_cache=True,
             )
 
         # TODO: filter out the seq with no answers like ds-chat
