@@ -17,9 +17,12 @@ class _DummyTokenizer:
 class _FakeRolloutManager:
     def generate_sequences(self, prompts: DataProto) -> DataProto:
         batch_size = len(prompts)
-        prompt_length = prompts.batch["input_ids"].shape[1]
+        if prompts.batch is not None and "input_ids" in prompts.batch.keys():
+            prompts_out = prompts.batch["input_ids"].clone()
+        else:
+            prompts_out = torch.tensor([[11, 12, 13]], dtype=torch.long).repeat(batch_size, 1)
+        prompt_length = prompts_out.shape[1]
         response_length = 3
-        prompts_out = prompts.batch["input_ids"].clone()
         responses = torch.full((batch_size, response_length), 5, dtype=torch.long)
         seq = torch.cat([prompts_out, responses], dim=1)
         attention_mask = torch.ones_like(seq)
@@ -94,6 +97,52 @@ def test_validate_preserves_reward_metadata_for_colocated_rm():
         "input_ids": prompts.clone(),
         "attention_mask": torch.ones_like(prompts),
         "position_ids": torch.tensor([[0, 1, 2]], dtype=torch.long),
+        "data_source": np.array(["gsm8k"], dtype=object),
+        "reward_model": np.array([{"ground_truth": "4"}], dtype=object),
+        "extra_info": np.array([{}], dtype=object),
+    }
+    trainer.val_dataloader = [test_data]
+
+    result = trainer._validate()
+
+    assert result == {"ok": 1.0}
+    assert len(trainer.reward_loop_manager.seen_batches) == 1
+
+
+def test_validate_handles_hf_raw_prompt_batches_without_tensor_gen_batch():
+    from verl.trainer.ppo.ray_trainer import RayPPOTrainer
+
+    trainer = RayPPOTrainer.__new__(RayPPOTrainer)
+    trainer._is_joint_training = False
+    trainer.async_rollout_mode = False
+    trainer.use_rm = False
+    trainer.tokenizer = _DummyTokenizer()
+    trainer.async_rollout_manager = _FakeRolloutManager()
+    trainer.reward_loop_manager = _FakeRewardLoopManager()
+    trainer.checkpoint_manager = type(
+        "_CheckpointManager",
+        (),
+        {"sleep_replicas": lambda self: None, "update_weights": lambda self, eval_only=False: None},
+    )()
+    trainer.global_steps = 0
+    trainer._maybe_log_val_generations = lambda **kwargs: None
+    trainer._val_metrics_update = lambda data_sources, sample_uids, reward_extra_infos_dict, sample_turns: {"ok": 1.0}
+    trainer.config = OmegaConf.create(
+        {
+            "actor_rollout_ref": {
+                "rollout": {
+                    "name": "hf",
+                    "val_kwargs": {"n": 1, "do_sample": True},
+                    "agent": {"num_workers": 2},
+                }
+            },
+            "trainer": {"validation_data_dir": None},
+        }
+    )
+
+    test_data = {
+        "dummy_tensor": torch.zeros(1, 1, dtype=torch.uint8),
+        "raw_prompt": np.array([[{"role": "user", "content": "hello"}]], dtype=object),
         "data_source": np.array(["gsm8k"], dtype=object),
         "reward_model": np.array([{"ground_truth": "4"}], dtype=object),
         "extra_info": np.array([{}], dtype=object),

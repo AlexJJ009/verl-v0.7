@@ -558,7 +558,7 @@ class RayPPOTrainer:
         total_val_batches = len(self.val_dataloader)
         for batch_idx, test_data in enumerate(self.val_dataloader, start=1):
             test_batch = DataProto.from_single_dict(test_data)
-            prompt_count = test_batch.batch.batch_size[0]
+            prompt_count = len(test_batch)
             print(
                 f"validation batch {batch_idx}/{total_val_batches} start: "
                 f"prompts={prompt_count}, repeat_times={self.config.actor_rollout_ref.rollout.val_kwargs.n}, "
@@ -594,7 +594,7 @@ class RayPPOTrainer:
             # pad to be divisible by dp_size
             size_divisor = self.config.actor_rollout_ref.rollout.agent.num_workers
             test_gen_batch_padded, pad_size = pad_dataproto_to_divisor(test_gen_batch, size_divisor)
-            padded_prompt_count = test_gen_batch_padded.batch.batch_size[0]
+            padded_prompt_count = len(test_gen_batch_padded)
             print(
                 f"validation batch {batch_idx}/{total_val_batches} dispatch: "
                 f"prompts={padded_prompt_count}, pad_size={pad_size}, size_divisor={size_divisor}"
