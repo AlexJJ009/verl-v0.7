@@ -73,11 +73,35 @@ bash recipe/joint_training/run_joint_grpo_qwen3_1.7b.sh
 - **Dataset**: `/data-1/dataset/gsm8k` — `train.parquet` (7473 rows), `test.parquet`
 - **Columns**: `data_source`, `prompt` (chat format), `ability`, `reward_model` (has `ground_truth`), `extra_info`
 
+## Git Submodule Workflow (`recipe/`)
+
+`.gitmodules` points to personal fork: `https://github.com/AlexJJ009/verl-recipe.git`
+Inside `recipe/`, both `origin` and `myfork` remotes point to the same fork.
+
+**Update workflow — order is critical:**
+```bash
+# 1. Push submodule content FIRST (other servers can't fetch a SHA that's not on remote)
+cd recipe && git add <files> && git commit -m "..." && git push origin feature/joint-training
+
+# 2. Then update parent repo pointer
+cd .. && git add recipe && git commit -m "chore(recipe): update submodule pointer" && git push origin feature/joint-training
+```
+
+**On a new server (first clone):**
+```bash
+git clone https://github.com/AlexJJ009/verl-v0.7.git && cd verl-v0.7
+git submodule update --init --recursive
+```
+
+**After pulling parent repo on existing server:**
+```bash
+git pull origin feature/joint-training && git submodule update --recursive
+```
+
 ## Known Issues
 
 - HuggingFace model download stalls behind SOCKS proxy — prepare weights manually when network is available
 - `AutoModelForVision2Seq` import error in transformers — pre-existing env issue, causes 2 test skips
-- `recipe/` is a git submodule — always commit inside it separately
 
 ## Pending Work (Phase 2)
 

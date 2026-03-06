@@ -103,8 +103,46 @@ conda activate verl07
 
 ### 2. Codebase Hygiene
 - Follow existing code patterns and conventions
-- `recipe/` is a **git submodule** — commit inside it separately: `cd recipe && git add/commit`
+- `recipe/` is a **git submodule** — see workflow below
 - Use pre-commit hooks: `.pre-commit-config.yaml`
+
+### 3. Git Submodule Workflow (`recipe/`)
+
+**Submodule remote configuration:**
+- `.gitmodules` points to personal fork: `https://github.com/AlexJJ009/verl-recipe.git`
+- Upstream (`verl-project/verl-recipe.git`) does not have our custom commits — always push to the fork
+- Inside `recipe/`, both `origin` and `myfork` remotes point to `AlexJJ009/verl-recipe.git`
+
+**Correct update workflow (order matters):**
+```bash
+# Step 1: commit & push inside the submodule FIRST
+cd recipe
+git add <files>
+git commit -m "feat: ..."
+git push origin feature/joint-training   # submodule content must reach remote BEFORE step 2
+
+# Step 2: update parent repo pointer
+cd ..
+git add recipe
+git commit -m "chore(recipe): update submodule pointer"
+git push origin feature/joint-training
+```
+
+**On a new server (first clone):**
+```bash
+git clone https://github.com/AlexJJ009/verl-v0.7.git
+cd verl-v0.7
+git submodule update --init --recursive
+```
+
+**On an existing server (after pulling parent repo):**
+```bash
+git pull origin feature/joint-training
+git submodule update --recursive
+```
+
+**Why recipe content doesn't update on other servers (pitfall):**
+The parent repo only stores a pointer (commit SHA) to the submodule. If submodule commits are not pushed to their own remote, other servers cannot fetch them even though the parent repo's pointer is updated. Always push submodule changes to `AlexJJ009/verl-recipe.git` before committing the pointer in the parent repo.
 
 ### 3. Documentation Discipline
 - Write documentation ONLY when explicitly requested by the user
