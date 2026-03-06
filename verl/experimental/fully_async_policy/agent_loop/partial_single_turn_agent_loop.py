@@ -18,6 +18,7 @@ from uuid import uuid4
 
 from verl.experimental.agent_loop import AgentLoopBase
 from verl.experimental.agent_loop.agent_loop import AgentLoopOutput, register
+from verl.utils.chat_template import normalize_chat_template_token_ids
 from verl.utils.profiler import simple_timer
 
 logger = logging.getLogger(__file__)
@@ -75,11 +76,13 @@ class PartialSingleTurnAgentLoop(AgentLoopBase):
                     videos=videos,
                 )
             else:
-                prompt_ids = await self.loop.run_in_executor(
-                    None,
-                    lambda: self.tokenizer.apply_chat_template(
-                        messages, add_generation_prompt=True, tokenize=True, **self.apply_chat_template_kwargs
-                    ),
+                prompt_ids = normalize_chat_template_token_ids(
+                    await self.loop.run_in_executor(
+                        None,
+                        lambda: self.tokenizer.apply_chat_template(
+                            messages, add_generation_prompt=True, tokenize=True, **self.apply_chat_template_kwargs
+                        ),
+                    )
                 )
         else:
             if output.extra_fields.get("is_cancel", False):

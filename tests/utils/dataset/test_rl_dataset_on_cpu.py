@@ -19,6 +19,7 @@ import torch
 from omegaconf import OmegaConf
 from PIL import Image
 from torch.utils.data import DataLoader
+from transformers.tokenization_utils_base import BatchEncoding
 
 from verl import DataProto
 from verl.utils import hf_processor, hf_tokenizer
@@ -195,3 +196,39 @@ def test_video_rl_data(video_data_file):
     assert "images" not in data_proto.non_tensor_batch
 
     print("raw_prompt", data_proto.non_tensor_batch["raw_prompt"][0])
+
+
+def test_rl_dataset_filters_overlong_prompts_with_batch_encoding_chat_template(tmp_path):
+    data = [
+        {
+            "prompt": [{"role": "user", "content": "short"}],
+            "data_source": "short",
+        },
+        {
+            "prompt": [{"role": "user", "content": "this prompt should be filtered because it is too long"}],
+            "data_source": "long",
+        },
+    ]
+    data_file = tmp_path / "batch_encoding_prompts.json"
+    data_file.write_text(json.dumps(data))
+
+    class _FakeBatchEncodingTokenizer:
+        def apply_chat_template(self, messages, add_generation_prompt=True, **kwargs):
+            del add_generation_prompt, kwargs
+            content = "".join(message["content"] for message in messages)
+            prompt_len = 4 if content == "short" else 16
+            return BatchEncoding({"input_ids": [1] * prompt_len, "attention_mask": [1] * prompt_len})
+
+    config = OmegaConf.create(
+        {
+            "prompt_key": "prompt",
+            "max_prompt_length": 8,
+            "filter_overlong_prompts": True,
+            "filter_overlong_prompts_workers": 1,
+        }
+    )
+
+    dataset = RLHFDataset(data_files=str(data_file), tokenizer=_FakeBatchEncodingTokenizer(), config=config)
+
+    assert len(dataset) == 1
+    assert dataset[0]["data_source"] == "short"
