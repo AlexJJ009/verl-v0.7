@@ -17,6 +17,7 @@ from contextlib import nullcontext
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
+import pytest
 import torch
 from omegaconf import OmegaConf
 
@@ -34,6 +35,8 @@ def test_actor_rollout_ref_worker_actor_ref_model():
 
     actor_model_path = os.path.expanduser("~/models/Qwen/Qwen2.5-0.5B-Instruct")
     ref_model_path = os.path.expanduser("~/models/Qwen/Qwen2.5-1.5B-Instruct")
+    if not os.path.isdir(actor_model_path) or not os.path.isdir(ref_model_path):
+        pytest.skip("requires local Qwen2.5 worker test models under ~/models/Qwen")
     config_str = f"""
     model:
       path: {actor_model_path}

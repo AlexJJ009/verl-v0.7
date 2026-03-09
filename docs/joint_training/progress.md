@@ -1,142 +1,76 @@
-# Joint Training GRPO - Implementation Progress
+# Joint Training GRPO Progress
 
-## Status: Phase 2 Debugging - Environment Fixes Complete, Rollout Architecture Refactoring Needed
+## Status
 
-### Phase 1: Core Training Pipeline (Complete - 64 tests passing)
+Phase 2 runtime stabilization is in progress. Joint GRPO training now runs on the vLLM rollout path, but the remaining work is hardening long-running checkpoints and completing a clean end-to-end multi-step run on the target server.
 
-1. **QwenJointForCausalLM Model Class** (21 tests passing)
-   - `verl/models/joint_model/modeling_joint_qwen3.py`
-   - `verl/models/joint_model/configuration_joint_qwen3.py`
-   - Supports logit fusion, gradient flow, parameter freezing, eval_only mode
+## Landed Since The Initial Bring-Up
 
-2. **Weight Extraction Utilities** (8 tests passing)
-   - `verl/models/joint_model/weight_utils.py`
-   - Functions: is_joint_model_state_dict, extract_sub_model_weights, etc.
+1. `384804fe` added the joint vLLM rollout path and the eval-only weight extraction flow for validation.
+2. Recipe `6151c24` switched the joint GRPO launcher to `ROLLOUT_ENGINE=vllm` by default, and parent commit `ef0b9671` advanced the submodule pointer to that rollout path.
+3. `d0c5d3a` hardened the recipe around rollout memory, checkpoint directories, remove-padding fallback, and host-specific runtime defaults.
+4. `428a7e83` stabilized the FSDP actor/update path: shared DP-group wiring, safer old-log-prob entropy behavior, chunked entropy, and lower-peak joint logit fusion.
 
-3. **FSDP Worker Modifications**
-   - `verl/workers/fsdp_workers.py`: rollout_mode(eval_only=True) support
-   - `verl/checkpoint_engine/base.py`: update_weights(eval_only=True) passthrough
+## Resolved Runtime Failures
 
-4. **Ray Trainer Modifications**
-   - `verl/trainer/ppo/ray_trainer.py`: _validate() switches to model2-only weights
+1. FSDP actor deadlock on step 2:
+   - Root cause: actor/critic dynamic batching used inconsistent DP-group context, so different ranks produced different micro-batch schedules and diverged in NCCL collectives.
+   - Fix: pass the worker DP group into dynamic-batch preparation for actor and critic.
 
-5. **GRPO Integration Tests** (6 tests passing)
-   - `tests/joint_training/feat/test_grpo_integration.py`
+2. vLLM startup cache allocation failure:
+   - Root cause: colocated rollout with `gpu_memory_utilization=0.6` and vLLM warmup at `max_num_seqs=1024` exhausted KV-cache budget during engine init.
+   - Fix: raise rollout budget to `0.75` and cap `max_num_seqs` to `256` in the recipe.
 
-6. **AutoModel Loading Tests** (4 tests passing)
-   - `tests/joint_training/feat/test_auto_model_loading.py`
+3. Actor-side logits/entropy OOMs during old-log-prob recompute:
+   - Root cause: the joint fusion path created extra full-vocab temporaries, and entropy was still being materialized even when `entropy_coeff=0`.
+   - Fix: use a lower-peak fused-logits implementation, honor `calculate_entropy`, and chunk dense entropy computation.
 
-7. **Regression Tests** (9 tests passing)
-   - `tests/joint_training/regression/test_existing_functionality.py`
-   - Fixed API incompatibilities with updated core_algos
+4. Remove-padding crash when `flash_attn` was unavailable:
+   - Root cause: `use_remove_padding=True` reached the CUDA path that imports `flash_attn`, but the package was not installed in the runtime env.
+   - Fix: preflight-disable remove-padding in the recipe and add an explicit runtime guard in `verl/utils/attention_utils.py`.
 
-8. **Model Weight Preparation Script**
-   - `verl/models/joint_model/prepare_joint_weights.py`
+5. Checkpoint save failure on `/data-2`:
+   - Root cause: the failing run in `recipe/joint_training/Joint-GRPO-Qwen3-1.7B-GSM8K_1772760550.log` still wrote checkpoints under `/data-2`, which resolves to the 60G root filesystem on this host. `torch.save()` then failed mid-write once `/` filled up.
+   - Fix: the recipe now defaults to `/data-1/checkpoints`, warns if a manually chosen checkpoint path resolves to the root filesystem, and fails early if the target filesystem does not meet the free-space threshold.
 
-### Phase 2A: HuggingFace Rollout Integration (Partial)
+6. Corrupt partial checkpoint shards after a failed save:
+   - Root cause: `torch.save()` wrote directly to final shard paths, so a disk-full error could leave broken `.pt` files behind.
+   - Fix: FSDP checkpoint shards are now written to `*.tmp`, preflight-checked for disk space, and atomically renamed on success. Partial files are cleaned up on failure.
 
-9. **GenerationMixin Support** ✅
-   - `verl/models/joint_model/modeling_joint_qwen3.py`: Added `GenerationMixin` inheritance
-   - `model.generate()` works with fused logits automatically
-   - `_eval_only_mode` attribute for switching between fused and model2-only during generation
+## Current Recipe Defaults
 
-10. **HFRollout Integration in FSDP Workers** ✅
-    - `verl/workers/fsdp_workers.py`:
-      - `_build_rollout()`: Special case for HF rollout — shares FSDP model instance
-      - `rollout_mode()`: Early return for HFRollout — sets `_eval_only_mode`
-      - `trainer_mode()`: New method — resets `_eval_only_mode`
-      - `generate_sequences_hf()`: New remote-callable method for agent loop
+1. Checkpoints:
+   - Default base dir: `/data-1/checkpoints`
+   - Minimum free space gate: `MIN_FREE_GB_FOR_CKPT=30`
+   - Retention: `MAX_ACTOR_CKPTS_TO_KEEP=2`, `MAX_CRITIC_CKPTS_TO_KEEP=2`
 
-11. **HFRollout Bug Fix** ✅
-    - `verl/workers/rollout/hf_rollout.py`: Fixed `super().__init__()` call
+2. Rollout memory:
+   - `ROLLOUT_ENGINE=vllm`
+   - `ROLLOUT_MODE=async`
+   - `ROLLOUT_GPU_MEMORY_UTILIZATION=0.75`
+   - `ROLLOUT_MAX_NUM_SEQS=256`
+   - `LOG_PROB_MAX_TOKEN_LEN_PER_GPU=1536`
+   - `LOG_PROB_MICRO_BATCH_SIZE=2`, auto-fallback to `1` when remove-padding is disabled automatically
 
-12. **HF Rollout + Joint Model Tests** (9 tests passing) ✅
-    - `tests/joint_training/feat/test_hf_rollout_joint.py`
+3. Safety defaults:
+   - `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`
+   - `TMPDIR=/data-1/tmp`
+   - `USE_REMOVE_PADDING=True` only when `flash_attn` is available
 
-13. **GPU End-to-End Tests** (7 tests passing) ✅
-    - `tests/joint_training/feat/test_gpu_e2e.py`
+## Test Coverage Added For These Fixes
 
-14. **HFRolloutReplica Registration** ⚠️ Partial
-    - `verl/workers/rollout/replica.py`: Registered HFRolloutReplica for 'hf' mode
-    - Implemented HYBRID mode support
-    - **Issue**: Architectural mismatch between HFRollout (in-process FSDP) and AgentLoopManager (async remote servers)
+1. `tests/workers/actor/test_special_dp_actor.py`
+2. `tests/workers/critic/test_dynamic_dp_critic.py`
+3. `tests/workers/test_fsdp_workers.py`
+4. `tests/utils/test_torch_functional.py`
+5. `tests/utils/test_attention_utils_on_cpu.py`
+6. `tests/joint_training/regression/test_old_log_prob_entropy_gating.py`
+7. `tests/joint_training/regression/test_old_log_prob_entropy_skip.py`
+8. `tests/joint_training/feat/test_joint_training_recipe_script.py`
+9. `tests/utils/ckpt/test_checkpoint_cleanup_on_cpu.py`
 
-### Phase 2B: Environment Fixes (Complete)
+## Remaining Work
 
-**Flash Attention & Dependencies:**
-- ✅ Installed flash_attn v2.7.4 via conda-forge
-- ✅ Fixed torch/torchvision version mismatch (torch 2.6.0 → 2.5.1, torchvision 0.23.0 → 0.21.0)
-- ✅ Patched torchvision NMS operator registration for torch 2.5.1
-
-**Import & Configuration Fixes:**
-- ✅ Fixed AutoModelForVision2Seq import (conditional try/except wrapper)
-- ✅ Disabled torch.compile (incompatible with torch 2.5.1)
-- ✅ Added `joint_training` field to HFModelConfig
-
-### Current Blocker: AgentLoopManager Architecture Mismatch
-
-**Issue**: Training script hits architectural incompatibility when trying to initialize rollout:
-- **Root Cause**: HFRollout designed for in-process FSDP HYBRID mode (shared process with trainer)
-- **Expected Architecture**: AgentLoopManager expects remote async servers (vLLM, SGLang, TRT-LLM)
-- **Error**: AgentLoopManager calls `server.generate.remote()` but FSDPWorker has `generate_sequences_hf()`
-- **Impact**: Training script loads model weights successfully but fails at validation/rollout generation
-
-**Resolution Options**:
-1. **Option A (Recommended)**: Implement vLLM backend with joint logit fusion support
-   - Pros: Maintains async architecture, can scale to multi-node, proven vLLM infrastructure
-   - Cons: Requires vLLM custom kernel development for fusion
-
-2. **Option B**: Refactor trainer to support HYBRID in-process rollout for HFRollout
-   - Pros: Uses existing HFRollout without new kernels
-   - Cons: Architectural change, breaks async pattern, single-node only
-
-3. **Option C**: Create vLLM rollout wrapper that delegates to HFRollout
-   - Pros: Minimal changes to trainer
-   - Cons: Redundant code, still doesn't solve kernel issues
-
-### Pending
-
-- [ ] Resolve AgentLoopManager/HFRollout architectural incompatibility
-- [ ] End-to-end distributed training test
-- [ ] Joint-specific metrics monitoring (optional)
-
-### Test Summary
-
-| Category | Tests | Status |
-|----------|-------|--------|
-| feat/test_joint_model.py | 21 | ✅ All passing |
-| feat/test_weight_utils.py | 8 | ✅ All passing |
-| feat/test_grpo_integration.py | 6 | ✅ All passing |
-| feat/test_auto_model_loading.py | 4 | ✅ All passing |
-| feat/test_hf_rollout_joint.py | 9 | ✅ All passing |
-| feat/test_gpu_e2e.py | 7 | ✅ All passing |
-| regression/test_existing_functionality.py | 9 | ✅ All passing |
-| **Total** | **64 passing** | |
-
-### Git Commits
-
-| Hash | Description |
-|------|-------------|
-| 245908cc | feat: add QwenJointForCausalLM model class with logit fusion |
-| 7a9e8691 | feat: add FSDP dual-mode weight sync and eval-mode switching |
-| d54ae321 | test: add regression tests for joint training changes |
-| 2f70926d | feat: add GRPO integration tests, recipe, and progress tracking |
-| 961892c3 | test: add AutoModel loading tests for joint model |
-| f207e1ab | feat: add HF rollout integration for joint training with fused logits |
-| 1cbdd086 | fix(joint_training): Phase 2 debugging - environment and training setup |
-
-### Architecture Notes
-
-1. **Logit fusion**: `logits = (1-λ) * forward(model1) + λ * forward(model2)`
-2. **HFRollout design**: Shares FSDP model instance, calls `model.generate()` → `model.forward()`
-3. **Eval-only mode**: `_eval_only_mode` attribute checked in `forward()` for eval-only switching
-4. **FSDP integration**: rollout_mode/trainer_mode context switching in FSDPWorker
-5. **Configuration**: `+actor_rollout_ref.model.joint_training=True` enables feature
-
-### How to Run Training (when resolved)
-
-```bash
-conda activate verl07
-bash recipe/joint_training/run_joint_grpo_qwen3_1.7b.sh
-```
-
+1. Re-run the full 8xH800 joint GRPO job from the current code state and confirm it saves checkpoints successfully under `/data-1`.
+2. Measure steady-state GPU memory during rollout plus actor old-log-prob recompute to decide whether the current rollout defaults should remain the baseline.
+3. Promote the checkpoint preflight/atomic-save logic to any parallel trainer paths that still bypass the shared FSDP checkpoint manager.
