@@ -162,6 +162,17 @@ def test_filter_supported_vllm_cli_config_drops_unknown_keys():
     }
 
 
+def test_vllm_zmq_handle_prefers_configured_ipc_dir(monkeypatch, tmp_path):
+    from verl.workers.rollout.vllm_rollout.utils import get_zmq_ipc_handle
+
+    monkeypatch.setenv("VERL_ZMQ_IPC_DIR", str(tmp_path))
+
+    handle = get_zmq_ipc_handle("GPU-test")
+
+    assert handle == f"ipc://{tmp_path}/rl-colocate-zmq-GPU-test.sock"
+    assert tmp_path.is_dir()
+
+
 def test_legacy_vllm_serve_parser_rejects_logprobs_mode_via_filter():
     vllm = pytest.importorskip("vllm")
 

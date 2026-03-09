@@ -138,6 +138,18 @@ def get_device_uuid(device_id: int) -> str:
         return current_platform.get_device_uuid(device_id)
 
 
+def get_zmq_ipc_dir() -> str:
+    socket_dir = os.environ.get("VERL_ZMQ_IPC_DIR") or os.environ.get("TMPDIR") or "/tmp"
+    socket_dir = os.path.abspath(socket_dir)
+    os.makedirs(socket_dir, exist_ok=True)
+    return socket_dir
+
+
+def get_zmq_ipc_handle(device_uuid: str) -> str:
+    socket_path = os.path.join(get_zmq_ipc_dir(), f"rl-colocate-zmq-{device_uuid}.sock")
+    return f"ipc://{socket_path}"
+
+
 def get_vllm_max_lora_rank(lora_rank: int):
     """
     For vLLM, automatically adjusts the `max_lora_rank` to the nearest allowed value.
@@ -381,7 +393,7 @@ class vLLMColocateWorkerExtension:
         """Get ZMQ handle for communication."""
         if not hasattr(self, "device_uuid") or not self.device_uuid:
             self.device_uuid = get_device_uuid(self.device.index)
-        return f"ipc:///tmp/rl-colocate-zmq-{self.device_uuid}.sock"
+        return get_zmq_ipc_handle(self.device_uuid)
 
 
 class SuppressSignalInThread:
