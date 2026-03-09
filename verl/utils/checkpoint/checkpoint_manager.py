@@ -141,6 +141,62 @@ class BaseCheckpointManager:
                 continue
             shutil.rmtree(abs_path, ignore_errors=True)
 
+    @staticmethod
+    def resolve_existing_path(path: str) -> str:
+        while not os.path.exists(path) and path != "/":
+            path = os.path.dirname(path)
+        return path
+
+    @classmethod
+    def get_free_bytes(cls, path: str) -> int:
+        return shutil.disk_usage(cls.resolve_existing_path(path)).free
+
+    @staticmethod
+    def iter_tensors(obj):
+        if torch.is_tensor(obj):
+            yield obj
+            return
+        if isinstance(obj, dict):
+            for value in obj.values():
+                yield from BaseCheckpointManager.iter_tensors(value)
+            return
+        if isinstance(obj, (list, tuple)):
+            for value in obj:
+                yield from BaseCheckpointManager.iter_tensors(value)
+
+    @classmethod
+    def estimate_torch_save_size_bytes(
+        cls, obj, *, safety_factor: float = 1.05, overhead_bytes: int = 64 * 1024 * 1024
+    ) -> int:
+        tensor_bytes = 0
+        for tensor in cls.iter_tensors(obj):
+            tensor_bytes += tensor.numel() * tensor.element_size()
+        return max(int(tensor_bytes * safety_factor) + overhead_bytes, overhead_bytes)
+
+    @classmethod
+    def ensure_free_space(cls, path: str, required_bytes: int, *, reason: str):
+        free_bytes = cls.get_free_bytes(path)
+        if free_bytes >= required_bytes:
+            return
+        raise RuntimeError(
+            f"Insufficient free space for {reason} at {os.path.abspath(path)}: "
+            f"need about {required_bytes / 1024**3:.2f} GiB, "
+            f"filesystem has {free_bytes / 1024**3:.2f} GiB free."
+        )
+
+    @staticmethod
+    def cleanup_partial_save_paths(*paths: str):
+        for path in paths:
+            if not path or not os.path.exists(path):
+                continue
+            if os.path.isdir(path):
+                shutil.rmtree(path, ignore_errors=True)
+            else:
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+
     def ensure_checkpoint_capacity(self, max_ckpt_to_keep: int):
         """
         Remove old checkpoints to make room for a new one, keeping a safety buffer.

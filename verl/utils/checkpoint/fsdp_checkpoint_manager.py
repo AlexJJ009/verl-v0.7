@@ -17,7 +17,7 @@ import logging
 import os
 import warnings
 from dataclasses import asdict, dataclass
-from typing import Optional
+from typing import Any, Optional
 
 import torch
 import torch.distributed
@@ -180,6 +180,23 @@ class FSDPCheckpointManager(BaseCheckpointManager):
         # wait for everyone to load checkpoints
         torch.distributed.barrier()
 
+    def _atomic_torch_save(self, obj: Any, final_path: str, *, artifact_name: str):
+        required_bytes = self.estimate_torch_save_size_bytes(obj)
+        self.ensure_free_space(final_path, required_bytes, reason=artifact_name)
+
+        temp_path = f"{final_path}.tmp"
+        try:
+            torch.save(obj, temp_path)
+            os.replace(temp_path, final_path)
+        except Exception as exc:
+            self.cleanup_partial_save_paths(temp_path, final_path)
+            free_bytes = self.get_free_bytes(final_path)
+            raise RuntimeError(
+                f"Failed to save {artifact_name} to {os.path.abspath(final_path)}. "
+                f"Estimated required space: {required_bytes / 1024**3:.2f} GiB. "
+                f"Filesystem currently has {free_bytes / 1024**3:.2f} GiB free."
+            ) from exc
+
     def save_checkpoint(self, local_path: str, hdfs_path: str = None, global_step: int = 0, max_ckpt_to_keep=None):
         """
         Save an FSDP checkpoint for this rank.
@@ -230,12 +247,14 @@ class FSDPCheckpointManager(BaseCheckpointManager):
 
                 if self.should_save_model:
                     model_state_dict = self.model.state_dict()
-                    torch.save(model_state_dict, model_path)
+                    self._atomic_torch_save(model_state_dict, model_path, artifact_name="model checkpoint shard")
                     log_with_rank(f"Saved model to {os.path.abspath(model_path)}", rank=self.rank, logger=logger)
 
                 if self.should_save_optimizer:
                     optimizer_state_dict = self.optimizer.state_dict()
-                    torch.save(optimizer_state_dict, optim_path)
+                    self._atomic_torch_save(
+                        optimizer_state_dict, optim_path, artifact_name="optimizer checkpoint shard"
+                    )
                     log_with_rank(f"Saved optim to {os.path.abspath(optim_path)}", rank=self.rank, logger=logger)
 
                 if self.should_save_extra:
@@ -244,7 +263,7 @@ class FSDPCheckpointManager(BaseCheckpointManager):
                         "lr_scheduler": lr_scheduler_state_dict,
                         "rng": self.get_rng_state(),
                     }
-                    torch.save(extra_state_dict, extra_path)
+                    self._atomic_torch_save(extra_state_dict, extra_path, artifact_name="extra checkpoint state")
                     log_with_rank(f"Saved extra_state to {os.path.abspath(extra_path)}", rank=self.rank, logger=logger)
 
         if self.rank == 0:

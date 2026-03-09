@@ -15,6 +15,7 @@
 import os
 import shutil
 import tempfile
+from collections import namedtuple
 
 import pytest
 
@@ -137,3 +138,36 @@ class TestCheckpointCleanupLogic:
         manager.register_checkpoint(ckpt_300, 1)
         assert not os.path.exists(ckpt_200)
         assert manager.previous_saved_paths == [ckpt_300]
+
+    def test_estimate_torch_save_size_bytes_counts_nested_tensors(self, manager):
+        import torch
+
+        nested = {
+            "a": torch.zeros(16, dtype=torch.float32),
+            "b": [torch.zeros(8, dtype=torch.bfloat16), {"c": torch.zeros(4, dtype=torch.int64)}],
+        }
+
+        estimated_bytes = manager.estimate_torch_save_size_bytes(nested, safety_factor=1.0, overhead_bytes=0)
+
+        assert estimated_bytes == (16 * 4) + (8 * 2) + (4 * 8)
+
+    def test_ensure_free_space_raises_clear_error(self, manager, monkeypatch):
+        usage = namedtuple("usage", ["total", "used", "free"])
+
+        monkeypatch.setattr(shutil, "disk_usage", lambda path: usage(total=1024, used=1000, free=24))
+
+        with pytest.raises(RuntimeError, match="Insufficient free space for model checkpoint shard"):
+            manager.ensure_free_space("/tmp/checkpoint.pt", 1024, reason="model checkpoint shard")
+
+    def test_cleanup_partial_save_paths_removes_files(self, manager):
+        final_path = os.path.join(self.test_dir, "model.pt")
+        temp_path = final_path + ".tmp"
+        with open(final_path, "w") as f:
+            f.write("partial")
+        with open(temp_path, "w") as f:
+            f.write("partial")
+
+        manager.cleanup_partial_save_paths(temp_path, final_path)
+
+        assert not os.path.exists(final_path)
+        assert not os.path.exists(temp_path)
