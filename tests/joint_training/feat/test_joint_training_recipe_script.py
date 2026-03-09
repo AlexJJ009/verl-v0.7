@@ -16,6 +16,7 @@ def test_joint_training_recipe_uses_vllm_rollout_and_no_sync_mode():
     assert "export VLLM_CONFIG_ROOT=${VLLM_CONFIG_ROOT:-/data-1/.config/vllm}" in script
     assert "export VERL_ZMQ_IPC_DIR=${VERL_ZMQ_IPC_DIR:-$TMPDIR}" in script
     assert 'mkdir -p "$RAY_TMPDIR" "$TMPDIR" "$VLLM_CONFIG_ROOT" "$VERL_ZMQ_IPC_DIR"' in script
+    assert 'export VERL_FILE_LOGGER_ROOT=${VERL_FILE_LOGGER_ROOT:-"${LOG_DIR}/metrics"}' in script
     assert "MIN_FREE_GB_FOR_CKPT=${MIN_FREE_GB_FOR_CKPT:-30}" in script
     assert 'DEFAULT_CKPT_BASE_DIR_FALLBACK="/data-2/checkpoints/JointTraining/GRPO"' not in script
     assert "MAX_ACTOR_CKPTS_TO_KEEP=${MAX_ACTOR_CKPTS_TO_KEEP:-2}" in script
@@ -60,3 +61,4 @@ def test_joint_training_recipe_uses_vllm_rollout_and_no_sync_mode():
     assert "+actor_rollout_ref.rollout.micro_batch_size=${GENERATION_MICRO_BATCH_SIZE}" in script
     assert "trainer.max_actor_ckpt_to_keep=${MAX_ACTOR_CKPTS_TO_KEEP}" in script
     assert "trainer.max_critic_ckpt_to_keep=${MAX_CRITIC_CKPTS_TO_KEEP}" in script
+    assert 'trainer.logger=\'["wandb","file"]\'' in script

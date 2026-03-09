@@ -23,6 +23,7 @@ import os
 import uuid
 from collections import defaultdict
 from copy import deepcopy
+from numbers import Number
 from pprint import pprint
 from typing import Any, Optional
 
@@ -64,6 +65,56 @@ from verl.utils.torch_functional import masked_mean
 from verl.utils.tracking import ValidationGenerationsLogger
 from verl.workers.config import FSDPEngineConfig
 from verl.workers.utils.padding import left_right_2_no_padding, no_padding_2_padding
+
+
+TEST_STEP_LOG_PREFIXES = (
+    "training/",
+    "actor/",
+    "critic/",
+    "response/",
+    "response_length/",
+    "response_length_non_aborted/",
+    "prompt_length/",
+    "perf/",
+    "timing_s/",
+    "timing_per_token_ms/",
+    "throughput/",
+    "global_seqlen/",
+    "rollout_corr/",
+    "val-core/",
+    "val-aux/",
+)
+
+
+def _metric_value_to_python_scalar(value: Any) -> Any | None:
+    if isinstance(value, Number | np.generic):
+        return value.item() if isinstance(value, np.generic) else value
+    if isinstance(value, torch.Tensor) and value.ndim == 0:
+        return value.detach().cpu().item()
+    return None
+
+
+def extract_test_step_metrics_for_logging(
+    metrics: dict[str, Any], prefixes: tuple[str, ...] = TEST_STEP_LOG_PREFIXES
+) -> dict[str, Any]:
+    """Select scalar metrics and order them for periodic test-step logging."""
+    scalar_metrics = {}
+    for key, value in metrics.items():
+        scalar_value = _metric_value_to_python_scalar(value)
+        if scalar_value is not None:
+            scalar_metrics[key] = scalar_value
+
+    ordered_metrics = {}
+    seen_keys = set()
+    for prefix in prefixes:
+        for key in sorted(k for k in scalar_metrics if k.startswith(prefix)):
+            ordered_metrics[key] = scalar_metrics[key]
+            seen_keys.add(key)
+
+    for key in sorted(k for k in scalar_metrics if k not in seen_keys):
+        ordered_metrics[key] = scalar_metrics[key]
+
+    return ordered_metrics
 
 
 def apply_kl_penalty(data: DataProto, kl_ctrl: core_algos.AdaptiveKLController, kl_penalty="kl"):
@@ -1371,6 +1422,7 @@ class RayPPOTrainer:
                     self.actor_rollout_wg.async_calls_finalize_fn_exec(blocking=False)
                 metrics = {}
                 timing_raw = {}
+                did_validate = False
 
                 with marked_timer("start_profile", timing_raw):
                     self._start_profiling(
@@ -1631,6 +1683,7 @@ class RayPPOTrainer:
                         val_metrics: dict = self._validate()
                         if is_last_step:
                             last_val_metrics = val_metrics
+                        did_validate = True
                     metrics.update(val_metrics)
 
                 with marked_timer("stop_profile", timing_raw):
@@ -1667,6 +1720,10 @@ class RayPPOTrainer:
                 gradient_norm = metrics.get("actor/grad_norm", None)
                 metrics.update(compute_variance_proxy_metrics(batch=batch, gradient_norm=gradient_norm))
                 # Note: mismatch metrics (KL, PPL, etc.) are collected at line 1179 after advantage computation
+
+                if did_validate:
+                    print(f"Validation and training metrics at step {self.global_steps}:", flush=True)
+                    pprint(extract_test_step_metrics_for_logging(metrics))
 
                 # this is experimental and may be changed/removed in the future in favor of a general-purpose one
                 if isinstance(self.train_dataloader.sampler, AbstractCurriculumSampler):
