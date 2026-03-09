@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import unittest
+from unittest.mock import patch
 
 import torch
 import torch.nn as nn
@@ -21,6 +22,7 @@ from transformers import AutoModelForCausalLM, Qwen3Config
 
 from verl import DataProto
 from verl.utils.device import get_device_name
+from verl.workers.actor import dp_actor as dp_actor_module
 from verl.workers.actor.dp_actor import DataParallelPPOActor
 from verl.workers.config import FSDPActorConfig, OptimizerConfig
 
@@ -119,7 +121,7 @@ class TestDataParallelPPOActor(unittest.TestCase):
         vocab_size = 1000
 
         input_ids = torch.randint(0, vocab_size, (batch_size, total_length)).to(self.device)
-        attention_mask = torch.ones(batch_size, total_length).to(self.device)
+        attention_mask = torch.ones(batch_size, total_length, dtype=torch.long).to(self.device)
         position_ids = torch.arange(total_length).unsqueeze(0).expand(batch_size, -1).to(self.device)
         responses = input_ids[:, -response_length:]  # Last part is the response
 
@@ -146,7 +148,7 @@ class TestDataParallelPPOActor(unittest.TestCase):
         vocab_size = 1000
 
         input_ids = torch.randint(0, vocab_size, (batch_size, total_length)).to(self.device)
-        attention_mask = torch.ones(batch_size, total_length).to(self.device)
+        attention_mask = torch.ones(batch_size, total_length, dtype=torch.long).to(self.device)
         position_ids = torch.arange(total_length).unsqueeze(0).expand(batch_size, -1).to(self.device)
         responses = input_ids[:, -response_length:]
         response_mask = torch.ones(batch_size, response_length).to(self.device)
@@ -229,6 +231,64 @@ class TestDataParallelPPOActor(unittest.TestCase):
             else:
                 self.assertIsInstance(metrics[key], (float, int))
                 self.assertTrue(torch.isfinite(torch.tensor(metrics[key])))
+
+    def test_dynamic_batch_compute_log_prob_uses_dp_group(self):
+        config = FSDPActorConfig(
+            strategy="fsdp2",
+            ppo_mini_batch_size=4,
+            ppo_epochs=1,
+            clip_ratio=0.2,
+            entropy_coeff=0.01,
+            grad_clip=1.0,
+            use_dynamic_bsz=True,
+            use_torch_compile=False,
+            ulysses_sequence_parallel_size=1,
+            optim=OptimizerConfig(lr=1e-6),
+            rollout_n=1,
+        )
+        actor = DataParallelPPOActor(
+            config=config,
+            actor_module=self.mock_model,
+            actor_optimizer=self.mock_optimizer,
+            dp_group=torch.distributed.group.WORLD,
+        )
+        data = self._create_test_data_for_compute_log_prob()
+        data.meta_info["use_dynamic_bsz"] = True
+        data.meta_info["max_token_len"] = data.batch["attention_mask"].shape[-1]
+
+        with patch("verl.workers.actor.dp_actor.prepare_dynamic_batch", wraps=dp_actor_module.prepare_dynamic_batch) as mocked:
+            actor.compute_log_prob(data, calculate_entropy=False)
+
+        self.assertIs(mocked.call_args.kwargs["dp_group"], torch.distributed.group.WORLD)
+        self.assertTrue(mocked.call_args.kwargs["same_micro_num_in_dp"])
+
+    def test_dynamic_batch_update_policy_uses_dp_group(self):
+        config = FSDPActorConfig(
+            strategy="fsdp2",
+            ppo_mini_batch_size=4,
+            ppo_epochs=1,
+            clip_ratio=0.2,
+            entropy_coeff=0.01,
+            grad_clip=1.0,
+            use_dynamic_bsz=True,
+            use_torch_compile=False,
+            ulysses_sequence_parallel_size=1,
+            optim=OptimizerConfig(lr=1e-6),
+            rollout_n=1,
+        )
+        actor = DataParallelPPOActor(
+            config=config,
+            actor_module=self.mock_model,
+            actor_optimizer=self.mock_optimizer,
+            dp_group=torch.distributed.group.WORLD,
+        )
+        data = self._create_test_data_for_update_policy()
+
+        with patch("verl.workers.actor.dp_actor.prepare_dynamic_batch", wraps=dp_actor_module.prepare_dynamic_batch) as mocked:
+            actor.update_policy(data)
+
+        self.assertIs(mocked.call_args.kwargs["dp_group"], torch.distributed.group.WORLD)
+        self.assertTrue(mocked.call_args.kwargs["same_micro_num_in_dp"])
 
     def test_dataparallelppoactor_initialization(self):
         """Test DataParallelPPOActor initialization"""

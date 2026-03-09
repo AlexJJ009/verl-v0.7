@@ -88,7 +88,14 @@ class QwenJointForCausalLM(PreTrainedModel, GenerationMixin):
             outputs_list.append(out)
 
         lam = self.fusion_lambda
-        logits = (1 - lam) * outputs_list[0].logits + lam * outputs_list[1].logits
+        if lam == 0:
+            logits = outputs_list[0].logits
+        elif lam == 1:
+            logits = outputs_list[1].logits
+        else:
+            # Avoid materializing multiple full-vocab temporaries at once.
+            logits = outputs_list[0].logits.mul(1 - lam)
+            logits.add_(outputs_list[1].logits, alpha=lam)
 
         loss = None
         if labels is not None:

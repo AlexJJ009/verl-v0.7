@@ -239,28 +239,31 @@ def entropy_from_logits(logits: torch.Tensor) -> torch.Tensor:
 
 
 def entropy_from_logits_with_chunking(logits: torch.Tensor, chunk_size: int = 2048) -> torch.Tensor:
-    """Memory-efficient entropy calculation using chunked processing.
+    """Memory-efficient entropy calculation using chunked row-wise processing.
 
-    Computes entropy by processing the batch in chunks to reduce peak memory
-    usage. Useful for large batch sizes or when memory is constrained.
+    Flattens all non-vocabulary dimensions into rows and computes entropy a
+    chunk at a time. This keeps the peak memory bounded for both 2D logits
+    ``[tokens, vocab]`` and dense 3D logits ``[batch, seq, vocab]``.
 
     Args:
-        logits: Unnormalized log-probabilities of shape (batch_size, vocab_size).
-        chunk_size: Number of samples to process at once. Defaults to 2048.
+        logits: Unnormalized log-probabilities of shape (..., vocab_size).
+        chunk_size: Number of token rows to process at once. Defaults to 2048.
 
     Returns:
-        torch.Tensor: Entropy values with shape (batch_size,).
+        torch.Tensor: Entropy values with shape logits.shape[:-1].
 
     Note:
         Converts chunks to float32 for numerical stability during computation.
     """
-    entropy = torch.zeros(logits.shape[0], device=logits.device)
-    for i in range(0, logits.shape[0], chunk_size):
-        logits_chunk = logits[i : i + chunk_size].float()
+    original_shape = logits.shape[:-1]
+    flat_logits = logits.reshape(-1, logits.shape[-1])
+    entropy = torch.empty(flat_logits.shape[0], device=logits.device, dtype=torch.float32)
+    for i in range(0, flat_logits.shape[0], chunk_size):
+        logits_chunk = flat_logits[i : i + chunk_size].float()
         pd_chunk = torch.nn.functional.softmax(logits_chunk, dim=-1)
         entropy_chunk = torch.logsumexp(logits_chunk, dim=-1) - torch.sum(pd_chunk * logits_chunk, dim=-1)
         entropy[i : i + chunk_size] = entropy_chunk
-    return entropy
+    return entropy.view(*original_shape)
 
 
 def masked_sum(values: torch.Tensor, mask: torch.Tensor, axis: int | tuple[int, ...] | None = None) -> torch.Tensor:

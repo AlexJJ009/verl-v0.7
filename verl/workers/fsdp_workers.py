@@ -889,6 +889,10 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
             if hasattr(unwrapped, "_eval_only_mode"):
                 unwrapped._eval_only_mode = False
 
+        if self.config.rollout.free_cache_engine:
+            await self.rollout.release()
+            log_gpu_memory_usage("After release rollout cache", logger=logger)
+
         if self._is_offload_param:
             offload_fsdp_model_to_cpu(self.actor_module_fsdp)
 
@@ -960,9 +964,17 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
                 log_gpu_memory_usage("After offload actor optimizer during init", logger=logger)
 
         if self._is_actor:
+            dp_group = (
+                self.ulysses_device_mesh.get_group(mesh_dim="dp")
+                if self.ulysses_device_mesh is not None
+                else torch.distributed.group.WORLD
+            )
             actor_cfg = omega_conf_to_dataclass(self.config.actor)
             self.actor = DataParallelPPOActor(
-                config=actor_cfg, actor_module=self.actor_module_fsdp, actor_optimizer=self.actor_optimizer
+                config=actor_cfg,
+                actor_module=self.actor_module_fsdp,
+                actor_optimizer=self.actor_optimizer,
+                dp_group=dp_group,
             )
 
         if self._is_rollout:
@@ -1006,7 +1018,16 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
                 self.config.ref.use_fused_kernels = use_fused_kernels
                 if use_prefix_grouper:
                     self.config.ref.use_prefix_grouper = use_prefix_grouper
-            self.ref_policy = DataParallelPPOActor(config=self.config.ref, actor_module=self.ref_module_fsdp)
+            ref_dp_group = (
+                self.ulysses_device_mesh.get_group(mesh_dim="dp")
+                if self.ulysses_device_mesh is not None
+                else torch.distributed.group.WORLD
+            )
+            self.ref_policy = DataParallelPPOActor(
+                config=self.config.ref,
+                actor_module=self.ref_module_fsdp,
+                dp_group=ref_dp_group,
+            )
 
         if self._is_actor:
             self.flops_counter = FlopsCounter(self.actor_model_config)
@@ -1237,7 +1258,7 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
         data.meta_info["temperature"] = self.config.rollout.temperature
         data.meta_info.setdefault("pad_token_id", self.tokenizer.pad_token_id)
         # perform recompute log_prob
-        calculate_entropy = not is_lora
+        calculate_entropy = (not is_lora) and data.meta_info.pop("calculate_entropy", True)
         with self.ulysses_sharding_manager:
             with adapter_ctx:
                 outputs = self.actor.compute_log_prob(data=data, calculate_entropy=calculate_entropy)
@@ -1753,8 +1774,16 @@ class CriticWorker(Worker, DistProfilerExtension):
             offload_fsdp_optimizer(optimizer=self.critic_optimizer)
             log_gpu_memory_usage("After offload critic optimizer during init", logger=logger)
 
+        dp_group = (
+            self.ulysses_device_mesh.get_group(mesh_dim="dp")
+            if self.ulysses_device_mesh is not None
+            else torch.distributed.group.WORLD
+        )
         self.critic = DataParallelPPOCritic(
-            config=self.config, critic_module=self.critic_module, critic_optimizer=self.critic_optimizer
+            config=self.config,
+            critic_module=self.critic_module,
+            critic_optimizer=self.critic_optimizer,
+            dp_group=dp_group,
         )
 
         self.flops_counter = FlopsCounter(self.critic_model_config)

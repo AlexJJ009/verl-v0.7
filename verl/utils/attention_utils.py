@@ -12,9 +12,31 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib.util
 from typing import Callable
 
 _index_first_axis, _pad_input, _rearrange, _unpad_input = None, None, None, None
+
+
+def is_remove_padding_backend_available() -> bool:
+    """Return whether the remove-padding helper backend is available on this host."""
+
+    from verl.utils.device import is_torch_npu_available
+
+    if is_torch_npu_available(check_device=False):
+        return True
+    return importlib.util.find_spec("flash_attn") is not None
+
+
+def ensure_remove_padding_backend_available() -> None:
+    """Raise a clear error when remove-padding is requested without its backend."""
+
+    if is_remove_padding_backend_available():
+        return
+    raise RuntimeError(
+        "`use_remove_padding=True` requires `flash_attn` on CUDA, but `flash_attn` is not installed in this "
+        "environment. Disable `actor_rollout_ref.model.use_remove_padding` or install a matching flash-attn build."
+    )
 
 
 def _get_attention_functions() -> tuple[Callable, Callable, Callable, Callable]:
@@ -24,9 +46,13 @@ def _get_attention_functions() -> tuple[Callable, Callable, Callable, Callable]:
 
     global _index_first_axis, _pad_input, _rearrange, _unpad_input
 
+    if all(func is not None for func in (_index_first_axis, _pad_input, _rearrange, _unpad_input)):
+        return _index_first_axis, _pad_input, _rearrange, _unpad_input
+
     if is_torch_npu_available(check_device=False):
         from verl.utils.npu_flash_attn_utils import index_first_axis, pad_input, rearrange, unpad_input
     else:
+        ensure_remove_padding_backend_available()
         from flash_attn.bert_padding import index_first_axis, pad_input, rearrange, unpad_input
 
     _index_first_axis, _pad_input, _rearrange, _unpad_input = index_first_axis, pad_input, rearrange, unpad_input
@@ -97,4 +123,11 @@ def unpad_input(*args, **kwargs):
     return func(*args, **kwargs)
 
 
-__all__ = ["index_first_axis", "pad_input", "rearrange", "unpad_input"]
+__all__ = [
+    "ensure_remove_padding_backend_available",
+    "index_first_axis",
+    "is_remove_padding_backend_available",
+    "pad_input",
+    "rearrange",
+    "unpad_input",
+]

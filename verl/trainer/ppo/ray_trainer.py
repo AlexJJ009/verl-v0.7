@@ -1205,6 +1205,8 @@ class RayPPOTrainer:
         return ref_log_prob
 
     def _compute_old_log_prob(self, batch: DataProto):
+        actor_config = self.config.actor_rollout_ref.actor
+        calculate_entropy = actor_config.calculate_entropy or actor_config.entropy_coeff != 0.0
         if self.use_legacy_worker_impl == "disable":
             # TODO: remove step 1, 2, 4 after we make the whole training tensordict and padding free
             # step 1: convert dataproto to tensordict.
@@ -1212,20 +1214,31 @@ class RayPPOTrainer:
             # step 2: convert from padding to nopadding
             batch_td = left_right_2_no_padding(batch_td)
             # step 3: add meta info
-            tu.assign_non_tensor(batch_td, calculate_entropy=True, compute_loss=False)
+            tu.assign_non_tensor(batch_td, calculate_entropy=calculate_entropy, compute_loss=False)
             output = self.actor_rollout_wg.compute_log_prob(batch_td)
             # gather output
-            entropy = tu.get(output, "entropy")
             log_probs = tu.get(output, "log_probs")
             old_log_prob_mfu = tu.get(output, "metrics")["mfu"]
             # step 4. No padding to padding
-            entropy = no_padding_2_padding(entropy, batch_td)
             log_probs = no_padding_2_padding(log_probs, batch_td)
             # step 5: rebuild a tensordict and convert to dataproto
-            old_log_prob = tu.get_tensordict({"old_log_probs": log_probs.float(), "entropys": entropy.float()})
+            tensor_dict = {"old_log_probs": log_probs.float()}
+            if calculate_entropy:
+                entropy = tu.get(output, "entropys")
+                entropy = no_padding_2_padding(entropy, batch_td)
+                tensor_dict["entropys"] = entropy.float()
+            old_log_prob = tu.get_tensordict(tensor_dict)
             old_log_prob = DataProto.from_tensordict(old_log_prob)
         else:
-            old_log_prob = self.actor_rollout_wg.compute_log_prob(batch)
+            previous_flag = batch.meta_info.get("calculate_entropy", None)
+            batch.meta_info["calculate_entropy"] = calculate_entropy
+            try:
+                old_log_prob = self.actor_rollout_wg.compute_log_prob(batch)
+            finally:
+                if previous_flag is None:
+                    batch.meta_info.pop("calculate_entropy", None)
+                else:
+                    batch.meta_info["calculate_entropy"] = previous_flag
             old_log_prob_mfu = 0
         return old_log_prob, old_log_prob_mfu
 
@@ -1471,21 +1484,22 @@ class RayPPOTrainer:
                     else:  # Recompute old_log_probs
                         with marked_timer("old_log_prob", timing_raw, color="blue"):
                             old_log_prob, old_log_prob_mfu = self._compute_old_log_prob(batch)
-                            entropys = old_log_prob.batch["entropys"]
-                            response_masks = batch.batch["response_mask"]
-                            actor_config = self.config.actor_rollout_ref.actor
-                            entropy_agg = agg_loss(
-                                loss_mat=entropys,
-                                loss_mask=response_masks,
-                                loss_agg_mode=actor_config.loss_agg_mode,
-                                loss_scale_factor=actor_config.loss_scale_factor,
-                            )
                             old_log_prob_metrics = {
-                                "actor/entropy": entropy_agg.detach().item(),
                                 "perf/mfu/actor_infer": old_log_prob_mfu,
                             }
+                            if "entropys" in old_log_prob.batch:
+                                entropys = old_log_prob.batch["entropys"]
+                                response_masks = batch.batch["response_mask"]
+                                actor_config = self.config.actor_rollout_ref.actor
+                                entropy_agg = agg_loss(
+                                    loss_mat=entropys,
+                                    loss_mask=response_masks,
+                                    loss_agg_mode=actor_config.loss_agg_mode,
+                                    loss_scale_factor=actor_config.loss_scale_factor,
+                                )
+                                old_log_prob_metrics["actor/entropy"] = entropy_agg.detach().item()
+                                old_log_prob.batch.pop("entropys")
                             metrics.update(old_log_prob_metrics)
-                            old_log_prob.batch.pop("entropys")
                             if "routed_experts" in batch.batch and "routed_experts" in old_log_prob.batch:
                                 router_mode = getattr(
                                     self.config.actor_rollout_ref.actor.router_replay, "mode", "disabled"

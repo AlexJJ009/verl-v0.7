@@ -23,6 +23,8 @@ from verl.utils.device import get_device_name, get_nccl_backend, get_torch_devic
 from verl.utils.torch_functional import (
     distributed_masked_mean,
     distributed_mean_max_min_std,
+    entropy_from_logits,
+    entropy_from_logits_with_chunking,
     expand_as_nested,
     masked_mean,
 )
@@ -150,3 +152,13 @@ def test_expand_as_nested():
 
     with pytest.raises(AssertionError):
         expand_as_nested(tensor, nested_tensor.unsqueeze(-1))
+
+
+def test_entropy_from_logits_with_chunking_handles_dense_3d_logits():
+    logits = torch.randn(2, 3, 11, dtype=torch.float32)
+
+    entropy = entropy_from_logits(logits)
+    entropy_chunked = entropy_from_logits_with_chunking(logits, chunk_size=2)
+
+    assert entropy_chunked.shape == (2, 3)
+    torch.testing.assert_close(entropy_chunked, entropy, atol=1e-6, rtol=1e-6)
