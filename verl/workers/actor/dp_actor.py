@@ -35,7 +35,7 @@ from verl.utils.profiler import GPUMemoryLogger
 from verl.utils.py_functional import append_to_dict
 from verl.utils.seqlen_balancing import prepare_dynamic_batch, restore_dynamic_batch
 from verl.utils.torch_dtypes import PrecisionType
-from verl.utils.torch_functional import logprobs_from_logits
+from verl.utils.torch_functional import compute_global_grad_l2_norm, logprobs_from_logits
 from verl.utils.ulysses import gather_outputs_and_unpad, ulysses_pad, ulysses_pad_and_slice_inputs
 from verl.workers.actor import BasePPOActor
 from verl.workers.config import ActorConfig
@@ -400,6 +400,8 @@ class DataParallelPPOActor(BasePPOActor):
         assert self.config.grad_clip is not None
         if self.scaler is not None:
             self.scaler.unscale_(self.actor_optimizer)
+
+        joint_grad_metrics = self._compute_joint_grad_norm_metrics()
         if isinstance(self.actor_module, FSDP):
             grad_norm = self.actor_module.clip_grad_norm_(max_norm=self.config.grad_clip)
         elif isinstance(self.actor_module, FSDPModule):
@@ -427,7 +429,31 @@ class DataParallelPPOActor(BasePPOActor):
 
             invalidate_all_scales(self.actor_module)
 
-        return grad_norm
+        return grad_norm, joint_grad_metrics
+
+    def _find_joint_sub_models(self):
+        unwrapped_module = getattr(self.actor_module, "_fsdp_wrapped_module", self.actor_module)
+        for module in unwrapped_module.modules():
+            sub_models = getattr(module, "sub_models", None)
+            if isinstance(sub_models, nn.ModuleList) and len(sub_models) >= 2:
+                return sub_models[0], sub_models[1]
+        return None
+
+    def _compute_joint_grad_norm_metrics(self) -> dict[str, float]:
+        joint_sub_models = self._find_joint_sub_models()
+        if joint_sub_models is None:
+            return {}
+
+        process_group = getattr(self.actor_module, "process_group", None)
+        model1, model2 = joint_sub_models
+        return {
+            "jointTraining/model1_grad_norm": compute_global_grad_l2_norm(
+                model1.parameters(), process_group=process_group
+            ),
+            "jointTraining/model2_grad_norm": compute_global_grad_l2_norm(
+                model2.parameters(), process_group=process_group
+            ),
+        }
 
     @GPUMemoryLogger(role="dp actor", logger=logger)
     def compute_log_prob(self, data: DataProto, calculate_entropy: bool = False) -> dict[str, torch.Tensor]:
@@ -687,8 +713,8 @@ class DataParallelPPOActor(BasePPOActor):
                     metrics["actor/pg_loss"] += pg_loss.detach().item() * loss_scale_factor
                     append_to_dict(metrics, micro_batch_metrics)
 
-                grad_norm = self._optimizer_step()
-                mini_batch_metrics = {"actor/grad_norm": grad_norm.detach().item()}
+                grad_norm, joint_grad_metrics = self._optimizer_step()
+                mini_batch_metrics = {"actor/grad_norm": grad_norm.detach().item(), **joint_grad_metrics}
                 append_to_dict(metrics, mini_batch_metrics)
         self.actor_optimizer.zero_grad()
         return metrics

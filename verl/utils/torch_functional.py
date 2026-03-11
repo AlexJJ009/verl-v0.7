@@ -388,6 +388,36 @@ def compute_grad_norm(model: nn.Module) -> float:
     return total_grad_square
 
 
+def compute_global_grad_l2_norm(parameters, process_group=None) -> float:
+    """Compute the distributed L2 norm of gradients for a parameter iterable.
+
+    The returned value matches the pre-clipping L2 norm semantics used by
+    ``clip_grad_norm_``: square gradients locally, sum them across ranks, then
+    take the square root.
+    """
+
+    local_grad_sq_sum = None
+    for param in parameters:
+        if param.grad is None:
+            continue
+        grad = param.grad.detach()
+        if local_grad_sq_sum is None:
+            local_grad_sq_sum = torch.zeros((), device=grad.device, dtype=torch.float64)
+        local_grad_sq_sum += grad.to(torch.float64).pow(2).sum()
+
+    if local_grad_sq_sum is None:
+        if get_device_name() == "cpu":
+            device = torch.device("cpu")
+        else:
+            device = torch.device(get_device_name(), get_torch_device().current_device())
+        local_grad_sq_sum = torch.zeros((), device=device, dtype=torch.float64)
+
+    if torch.distributed.is_initialized():
+        torch.distributed.all_reduce(local_grad_sq_sum, op=torch.distributed.ReduceOp.SUM, group=process_group)
+
+    return local_grad_sq_sum.sqrt().item()
+
+
 def broadcast_dict_tensor(tensors: dict[str, torch.Tensor] | TensorDict, src: int, group) -> None:
     """Broadcast all tensors in a dictionary from source rank to all ranks.
 

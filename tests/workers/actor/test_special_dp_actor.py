@@ -54,6 +54,40 @@ class MockTransformerModel(nn.Module):
         return MockOutput(logits)
 
 
+class MockJointTransformerModel(nn.Module):
+    def __init__(self, vocab_size=1000, hidden_size=64, fusion_lambda=0.8):
+        super().__init__()
+        self.fusion_lambda = fusion_lambda
+        model1 = MockTransformerModel(vocab_size=vocab_size, hidden_size=hidden_size)
+        model2 = MockTransformerModel(vocab_size=vocab_size, hidden_size=hidden_size)
+        model2.load_state_dict(model1.state_dict())
+        self.sub_models = nn.ModuleList([model1, model2])
+
+    def forward(self, input_ids, attention_mask=None, position_ids=None, use_cache=False, **kwargs):
+        logits0 = self.sub_models[0](
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            use_cache=use_cache,
+            **kwargs,
+        ).logits
+        logits1 = self.sub_models[1](
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            use_cache=use_cache,
+            **kwargs,
+        ).logits
+
+        fused_logits = (1 - self.fusion_lambda) * logits0 + self.fusion_lambda * logits1
+
+        class MockOutput:
+            def __init__(self, logits):
+                self.logits = logits
+
+        return MockOutput(fused_logits)
+
+
 class TestDataParallelPPOActor(unittest.TestCase):
     """Test DataParallelPPOActor compute_log_prob and update_policy methods"""
 
@@ -231,6 +265,24 @@ class TestDataParallelPPOActor(unittest.TestCase):
             else:
                 self.assertIsInstance(metrics[key], (float, int))
                 self.assertTrue(torch.isfinite(torch.tensor(metrics[key])))
+
+    def test_update_policy_emits_joint_submodel_grad_norm_metrics(self):
+        joint_model = MockJointTransformerModel(vocab_size=1000, hidden_size=64, fusion_lambda=0.8).to(self.device)
+        joint_optimizer = torch.optim.Adam(joint_model.parameters(), lr=1e-4)
+        joint_actor = DataParallelPPOActor(
+            config=self.config,
+            actor_module=joint_model,
+            actor_optimizer=joint_optimizer,
+        )
+
+        data = self._create_test_data_for_update_policy()
+        metrics = joint_actor.update_policy(data)
+
+        assert "jointTraining/model1_grad_norm" in metrics
+        assert "jointTraining/model2_grad_norm" in metrics
+        assert metrics["jointTraining/model1_grad_norm"][0] >= 0
+        assert metrics["jointTraining/model2_grad_norm"][0] >= 0
+        assert metrics["jointTraining/model2_grad_norm"][0] > metrics["jointTraining/model1_grad_norm"][0]
 
     def test_dynamic_batch_compute_log_prob_uses_dp_group(self):
         config = FSDPActorConfig(

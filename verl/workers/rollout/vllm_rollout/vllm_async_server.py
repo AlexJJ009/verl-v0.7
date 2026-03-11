@@ -219,6 +219,13 @@ class vLLMHttpServer:
         assert self._server_port is not None, "http server is not launched, port is None"
         return self._server_address, self._server_port
 
+    def _close_reserved_port_sockets(self):
+        for attr in ("_master_sock", "_dp_rpc_sock", "_dp_master_sock"):
+            sock = getattr(self, attr, None)
+            if sock is not None:
+                sock.close()
+                setattr(self, attr, None)
+
     async def collective_rpc(
         self,
         method: str | Callable,
@@ -461,7 +468,7 @@ class vLLMHttpServer:
 
         # 3. launch server
         if self.node_rank == 0:
-            self._master_sock.close()
+            self._close_reserved_port_sockets()
             await self.run_server(server_args)
         else:
             # TODO: avoid connect before master_sock close

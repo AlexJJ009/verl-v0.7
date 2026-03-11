@@ -71,6 +71,7 @@ TEST_STEP_LOG_PREFIXES = (
     "training/",
     "actor/",
     "critic/",
+    "jointTraining/",
     "response/",
     "response_length/",
     "response_length_non_aborted/",
@@ -115,6 +116,60 @@ def extract_test_step_metrics_for_logging(
         ordered_metrics[key] = scalar_metrics[key]
 
     return ordered_metrics
+
+
+def _normalize_validation_generation_value(value: Any) -> Any:
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, torch.Tensor) and value.ndim == 0:
+        return value.detach().cpu().item()
+    if isinstance(value, np.ndarray) and value.ndim == 0:
+        return value.item()
+    return value
+
+
+def build_validation_generation_samples(
+    *,
+    inputs: list[str],
+    outputs: list[str],
+    ground_truths: list[Any],
+    scores: list[Any],
+    data_sources: list[Any],
+    sample_uids: list[Any],
+    reward_extra_infos_dict: dict[str, list[Any]],
+) -> list[dict[str, Any]]:
+    sample_count = len(inputs)
+    extra_info_keys = sorted(key for key, values in reward_extra_infos_dict.items() if len(values) == sample_count)
+    samples = []
+    for sample_index in range(sample_count):
+        sample = {
+            "sample_index": sample_index,
+            "data_source": _normalize_validation_generation_value(data_sources[sample_index]),
+            "uid": _normalize_validation_generation_value(sample_uids[sample_index]),
+            "input": inputs[sample_index],
+            "output": outputs[sample_index],
+            "ground_truth": _normalize_validation_generation_value(ground_truths[sample_index]),
+            "score": _normalize_validation_generation_value(scores[sample_index]),
+        }
+        for key in extra_info_keys:
+            sample[key] = _normalize_validation_generation_value(reward_extra_infos_dict[key][sample_index])
+        samples.append(sample)
+    return samples
+
+
+def select_validation_generation_samples(
+    samples: list[dict[str, Any]], max_samples: int | None, seed: int = 42
+) -> list[dict[str, Any]]:
+    if max_samples == 0:
+        return []
+
+    selected_samples = sorted(samples, key=lambda sample: str(sample.get("input", "")))
+    if max_samples is None or max_samples < 0 or len(selected_samples) <= max_samples:
+        return selected_samples
+
+    rng = np.random.RandomState(seed)
+    rng.shuffle(selected_samples)
+    return selected_samples[:max_samples]
 
 
 def apply_kl_penalty(data: DataProto, kl_ctrl: core_algos.AdaptiveKLController, kl_penalty="kl"):
@@ -534,29 +589,60 @@ class RayPPOTrainer:
                 dump_path=rollout_data_dir,
             )
 
-    def _maybe_log_val_generations(self, inputs, outputs, scores):
-        """Log a table of validation samples to the configured logger (wandb or swanlab)"""
-
-        generations_to_log = self.config.trainer.log_val_generations
-
-        if generations_to_log == 0:
+    def _print_val_generations(self, samples: list[dict[str, Any]], total_samples: int):
+        if not samples:
             return
 
-        import numpy as np
+        print(
+            f"Validation generations at step {self.global_steps} "
+            f"(showing {len(samples)}/{total_samples} samples):",
+            flush=True,
+        )
+        preferred_key_order = [
+            "data_source",
+            "uid",
+            "score",
+            "acc",
+            "answer_correct",
+            "has_eos",
+            "pred",
+            "verification_method",
+            "ground_truth",
+            "input",
+            "output",
+        ]
+        hidden_keys = {"sample_index"}
 
-        # Create tuples of (input, output, score) and sort by input text
-        samples = list(zip(inputs, outputs, scores, strict=True))
-        samples.sort(key=lambda x: x[0])  # Sort by input text
+        for sample in samples:
+            sample_id = sample.get("sample_index", 0)
+            print(f"[validation sample {sample_id}]", flush=True)
+            present_keys = [key for key in preferred_key_order if key in sample and key not in hidden_keys]
+            present_keys.extend(
+                sorted(key for key in sample.keys() if key not in hidden_keys and key not in set(preferred_key_order))
+            )
+            for key in present_keys:
+                print(f"{key}:", flush=True)
+                print(sample[key], flush=True)
+            print("", flush=True)
 
-        # Use fixed random seed for deterministic shuffling
-        rng = np.random.RandomState(42)
-        rng.shuffle(samples)
+    def _maybe_log_val_generations(self, samples: list[dict[str, Any]]):
+        """Log validation samples to stdout and tracking backends."""
 
-        # Take first N samples after shuffling
-        samples = samples[:generations_to_log]
+        generations_to_log = self.config.trainer.log_val_generations
+        tracking_limit = self.config.trainer.get("log_val_generations_to_tracking", generations_to_log)
 
-        # Log to each configured logger
-        self.validation_generations_logger.log(self.config.trainer.logger, samples, self.global_steps)
+        if generations_to_log == 0 and tracking_limit == 0:
+            return
+
+        total_samples = len(samples)
+
+        if generations_to_log != 0:
+            console_samples = select_validation_generation_samples(samples, generations_to_log)
+            self._print_val_generations(console_samples, total_samples=total_samples)
+
+        if tracking_limit != 0:
+            tracking_samples = select_validation_generation_samples(samples, tracking_limit)
+            self.validation_generations_logger.log(self.config.trainer.logger, tracking_samples, self.global_steps)
 
     def _get_gen_batch(self, batch: DataProto) -> DataProto:
         reward_keys = set({"data_source", "reward_model", "extra_info", "uid"}) & batch.non_tensor_batch.keys()
@@ -605,6 +691,7 @@ class RayPPOTrainer:
         sample_scores = []
         sample_turns = []
         sample_uids = []
+        sample_data_sources = []
 
         total_val_batches = len(self.val_dataloader)
         for batch_idx, test_data in enumerate(self.val_dataloader, start=1):
@@ -683,6 +770,7 @@ class RayPPOTrainer:
             input_texts = [self.tokenizer.decode(ids, skip_special_tokens=True) for ids in input_ids]
             sample_inputs.extend(input_texts)
             sample_uids.extend(test_batch.non_tensor_batch["uid"])
+            sample_data_sources.extend(test_batch.non_tensor_batch.get("data_source", ["unknown"] * len(test_batch)))
 
             # evaluate using reward_function
             reward_tensor, reward_extra_info = extract_reward(test_batch)
@@ -705,7 +793,16 @@ class RayPPOTrainer:
 
             data_source_lst.append(test_batch.non_tensor_batch.get("data_source", ["unknown"] * reward_tensor.shape[0]))
 
-        self._maybe_log_val_generations(inputs=sample_inputs, outputs=sample_outputs, scores=sample_scores)
+        validation_generation_samples = build_validation_generation_samples(
+            inputs=sample_inputs,
+            outputs=sample_outputs,
+            ground_truths=sample_gts,
+            scores=sample_scores,
+            data_sources=sample_data_sources,
+            sample_uids=sample_uids,
+            reward_extra_infos_dict=reward_extra_infos_dict,
+        )
+        self._maybe_log_val_generations(samples=validation_generation_samples)
 
         # dump generations
         val_data_dir = self.config.trainer.get("validation_data_dir", None)

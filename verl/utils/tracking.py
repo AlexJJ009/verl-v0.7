@@ -348,8 +348,20 @@ def _flatten_dict(raw: dict[str, Any], *, sep: str) -> dict[str, Any]:
 class ValidationGenerationsLogger:
     project_name: str = None
     experiment_name: str = None
+    _base_columns = (
+        "step",
+        "sample_index",
+        "data_source",
+        "uid",
+        "input",
+        "output",
+        "ground_truth",
+        "score",
+    )
 
     def log(self, loggers, samples, step):
+        if not samples:
+            return
         if "wandb" in loggers:
             self.log_generations_to_wandb(samples, step)
         if "swanlab" in loggers:
@@ -375,45 +387,53 @@ class ValidationGenerationsLogger:
 
         self._log_generations_to_wandb(samples, step, wandb)
 
+    def _normalize_samples(self, samples):
+        normalized = []
+        for sample_index, sample in enumerate(samples):
+            if isinstance(sample, dict):
+                sample_dict = dict(sample)
+            else:
+                input_text, output_text, score = sample[:3]
+                sample_dict = {
+                    "input": input_text,
+                    "output": output_text,
+                    "score": score,
+                }
+            sample_dict.setdefault("sample_index", sample_index)
+            normalized.append(sample_dict)
+        return normalized
+
+    def _tabularize_samples(self, samples, step):
+        normalized_samples = self._normalize_samples(samples)
+        extra_columns = sorted(
+            {
+                key
+                for sample in normalized_samples
+                for key in sample.keys()
+                if key not in self._base_columns
+            }
+        )
+        columns = [*self._base_columns, *extra_columns]
+        row_data = []
+        for sample in normalized_samples:
+            row = {"step": step, **sample}
+            row_data.append([row.get(column) for column in columns])
+        return columns, row_data
+
     def _log_generations_to_wandb(self, samples, step, wandb):
         """Log samples to wandb as a table"""
+        columns, row_data = self._tabularize_samples(samples, step)
+        table = wandb.Table(columns=columns, data=row_data)
 
-        # Create column names for all samples
-        columns = ["step"] + sum(
-            [[f"input_{i + 1}", f"output_{i + 1}", f"score_{i + 1}"] for i in range(len(samples))], []
-        )
-
-        if not hasattr(self, "validation_table"):
-            # Initialize the table on first call
-            self.validation_table = wandb.Table(columns=columns)
-
-        # Create a new table with same columns and existing data
-        # Workaround for https://github.com/wandb/wandb/issues/2981#issuecomment-1997445737
-        new_table = wandb.Table(columns=columns, data=self.validation_table.data)
-
-        # Add new row with all data
-        row_data = []
-        row_data.append(step)
-        for sample in samples:
-            row_data.extend(sample)
-
-        new_table.add_data(*row_data)
-
-        # Update reference and log
         if wandb.run is not None:
-            wandb.log({"val/generations": new_table}, step=step)
-        self.validation_table = new_table
+            wandb.log({"val/generations": table}, step=step)
 
     def log_generations_to_swanlab(self, samples, step):
         """Log samples to swanlab as text"""
         import swanlab
 
         swanlab_table = swanlab.echarts.Table()
-
-        # Create column names
-        headers = ["step", "input", "output", "score"]
-
-        swanlab_row_list = [[step, *sample] for sample in samples]
+        headers, swanlab_row_list = self._tabularize_samples(samples, step)
         swanlab_table.add(headers=headers, rows=swanlab_row_list)
 
         # Log to swanlab
@@ -430,10 +450,8 @@ class ValidationGenerationsLogger:
         try:
             with tempfile.TemporaryDirectory() as tmp_dir:
                 validation_gen_step_file = Path(tmp_dir, f"val_step{step}.json")
-                row_data = []
-                for sample in samples:
-                    data = {"input": sample[0], "output": sample[1], "score": sample[2]}
-                    row_data.append(data)
+                columns, rows = self._tabularize_samples(samples, step)
+                row_data = [dict(zip(columns, row, strict=True)) for row in rows]
                 with open(validation_gen_step_file, "w") as file:
                     json.dump(row_data, file)
                 mlflow.log_artifact(validation_gen_step_file)
@@ -450,15 +468,8 @@ class ValidationGenerationsLogger:
         if task is None:
             return
 
-        table = [
-            {
-                "step": step,
-                "input": sample[0],
-                "output": sample[1],
-                "score": sample[2],
-            }
-            for sample in samples
-        ]
+        columns, rows = self._tabularize_samples(samples, step)
+        table = [dict(zip(columns, row, strict=True)) for row in rows]
 
         logger = task.get_logger()
         logger.report_table(
@@ -487,20 +498,13 @@ class ValidationGenerationsLogger:
         # Format the samples data into readable text
         text_content = f"**Generation Results - Step {step}**\n\n"
 
-        for i, sample in enumerate(samples):
-            text_content += f"### Sample {i + 1}\n"
-
-            # Assuming sample contains [input, output, score]
-            if len(sample) >= 3:
-                input_text, output_text, score = sample[0], sample[1], sample[2]
-
-                text_content += f"**Input:** {input_text}\n\n"
-                text_content += f"**Output:** {output_text}\n\n"
-                text_content += f"**Score:** {score}\n\n"
-            else:
-                # Handle cases where sample format might be different
-                text_content += f"**Data:** {sample}\n\n"
-
+        for sample in self._normalize_samples(samples):
+            sample_index = sample.get("sample_index", 0) + 1
+            text_content += f"### Sample {sample_index}\n"
+            for key, value in sample.items():
+                if key == "sample_index":
+                    continue
+                text_content += f"**{key}:** {value}\n\n"
             text_content += "---\n\n"
 
         # Log to tensorboard as text

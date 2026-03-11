@@ -1,0 +1,131 @@
+from omegaconf import OmegaConf
+
+from verl.trainer.ppo.ray_trainer import (
+    RayPPOTrainer,
+    build_validation_generation_samples,
+)
+from verl.utils.tracking import ValidationGenerationsLogger
+
+
+def test_build_validation_generation_samples_keeps_reward_metadata():
+    samples = build_validation_generation_samples(
+        inputs=["prompt-1", "prompt-2"],
+        outputs=["response-1", "response-2"],
+        ground_truths=["42", "43"],
+        scores=[-1.0, 1.0],
+        data_sources=["gsm8k", "gsm8k"],
+        sample_uids=["uid-1", "uid-2"],
+        reward_extra_infos_dict={
+            "acc": [0.0, 1.0],
+            "pred": ["[NO_BOXED]", "43"],
+            "verification_method": ["no_answer", "string_match"],
+            "has_eos": [True, True],
+        },
+    )
+
+    assert len(samples) == 2
+    assert samples[0]["sample_index"] == 0
+    assert samples[0]["ground_truth"] == "42"
+    assert samples[0]["pred"] == "[NO_BOXED]"
+    assert samples[1]["verification_method"] == "string_match"
+
+
+def test_validation_generations_logger_uses_row_per_sample_table_shape():
+    logger = ValidationGenerationsLogger()
+    columns, rows = logger._tabularize_samples(
+        [
+            {
+                "sample_index": 3,
+                "data_source": "gsm8k",
+                "uid": "uid-1",
+                "input": "prompt",
+                "output": "response",
+                "ground_truth": "42",
+                "score": -1.0,
+                "verification_method": "no_answer",
+            },
+            {
+                "sample_index": 4,
+                "data_source": "gsm8k",
+                "uid": "uid-2",
+                "input": "prompt-2",
+                "output": "response-2",
+                "ground_truth": "7",
+                "score": 1.0,
+                "verification_method": "string_match",
+            },
+        ],
+        step=12,
+    )
+
+    assert columns[:8] == [
+        "step",
+        "sample_index",
+        "data_source",
+        "uid",
+        "input",
+        "output",
+        "ground_truth",
+        "score",
+    ]
+    assert "verification_method" in columns
+    assert len(rows) == 2
+    assert rows[0][columns.index("step")] == 12
+    assert rows[0][columns.index("sample_index")] == 3
+    assert rows[1][columns.index("score")] == 1.0
+
+
+def test_maybe_log_val_generations_prints_subset_and_logs_full_tracking(capsys):
+    trainer = RayPPOTrainer.__new__(RayPPOTrainer)
+    trainer.global_steps = 7
+    logged = {}
+
+    class _StubValidationLogger:
+        def log(self, loggers, samples, step):
+            logged["loggers"] = loggers
+            logged["samples"] = samples
+            logged["step"] = step
+
+    trainer.validation_generations_logger = _StubValidationLogger()
+    trainer.config = OmegaConf.create(
+        {
+            "trainer": {
+                "log_val_generations": 1,
+                "log_val_generations_to_tracking": -1,
+                "logger": ["wandb", "file"],
+            }
+        }
+    )
+
+    trainer._maybe_log_val_generations(
+        [
+            {
+                "sample_index": 0,
+                "data_source": "gsm8k",
+                "uid": "uid-1",
+                "input": "prompt-1",
+                "output": "response-1",
+                "ground_truth": "42",
+                "score": -1.0,
+                "verification_method": "no_answer",
+            },
+            {
+                "sample_index": 1,
+                "data_source": "gsm8k",
+                "uid": "uid-2",
+                "input": "prompt-2",
+                "output": "response-2",
+                "ground_truth": "43",
+                "score": 1.0,
+                "verification_method": "string_match",
+            },
+        ]
+    )
+
+    out = capsys.readouterr().out
+    assert "Validation generations at step 7" in out
+    assert out.count("[validation sample") == 1
+    assert "verification_method:" in out
+    assert logged["loggers"] == ["wandb", "file"]
+    assert len(logged["samples"]) == 2
+    assert logged["step"] == 7

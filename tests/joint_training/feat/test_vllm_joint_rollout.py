@@ -263,6 +263,36 @@ def test_vllm_async_server_legacy_async_llm_without_reset_mm_cache(monkeypatch):
     assert server._server_task == "server-task"
 
 
+def test_vllm_async_server_closes_reserved_port_sockets():
+    pytest.importorskip("vllm")
+
+    from verl.workers.rollout.vllm_rollout.vllm_async_server import vLLMHttpServer
+
+    class _FakeSock:
+        def __init__(self):
+            self.close_calls = 0
+
+        def close(self):
+            self.close_calls += 1
+
+    server = vLLMHttpServer.__new__(vLLMHttpServer)
+    master_sock = _FakeSock()
+    dp_rpc_sock = _FakeSock()
+    dp_master_sock = _FakeSock()
+    server._master_sock = master_sock
+    server._dp_rpc_sock = dp_rpc_sock
+    server._dp_master_sock = dp_master_sock
+
+    server._close_reserved_port_sockets()
+
+    assert master_sock.close_calls == 1
+    assert dp_rpc_sock.close_calls == 1
+    assert dp_master_sock.close_calls == 1
+    assert server._master_sock is None
+    assert server._dp_rpc_sock is None
+    assert server._dp_master_sock is None
+
+
 def test_vllm_async_server_legacy_async_llm_without_wait_for_requests_to_drain():
     pytest.importorskip("vllm")
 

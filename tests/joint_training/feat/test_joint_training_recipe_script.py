@@ -17,6 +17,10 @@ def test_joint_training_recipe_uses_vllm_rollout_and_no_sync_mode():
     assert "export VERL_ZMQ_IPC_DIR=${VERL_ZMQ_IPC_DIR:-$TMPDIR}" in script
     assert 'mkdir -p "$RAY_TMPDIR" "$TMPDIR" "$VLLM_CONFIG_ROOT" "$VERL_ZMQ_IPC_DIR"' in script
     assert 'export VERL_FILE_LOGGER_ROOT=${VERL_FILE_LOGGER_ROOT:-"${LOG_DIR}/metrics"}' in script
+    assert 'VAL_GENERATIONS_TO_LOG=${VAL_GENERATIONS_TO_LOG:-3}' in script
+    assert 'VAL_GENERATIONS_TO_TRACKING=${VAL_GENERATIONS_TO_TRACKING:--1}' in script
+    assert 'VALIDATION_DATA_DIR=${VALIDATION_DATA_DIR:-"${LOG_DIR}/validation/${WANDB_RUN_NAME}"}' in script
+    assert 'mkdir -p "$VALIDATION_DATA_DIR"' in script
     assert "MIN_FREE_GB_FOR_CKPT=${MIN_FREE_GB_FOR_CKPT:-30}" in script
     assert 'DEFAULT_CKPT_BASE_DIR_FALLBACK="/data-2/checkpoints/JointTraining/GRPO"' not in script
     assert "MAX_ACTOR_CKPTS_TO_KEEP=${MAX_ACTOR_CKPTS_TO_KEEP:-2}" in script
@@ -59,6 +63,10 @@ def test_joint_training_recipe_uses_vllm_rollout_and_no_sync_mode():
     assert "actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=${LOG_PROB_MAX_TOKEN_LEN_PER_GPU}" in script
     assert "actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=${LOG_PROB_MICRO_BATCH_SIZE}" in script
     assert "+actor_rollout_ref.rollout.micro_batch_size=${GENERATION_MICRO_BATCH_SIZE}" in script
+    assert "enable_overlong_buffer=false" in script
     assert "trainer.max_actor_ckpt_to_keep=${MAX_ACTOR_CKPTS_TO_KEEP}" in script
     assert "trainer.max_critic_ckpt_to_keep=${MAX_CRITIC_CKPTS_TO_KEEP}" in script
+    assert "trainer.log_val_generations=${VAL_GENERATIONS_TO_LOG}" in script
+    assert "+trainer.log_val_generations_to_tracking=${VAL_GENERATIONS_TO_TRACKING}" in script
+    assert 'trainer.validation_data_dir="${VALIDATION_DATA_DIR}"' in script
     assert 'trainer.logger=\'["wandb","file"]\'' in script
