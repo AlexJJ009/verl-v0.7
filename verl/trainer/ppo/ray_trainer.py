@@ -787,6 +787,15 @@ class RayPPOTrainer:
                 else:
                     reward_extra_infos_dict[key].extend(values if isinstance(values, list) else [values])
 
+            # Collect response texts and ground truths for joint-training metrics
+            if getattr(self, "_is_joint_training", False):
+                if "response_text" not in reward_extra_infos_dict:
+                    reward_extra_infos_dict["response_text"] = []
+                reward_extra_infos_dict["response_text"].extend(output_texts)
+                if "ground_truth" not in reward_extra_infos_dict:
+                    reward_extra_infos_dict["ground_truth"] = []
+                reward_extra_infos_dict["ground_truth"].extend(ground_truths)
+
             # collect num_turns of each prompt
             if "__num_turns__" in test_batch.non_tensor_batch:
                 sample_turns.append(test_batch.non_tensor_batch["__num_turns__"])
@@ -864,7 +873,56 @@ class RayPPOTrainer:
             metric_dict["val-aux/num_turns/max"] = sample_turns.max()
             metric_dict["val-aux/num_turns/mean"] = sample_turns.mean()
 
+        # Joint-training-specific reward metadata aggregation
+        if getattr(self, "_is_joint_training", False):
+            metric_dict.update(
+                self._compute_joint_validation_metrics(reward_extra_infos_dict)
+            )
+
         return metric_dict
+
+    def _compute_joint_validation_metrics(self, reward_extra_infos_dict: dict) -> dict:
+        """Aggregate joint-training-specific metrics from reward metadata."""
+        metrics = {}
+        preds = reward_extra_infos_dict.get("pred", [])
+        verification_methods = reward_extra_infos_dict.get("verification_method", [])
+        answer_corrects = reward_extra_infos_dict.get("answer_correct", [])
+        ground_truths = reward_extra_infos_dict.get("ground_truth", [])
+        response_texts = reward_extra_infos_dict.get("response_text", [])
+
+        n = len(preds)
+        if n > 0:
+            # Answer extraction failure rate
+            no_boxed_count = sum(1 for p in preds if p == "[NO_BOXED]")
+            metrics["jointTraining/answer_extraction_failure_rate"] = no_boxed_count / n
+
+        # Verification method distribution
+        if verification_methods:
+            from collections import Counter
+            method_counts = Counter(verification_methods)
+            total = len(verification_methods)
+            for method, count in method_counts.items():
+                metrics[f"jointTraining/verification_method/{method}"] = count / total
+
+        # Verifier pred/gt disagreement: pred matches gt text but answer_correct is False
+        if preds and ground_truths and answer_corrects:
+            disagreement_count = 0
+            for pred, gt, correct in zip(preds, ground_truths, answer_corrects):
+                if pred == gt and not correct and pred != "[NO_BOXED]":
+                    disagreement_count += 1
+            metrics["jointTraining/verifier_pred_gt_disagreement_count"] = disagreement_count
+
+        # Response unprintable/non-ASCII ratio
+        if response_texts:
+            import string
+            printable_set = set(string.printable)
+            unprintable_count = 0
+            for text in response_texts:
+                if any(c not in printable_set and ord(c) < 128 for c in text):
+                    unprintable_count += 1
+            metrics["jointTraining/response_unprintable_or_non_ascii_ratio"] = unprintable_count / len(response_texts)
+
+        return metrics
 
     def _merge_validation_results(self, result_a, result_b):
         if result_a is None and result_b is None:

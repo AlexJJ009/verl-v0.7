@@ -446,14 +446,38 @@ class DataParallelPPOActor(BasePPOActor):
 
         process_group = getattr(self.actor_module, "process_group", None)
         model1, model2 = joint_sub_models
+        norm1 = compute_global_grad_l2_norm(model1.parameters(), process_group=process_group)
+        norm2 = compute_global_grad_l2_norm(model2.parameters(), process_group=process_group)
+
+        # Ratio with safe division
+        ratio = norm1 / (norm2 + 1e-8)
+
+        # Cosine similarity between flattened gradients
+        cos_sim = self._compute_joint_grad_cosine_similarity(model1, model2)
+
         return {
-            "jointTraining/model1_grad_norm": compute_global_grad_l2_norm(
-                model1.parameters(), process_group=process_group
-            ),
-            "jointTraining/model2_grad_norm": compute_global_grad_l2_norm(
-                model2.parameters(), process_group=process_group
-            ),
+            "jointTraining/model1_grad_norm": norm1,
+            "jointTraining/model2_grad_norm": norm2,
+            "jointTraining/model_grad_norm_ratio": ratio,
+            "jointTraining/model_grad_cosine_similarity": cos_sim,
         }
+
+    @staticmethod
+    def _compute_joint_grad_cosine_similarity(model1: nn.Module, model2: nn.Module) -> float:
+        """Compute cosine similarity between flattened gradients of two sub-models."""
+        grads1 = [p.grad.detach().flatten() for p in model1.parameters() if p.grad is not None]
+        grads2 = [p.grad.detach().flatten() for p in model2.parameters() if p.grad is not None]
+        if not grads1 or not grads2:
+            return 0.0
+        flat1 = torch.cat(grads1).to(torch.float32)
+        flat2 = torch.cat(grads2).to(torch.float32)
+        if flat1.shape != flat2.shape:
+            return 0.0
+        dot = torch.dot(flat1, flat2)
+        norms = flat1.norm() * flat2.norm()
+        if norms.item() < 1e-12:
+            return 0.0
+        return (dot / norms).item()
 
     @GPUMemoryLogger(role="dp actor", logger=logger)
     def compute_log_prob(self, data: DataProto, calculate_entropy: bool = False) -> dict[str, torch.Tensor]:
@@ -634,6 +658,12 @@ class DataParallelPPOActor(BasePPOActor):
                     )
                     log_prob = outputs["log_probs"]
                     entropy = outputs["entropys"] if calculate_entropy else None
+
+                    # Surface logit disagreement from joint model if available
+                    unwrapped = getattr(self.actor_module, "_fsdp_wrapped_module", self.actor_module)
+                    logit_disagreement = getattr(unwrapped, "last_logit_disagreement", None)
+                    if logit_disagreement is not None:
+                        micro_batch_metrics["jointTraining/submodel_logit_disagreement"] = logit_disagreement
 
                     # for fully_async_policy
                     if hasattr(self.config, "use_rollout_log_probs") and self.config.use_rollout_log_probs:

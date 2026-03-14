@@ -33,6 +33,7 @@ class QwenJointForCausalLM(PreTrainedModel, GenerationMixin):
             [Qwen3ForCausalLM(config) for _ in range(config.num_sub_models)]
         )
         self.fusion_lambda = config.fusion_lambda
+        self.last_logit_disagreement: float | None = None
 
         if config.freeze_model1:
             for param in self.sub_models[0].parameters():
@@ -96,6 +97,12 @@ class QwenJointForCausalLM(PreTrainedModel, GenerationMixin):
             # Avoid materializing multiple full-vocab temporaries at once.
             logits = outputs_list[0].logits.mul(1 - lam)
             logits.add_(outputs_list[1].logits, alpha=lam)
+
+        # Compute submodel logit disagreement (mean absolute diff of softmax probs)
+        with torch.no_grad():
+            p0 = torch.softmax(outputs_list[0].logits.float(), dim=-1)
+            p1 = torch.softmax(outputs_list[1].logits.float(), dim=-1)
+            self.last_logit_disagreement = (p0 - p1).abs().mean().item()
 
         loss = None
         if labels is not None:

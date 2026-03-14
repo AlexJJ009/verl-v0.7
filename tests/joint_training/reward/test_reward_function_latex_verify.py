@@ -205,6 +205,51 @@ class TestComputeScoreLatexVerify:
             "latex_semantic", "verl_math_verify", "string_match", "no_answer"
         }
 
+    def test_verification_order_uses_semantic_before_fallbacks(self, monkeypatch):
+        monkeypatch.setattr(
+            "custom_reward_function_latex_verify.verify_with_latex",
+            lambda solution_str, ground_truth: True,
+        )
+
+        def _unexpected_fallback(*args, **kwargs):
+            raise AssertionError("fallback should not run when latex semantic verification succeeds")
+
+        monkeypatch.setattr("custom_reward_function_latex_verify.verl_math_verify.compute_score", _unexpected_fallback)
+
+        result = compute_score_latex_verify(
+            data_source="gsm8k",
+            solution_str="anything",
+            ground_truth="42",
+        )
+
+        assert result["score"] == 1.0
+        assert result["acc"] is True
+        assert result["verification_method"] == "latex_semantic"
+
+    def test_verification_order_falls_back_to_string_match_after_semantic_paths_fail(self, monkeypatch):
+        monkeypatch.setattr(
+            "custom_reward_function_latex_verify.verify_with_latex",
+            lambda solution_str, ground_truth: None,
+        )
+
+        def _raise_verl_math_verify(*args, **kwargs):
+            raise RuntimeError("force string match fallback")
+
+        monkeypatch.setattr(
+            "custom_reward_function_latex_verify.verl_math_verify.compute_score",
+            _raise_verl_math_verify,
+        )
+
+        result = compute_score_latex_verify(
+            data_source="gsm8k",
+            solution_str="The answer is \\boxed{42}.",
+            ground_truth="42",
+        )
+
+        assert result["score"] == 1.0
+        assert result["acc"] is True
+        assert result["verification_method"] == "string_match"
+
     def test_string_match_fallback(self):
         """When the answer is a plain string that math_verify can't parse,
         the function should fall back to string matching."""
