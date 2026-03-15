@@ -1779,6 +1779,68 @@ def compute_policy_loss_cispo(
     return pg_loss, pg_metrics
 
 
+@register_policy_loss("minirl")
+def compute_policy_loss_minirl(
+    old_log_prob: torch.Tensor,
+    log_prob: torch.Tensor,
+    advantages: torch.Tensor,
+    response_mask: torch.Tensor,
+    loss_agg_mode: str = "seq-mean-token-sum",
+    config: Optional[DictConfig | ActorConfig] = None,
+    rollout_is_weights: torch.Tensor | None = None,
+) -> tuple[torch.Tensor, dict[str, Any]]:
+    """
+    Compute policy loss using the MiniRL algorithm (Qwen Team, COLM 2024).
+
+    Key differences from CISPO:
+    - Binary clip mask (0/1) instead of clipped ratio as weight
+    - No ratio multiplication in loss (IS correction comes from external rollout_is_weights)
+    - Advantages are detached (REINFORCE-style, gradients only through log_prob)
+    - Default aggregation is seq-mean-token-sum (no per-token length normalization)
+    """
+    assert config is not None
+    assert isinstance(config, ActorConfig)
+    clip_ratio_low = config.clip_ratio_low if config.clip_ratio_low is not None else config.clip_ratio
+    clip_ratio_high = config.clip_ratio_high if config.clip_ratio_high is not None else config.clip_ratio
+
+    # 1. Policy staleness ratio (for clipping decision only)
+    negative_approx_kl = log_prob - old_log_prob
+    negative_approx_kl = torch.clamp(negative_approx_kl, min=-20.0, max=20.0)
+    ratio = torch.exp(negative_approx_kl)
+    ppo_kl = verl_F.masked_mean(-negative_approx_kl, response_mask)
+
+    # 2. Binary clip mask (MiniRL core: replaces PPO min-clip)
+    mask = torch.ones_like(ratio)
+    mask[(advantages > 0) & (ratio > 1 + clip_ratio_high)] = 0
+    mask[(advantages < 0) & (ratio < 1 - clip_ratio_low)] = 0
+    mask = mask.detach()
+
+    # 3. MiniRL loss: -mask * advantage * log_prob
+    #    Gradients flow only through log_prob
+    pg_losses = -mask * advantages.detach() * log_prob
+
+    # 4. Apply rollout IS weights (train-inference correction from rollout_corr system)
+    if rollout_is_weights is not None:
+        pg_losses = pg_losses * rollout_is_weights.detach()
+
+    # 5. Aggregate
+    pg_loss = agg_loss(
+        loss_mat=pg_losses, loss_mask=response_mask, loss_agg_mode=loss_agg_mode, **config.global_batch_info
+    )
+
+    # 6. Metrics
+    mask_fraction = verl_F.masked_mean((mask == 0).float(), response_mask)
+    pg_clipfrac = mask_fraction  # reuse field name for compatibility
+    pg_clipfrac_lower = torch.tensor(0.0, device=pg_loss.device)
+
+    pg_metrics = {
+        "actor/pg_clipfrac": pg_clipfrac.detach().item(),
+        "actor/ppo_kl": ppo_kl.detach().item(),
+        "actor/pg_clipfrac_lower": pg_clipfrac_lower.detach().item(),
+    }
+    return pg_loss, pg_metrics
+
+
 def compute_entropy_loss(logits, response_mask, loss_agg_mode: str = "token-mean"):
     """Compute categorical entropy loss (For backward compatibility)
 

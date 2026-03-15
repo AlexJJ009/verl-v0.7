@@ -33,6 +33,16 @@
 
 ---
 
+## 已知问题
+
+### 零 Advantage 批次（2026-03-15 发现）
+
+在 4B MATH 训练中，15% 的训练步出现 advantage 全为零、梯度全为零的现象。根因是 GRPO + 二值奖励 + `rollout_n=4` 下，prompt 组内 4 条响应容易全对或全错，导致组内方差为零。
+
+详见：[`zero_advantage_batch.md`](zero_advantage_batch.md)
+
+---
+
 ## 待完成工作
 
 ### P1：指标体系（优先级最高）
@@ -128,6 +138,18 @@
 ---
 
 ## 执行记录
+
+### 2026-03-15：MiniRL 损失函数实现 + MATH 训练脚本
+
+**变更**：
+1. `verl/trainer/ppo/core_algos.py` — 新增 `@register_policy_loss("minirl")`，基于 CISPO 修改，使用二值裁剪掩码（替代 PPO min-clip）、REINFORCE 风格梯度（仅通过 log_prob 流动）、默认 `seq-mean-token-sum` 聚合。
+2. `tests/joint_training/test_minirl_loss.py` — 10 个测试用例，覆盖正/负优势、裁剪掩码、零优势、IS 权重、聚合正确性、梯度流验证，全部通过。
+3. `recipe/joint_training/run_joint_minirl_qwen3_1.7b_math.sh` — 1.7B MiniRL + MATH 训练脚本，配置 Dr.GRPO 优势估计、token 级 IS 修正、MATH-500 + AIME-2025 双验证集、`fusion_lambda=0.55`。
+4. 25 个回归测试通过（rollout correction + policy loss）。
+
+**详细计划**：`docs/joint_training/plans/completed/minirl_migration.md`
+
+---
 
 ### 2026-03-15：submodel_logit_disagreement OOM 修复
 
