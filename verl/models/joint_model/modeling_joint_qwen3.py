@@ -99,10 +99,22 @@ class QwenJointForCausalLM(PreTrainedModel, GenerationMixin):
             logits.add_(outputs_list[1].logits, alpha=lam)
 
         # Compute submodel logit disagreement (mean absolute diff of softmax probs)
+        # Chunked along token dim to avoid OOM on large vocab (151k) models.
+        # Softmax is per-token along vocab dim, so chunking is mathematically exact.
         with torch.no_grad():
-            p0 = torch.softmax(outputs_list[0].logits.float(), dim=-1)
-            p1 = torch.softmax(outputs_list[1].logits.float(), dim=-1)
-            self.last_logit_disagreement = (p0 - p1).abs().mean().item()
+            logits0 = outputs_list[0].logits
+            logits1 = outputs_list[1].logits
+            orig_shape = logits0.shape  # (bs, seq, vocab)
+            flat0 = logits0.reshape(-1, orig_shape[-1])
+            flat1 = logits1.reshape(-1, orig_shape[-1])
+            n_tokens = flat0.shape[0]
+            _CHUNK = 256  # peak ≈ 256 * 151936 * 4 * 3 ≈ 440 MiB
+            total_diff = 0.0
+            for i in range(0, n_tokens, _CHUNK):
+                p0 = torch.softmax(flat0[i:i + _CHUNK].float(), dim=-1)
+                p1 = torch.softmax(flat1[i:i + _CHUNK].float(), dim=-1)
+                total_diff += (p0 - p1).abs().sum().item()
+            self.last_logit_disagreement = total_diff / (n_tokens * orig_shape[-1])
 
         loss = None
         if labels is not None:
