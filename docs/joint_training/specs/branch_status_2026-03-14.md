@@ -107,6 +107,15 @@ class QwenJointForCausalLM(PreTrainedModel, GenerationMixin):
         logits = outputs_list[0].logits.mul(1 - lam)
         logits.add_(outputs_list[1].logits, alpha=lam)
 
+        # 计算子模型 logit 分歧（分块 softmax，避免 151k 词表 OOM）
+        # 每块 256 tokens，峰值内存 ≈ 440 MiB
+        with torch.no_grad():
+            flat0 = logits0.reshape(-1, vocab)
+            flat1 = logits1.reshape(-1, vocab)
+            total_diff = sum((softmax(flat0[i:i+256]) - softmax(flat1[i:i+256])).abs().sum()
+                             for i in range(0, n_tokens, 256))
+            self.last_logit_disagreement = total_diff / (n_tokens * vocab)
+
         return CausalLMOutputWithPast(logits=logits, ...)
 ```
 

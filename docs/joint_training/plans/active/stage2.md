@@ -129,6 +129,12 @@
 
 ## 执行记录
 
+### 2026-03-15：submodel_logit_disagreement OOM 修复
+
+**变更**（`23f539a9`）：`modeling_joint_qwen3.py` 中子模型 logit 分歧的 softmax 计算从整个 `(bs, seq, 151936)` 张量一次性展开，改为按 256 token 分块循环计算。语义不变（均值绝对差），峰值内存从 `bs × seq × 151936 × 4 × 2 bytes` 降至约 440 MiB。影响的指标：`jointTraining/submodel_logit_disagreement`。
+
+---
+
 ### 2026-03-14：P1 指标体系 + P2 语义审计（已完成）
 
 **P1 已实现指标**（198 测试全部通过，真实训练验证指标正常输出）：
