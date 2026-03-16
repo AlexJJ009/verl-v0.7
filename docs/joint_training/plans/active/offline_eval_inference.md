@@ -1,6 +1,6 @@
 # 离线推理与评估脚本
 
-**状态**：计划中（2026-03-16 创建）
+**状态**：已完成（2026-03-16 创建，同日完成首次评估 EVAL-01）
 **目标**：构建一个独立的 vLLM 离线推理 + 评估脚本，能对 merge 后的 checkpoint 在 MATH-500 和 AIME-2025 上计算 Pass@3、Maj@3、mean@3 等指标，与训练中 validation 的指标体系对齐。
 
 ---
@@ -180,16 +180,24 @@ maj@3                                # 3 条多数投票
 python -m verl.model_merger merge \
     --backend fsdp \
     --local_dir /path/to/checkpoints/global_step_100/actor \
-    --target_dir /path/to/merged_model
+    --target_dir /data-1/model_weights/EXP-XX/step_100
 
-# 2. 离线推理 + 评估（使用 GPU 4-7，n=3 计算 pass@3）
-bash recipe/joint_training/run_offline_eval.sh \
-    --model_path /path/to/merged_model \
-    --gpu_ids 4,5,6,7 \
+# 2. 提取 sub-model（model2=可训练模型，model1=锚定模型）
+python recipe/joint_training/extract_sub_model.py \
+    --joint_model_path /data-1/model_weights/EXP-XX/step_100 \
+    --output_path /data-1/model_weights/EXP-XX/step_100_model2 \
+    --sub_model_index 1
+
+# 3. 离线推理 + 评估（使用 GPU 4-7，n=3 计算 pass@3）
+CUDA_VISIBLE_DEVICES=4,5,6,7 \
+VLLM_ATTENTION_BACKEND=FLASH_ATTN \
+VLLM_USE_V1=1 \
+LD_LIBRARY_PATH=/data-1/.cache/conda/envs/verl07/lib/python3.10/site-packages/torch/lib:/data-1/.cache/conda/envs/verl07/lib \
+python recipe/joint_training/offline_eval.py \
+    --model_path /data-1/model_weights/EXP-XX/step_100_model2 \
     --tensor_parallel 4 \
     --n 3 \
-    --temperature 1.0 \
-    --output_dir /path/to/eval_results
+    --output_dir /data-1/model_weights/EXP-XX/step_100_model2/inference
 ```
 
 ---
@@ -198,13 +206,13 @@ bash recipe/joint_training/run_offline_eval.sh \
 
 | 文件 | 类型 | 说明 |
 |---|---|---|
+| `recipe/joint_training/extract_sub_model.py` | 新建 | 从 joint model 提取单个 sub-model 为标准 Qwen3 格式 |
 | `recipe/joint_training/offline_eval.py` | 新建 | 核心推理+评估 Python 脚本 |
-| `recipe/joint_training/run_offline_eval.sh` | 新建 | Shell 入口，设置环境变量和参数 |
 
 **不需要修改的文件**：
 - `verl/model_merger/` — 直接使用现有 CLI
+- `verl/models/joint_model/weight_utils.py` — `extract_sub_model_weights()` 直接复用
 - `custom_reward_function_latex_verify.py` — 直接 import 复用
-- `metric_utils.py` — 复用 `comb_estimator`, `bootstrap_metric` 等函数
 
 ---
 
