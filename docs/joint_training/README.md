@@ -13,7 +13,8 @@ docs/joint_training/
 ├── constraints/               ← Development rules and boundaries
 │   ├── principles/               Core development principles
 │   ├── commit_rules/             Commit conventions and git workflow
-│   └── boundaries/               What to modify, what not to touch
+│   ├── boundaries/               What to modify, what not to touch
+│   └── experiment_tracking/      Experiment index maintenance spec
 ├── courses/                   ← Educational docs for human learners
 │   ├── stabilization_experience_notes.md
 │   └── verl_infra_deep_dive.md
@@ -48,3 +49,4 @@ docs/joint_training/
 - **Constraints** are enforced: they define what agents and humans must follow.
 - **Plans** are living documents: update progress as work proceeds, move to completed when done.
 - **Code reviews** track resolution: when an issue is fixed, append the resolution to the review document.
+- **Experiment tracking** lives in `recipe/joint_training/`: `EXPERIMENT_INDEX.md` (scripts, logs, checkpoints, weights) and `INFERENCE_RESULTS.md` (offline eval results). Maintenance rules are in `constraints/experiment_tracking/`.

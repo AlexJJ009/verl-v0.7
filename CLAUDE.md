@@ -59,6 +59,7 @@ All deep documentation lives in `docs/joint_training/`:
 | `courses/` | Educational docs (human-facing) | When learning the codebase |
 | `guides/` | Practical how-tos (testing, migration) | When running tests or setting up |
 | `references/` | External articles and media | For background context |
+| `constraints/experiment_tracking/` | Experiment index maintenance rules | Before registering or cleaning up experiments |
 
 ## Quick Links
 
@@ -67,3 +68,6 @@ All deep documentation lives in `docs/joint_training/`:
 - Commit rules: `docs/joint_training/constraints/commit_rules/commit_conventions.md`
 - Testing guide: `docs/joint_training/guides/testing.md`
 - Algorithm spec: `docs/joint_training/specs/joint_training_algorithm_v1.md`
+- Experiment index: `recipe/joint_training/EXPERIMENT_INDEX.md`
+- Inference results: `recipe/joint_training/INFERENCE_RESULTS.md`
+- Experiment tracking spec: `docs/joint_training/constraints/experiment_tracking/experiment_index_spec.md`
