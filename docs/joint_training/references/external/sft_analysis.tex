@@ -1,0 +1,491 @@
+\newpage
+\section{Supplementary Theory: Gradient Amplification under Logit Mixing}
+\label{sec:appendix_grad_amp}
+
+\paragraph{Notation.}
+Fix a context $x$ and a target token index $y$, and analyze a single joint-training step; we omit the conditioning on $x$ for readability.
+The weak and strong models $\mathcal{M}_{\mathrm{weak}}$ and $\mathcal{M}_{\mathrm{strong}}$ produce logits $z_{\mathrm{weak}}(x), z_{\mathrm{strong}}(x) \in \mathbb{R}^{|\mathcal{V}|}$, and the mixed logits are $z_{\text{mix}}(x) = (1-\lambda) z_{\mathrm{weak}}(x) + \lambda z_{\mathrm{strong}}(x)$ with $\lambda \in [0,1]$.
+For any logit map $z(x)$, define $P_z(\cdot\mid x)=\mathrm{Softmax}(z(x))$ and use the shorthand $P_z(k)$; let $e_y$ denote the one-hot target vector. We use a subscript $i \in \{\mathrm{weak}, \mathrm{strong}\}$ to index the two models when writing model-agnostic expressions.
+For any negative token $k \neq y$, the margin is $m_k(z(x)) = z(x)[y] - z(x)[k]$.
+
+\subsection{Setup and Baseline}
+We analyze joint training under logit mixing. The mixed logits are
+\begin{equation}
+    z_{\text{mix}} = (1-\lambda) z_{\mathrm{weak}} + \lambda z_{\mathrm{strong}}, \quad \lambda \in [0,1].
+    \label{eq:appendix_grad_mix}
+\end{equation}
+We distinguish the mixed-logit loss and the SFT loss on the strong model:
+\begin{equation}
+    \mathcal{L}_{\mathrm{mix}} = -\log P_{\mathrm{mix}}(y), \qquad
+    \mathcal{L}_{\mathrm{SFT}} = -\log P_{\mathrm{strong}}(y),
+    \label{eq:appendix_grad_ce}
+\end{equation}
+where $P_{\mathrm{mix}} = P_{z_{\text{mix}}}$ and $P_{\mathrm{strong}} = P_{z_{\mathrm{strong}}}$.
+The joint-training gradient with respect to fused logits is
+\begin{equation}
+    g_{\text{mix}} = \nabla_{z_{\text{mix}}}\mathcal{L}_{\mathrm{mix}} = P_{\mathrm{mix}}(\cdot) - e_y.
+    \label{eq:appendix_grad_residual}
+\end{equation}
+In standard SFT on the strong model alone, the corresponding gradient is
+\begin{equation}
+    g_{\text{sft}} = \nabla_{z_{\mathrm{strong}}}\mathcal{L}_{\mathrm{SFT}} = P_{\mathrm{strong}}(\cdot) - e_y.
+    \label{eq:appendix_grad_sft}
+\end{equation}
+For each model, gradients are scaled by the mixing coefficients:
+\begin{equation}
+    \nabla_{z_{\mathrm{weak}}}\mathcal{L}_{\mathrm{mix}} = (1-\lambda) g_{\text{mix}}, \quad
+    \nabla_{z_{\mathrm{strong}}}\mathcal{L}_{\mathrm{mix}} = \lambda g_{\text{mix}}.
+    \label{eq:appendix_grad_model}
+\end{equation}
+
+\subsection{Log-Odds and Margin Contraction}
+\begin{definition}[Target margin]
+For any negative token $k \neq y$, define the margin
+\begin{equation}
+    m_k(z) = z[y] - z[k].
+    \label{eq:appendix_margin_def}
+\end{equation}
+\end{definition}
+
+\begin{lemma}[Softmax log-odds]
+For any $k \neq y$, the log-odds under logits $z$ satisfy
+\begin{equation}
+    \log \frac{P_z(k)}{P_z(y)} = - m_k(z).
+    \label{eq:appendix_logodds}
+\end{equation}
+\end{lemma}
+\begin{proof}
+By definition, $P_z(k) / P_z(y) = \exp(z[k] - z[y]) = \exp(-m_k(z))$.
+\end{proof}
+
+\begin{lemma}[Margin mixing]
+For any $k \neq y$, the mixed margin equals the convex combination
+\begin{equation}
+    m_k(z_{\text{mix}}) = (1-\lambda) m_k(z_{\mathrm{weak}}) + \lambda m_k(z_{\mathrm{strong}}).
+    \label{eq:appendix_margin_mix}
+\end{equation}
+\end{lemma}
+\begin{proof}
+Using \eqref{eq:appendix_grad_mix} and \eqref{eq:appendix_margin_def}, we expand
+\begin{align}
+    m_k(z_{\text{mix}})
+    &= z_{\text{mix}}[y] - z_{\text{mix}}[k] \nonumber\\
+    &= \big[(1-\lambda) z_{\mathrm{weak}}[y] + \lambda z_{\mathrm{strong}}[y]\big]
+       - \big[(1-\lambda) z_{\mathrm{weak}}[k] + \lambda z_{\mathrm{strong}}[k]\big] \nonumber\\
+    &= (1-\lambda)(z_{\mathrm{weak}}[y] - z_{\mathrm{weak}}[k]) + \lambda (z_{\mathrm{strong}}[y] - z_{\mathrm{strong}}[k]) \nonumber\\
+    &= (1-\lambda) m_k(z_{\mathrm{weak}}) + \lambda m_k(z_{\mathrm{strong}}).
+    \label{eq:appendix_margin_mix_proof}\textbf{}
+\end{align}
+\end{proof}
+
+\subsection{Negative-Gradient Amplification}
+\begin{definition}[Hard-negative set]
+Define the hard-negative set
+\begin{equation}
+    \mathcal{H} = \{ k \neq y : m_k(z_{\mathrm{weak}}) < m_k(z_{\mathrm{strong}}) \},
+    \label{eq:appendix_hard_set}
+\end{equation}
+i.e., tokens for which the weak model has a smaller margin (more confusion).
+\end{definition}
+
+\begin{lemma}[Relative probability increase on hard negatives]
+For any $k \in \mathcal{H}$,
+\begin{equation}
+    \frac{P_{\mathrm{mix}}(k)}{P_{\mathrm{mix}}(y)}
+    >
+    \frac{P_{\mathrm{strong}}(k)}{P_{\mathrm{strong}}(y)}.
+    \label{eq:appendix_rel_prob_increase}
+\end{equation}
+\end{lemma}
+\begin{proof}
+By \eqref{eq:appendix_margin_mix}, $m_k(z_{\text{mix}}) < m_k(z_{\mathrm{strong}})$ for $k \in \mathcal{H}$.
+Applying \eqref{eq:appendix_logodds} yields a larger log-odds ratio for the mixed logits.
+\end{proof}
+
+\begin{corollary}[Sufficient condition for per-token amplification]
+For any $k \in \mathcal{H}$, the negative-token gradient on fused logits satisfies
+\begin{equation}
+    P_{\mathrm{mix}}(k)
+    \ge P_{\mathrm{strong}}(k)
+    \quad \text{whenever} \quad
+    \frac{P_{\mathrm{mix}}(y)}{P_{\mathrm{strong}}(y)}
+    \ge \exp\!\left(-(1-\lambda)\Delta m_k\right),
+    \label{eq:appendix_amp_condition}
+\end{equation}
+where $\Delta m_k = m_k(z_{\mathrm{strong}}) - m_k(z_{\mathrm{weak}}) > 0$.
+\end{corollary}
+\begin{proof}
+We begin by expressing probabilities via log-odds (Lemma~\eqref{eq:appendix_logodds}):
+\begin{align}
+    \frac{P_{\mathrm{mix}}(k)}{P_{\mathrm{strong}}(k)}
+    &= \frac{P_{\mathrm{mix}}(y) \exp(-m_k(z_{\text{mix}}))}{P_{\mathrm{strong}}(y) \exp(-m_k(z_{\mathrm{strong}}))} \nonumber\\
+    &= \frac{P_{\mathrm{mix}}(y)}{P_{\mathrm{strong}}(y)}\,
+       \exp\!\left(m_k(z_{\mathrm{strong}}) - m_k(z_{\text{mix}})\right).
+    \label{eq:appendix_ratio_step1}
+\end{align}
+Using the margin mixing identity (Lemma~\eqref{eq:appendix_margin_mix}),
+\begin{align}
+    m_k(z_{\mathrm{strong}}) - m_k(z_{\text{mix}})
+    &= m_k(z_{\mathrm{strong}}) - \big[(1-\lambda)m_k(z_{\mathrm{weak}}) + \lambda m_k(z_{\mathrm{strong}})\big] \nonumber\\
+    &= (1-\lambda)\big(m_k(z_{\mathrm{strong}}) - m_k(z_{\mathrm{weak}})\big) \nonumber\\
+    &= (1-\lambda)\Delta m_k.
+    \label{eq:appendix_ratio_step2}
+\end{align}
+Substituting \eqref{eq:appendix_ratio_step2} into \eqref{eq:appendix_ratio_step1} yields
+\begin{equation}
+    \frac{P_{\mathrm{mix}}(k)}{P_{\mathrm{strong}}(k)}
+    =
+    \frac{P_{\mathrm{mix}}(y)}{P_{\mathrm{strong}}(y)}
+    \exp\!\left((1-\lambda)\Delta m_k\right).
+    \label{eq:appendix_ratio_expand}
+\end{equation}
+We now solve for the condition under which $P_{\mathrm{mix}}(k) \ge P_{\mathrm{strong}}(k)$:
+\begin{align}
+    \frac{P_{\mathrm{mix}}(k)}{P_{\mathrm{strong}}(k)} \ge 1
+    &\quad \Longleftrightarrow \quad
+    \frac{P_{\mathrm{mix}}(y)}{P_{\mathrm{strong}}(y)}
+    \exp\!\left((1-\lambda)\Delta m_k\right)
+    \ge 1 \nonumber\\
+    &\quad \Longleftrightarrow \quad
+    \frac{P_{\mathrm{mix}}(y)}{P_{\mathrm{strong}}(y)}
+    \ge \exp\!\left(-(1-\lambda)\Delta m_k\right).
+    \label{eq:appendix_ratio_rearrange}
+\end{align}
+This is exactly the stated sufficient condition \eqref{eq:appendix_amp_condition}.
+\end{proof}
+
+\begin{theorem}[Total negative-mass increase under uniform margin shrinkage]
+If $m_k(z_{\mathrm{weak}}) \le m_k(z_{\mathrm{strong}})$ for all $k \neq y$, then
+\begin{equation}
+    P_{\mathrm{mix}}(y) \le P_{\mathrm{strong}}(y)
+    \quad \text{and} \quad
+    \sum_{k \neq y} P_{\mathrm{mix}}(k) \ge \sum_{k \neq y} P_{\mathrm{strong}}(k).
+    \label{eq:appendix_total_neg_mass}
+\end{equation}
+\end{theorem}
+\begin{proof}
+By Lemma~\eqref{eq:appendix_margin_mix} and the assumption $m_k(z_{\mathrm{weak}}) \le m_k(z_{\mathrm{strong}})$,
+\begin{equation}
+    m_k(z_{\text{mix}}) = (1-\lambda)m_k(z_{\mathrm{weak}}) + \lambda m_k(z_{\mathrm{strong}}) \le m_k(z_{\mathrm{strong}})
+    \quad \forall k \neq y.
+    \label{eq:appendix_margin_shrink}
+\end{equation}
+Applying Lemma~\eqref{eq:appendix_logodds} yields, for each $k \neq y$,
+\begin{equation}
+    \exp\!\big(-m_k(z_{\text{mix}})\big) \ge \exp\!\big(-m_k(z_{\mathrm{strong}})\big).
+    \label{eq:appendix_exp_compare}
+\end{equation}
+Summing \eqref{eq:appendix_exp_compare} over $k \neq y$ gives
+\begin{equation}
+    \sum_{k \neq y} \exp\!\big(-m_k(z_{\text{mix}})\big)
+    \ge
+    \sum_{k \neq y} \exp\!\big(-m_k(z_{\mathrm{strong}})\big).
+    \label{eq:appendix_sum_compare}
+\end{equation}
+Since
+\begin{equation}
+    P_z(y) = \left(1 + \sum_{k \neq y} \exp\!\big(-m_k(z)\big)\right)^{-1},
+    \label{eq:appendix_py_denominator}
+\end{equation}
+the denominator for $P_{\mathrm{mix}}(y)$ is no smaller than that for $P_{\mathrm{strong}}(y)$, and thus
+\begin{equation}
+    P_{\mathrm{mix}}(y) \le P_{\mathrm{strong}}(y).
+    \label{eq:appendix_py_compare}
+\end{equation}
+Finally, because probabilities sum to one,
+\begin{equation}
+    \sum_{k \neq y} P_{\mathrm{mix}}(k)
+    = 1 - P_{\mathrm{mix}}(y)
+    \ge 1 - P_{\mathrm{strong}}(y)
+    = \sum_{k \neq y} P_{\mathrm{strong}}(k),
+    \label{eq:appendix_neg_mass_compare}
+\end{equation}
+which proves \eqref{eq:appendix_total_neg_mass}.
+\end{proof}
+
+
+\begin{proposition}[Logit updates emphasize negative suppression]
+For any negative token $k \neq y$, the logit update for model $i \in \{\mathrm{weak}, \mathrm{strong}\}$ under joint training is
+\begin{equation}
+    \Delta z_i[k] \approx -\eta s_i \, P_{\mathrm{mix}}(k), \quad s_{\mathrm{weak}} = 1-\lambda,\; s_{\mathrm{strong}} = \lambda,
+    \label{eq:appendix_neg_update}
+\end{equation}
+while for the target token,
+\begin{equation}
+    \Delta z_i[y] \approx \eta s_i \, (1 - P_{\mathrm{mix}}(y)).
+    \label{eq:appendix_pos_update}
+\end{equation}
+Thus any increase in $P_{\mathrm{mix}}(k)$ directly amplifies the suppression of hard negatives, while a decrease in $P_{\mathrm{mix}}(y)$ strengthens the upward push on the target logit.
+\end{proposition}
+\begin{proof}
+From \eqref{eq:appendix_grad_model}, the model-$i$ logit gradient satisfies
+\begin{equation}
+    \nabla_{z_i} \mathcal{L}_{\mathrm{mix}} = s_i \, g_{\text{mix}},
+    \label{eq:appendix_prop_grad}
+\end{equation}
+where $g_{\text{mix}} = P_{\mathrm{mix}}(\cdot) - e_y$ (Eq.~\eqref{eq:appendix_grad_residual}).
+For a negative token $k \neq y$, this gives
+\begin{equation}
+    \frac{\partial \mathcal{L}_{\mathrm{mix}}}{\partial z_i[k]} = s_i \, P_{\mathrm{mix}}(k),
+    \label{eq:appendix_prop_neg_grad}
+\end{equation}
+and for the target token,
+\begin{equation}
+    \frac{\partial \mathcal{L}_{\mathrm{mix}}}{\partial z_i[y]} = s_i \, (P_{\mathrm{mix}}(y) - 1).
+    \label{eq:appendix_prop_pos_grad}
+\end{equation}
+Under a first-order update $\Delta z_i \approx -\eta \nabla_{z_i}\mathcal{L}_{\mathrm{mix}}$, we obtain
+\begin{equation}
+    \Delta z_i[k] \approx -\eta s_i \, P_{\mathrm{mix}}(k),
+    \quad
+    \Delta z_i[y] \approx \eta s_i \, (1 - P_{\mathrm{mix}}(y)),
+    \label{eq:appendix_prop_update}
+\end{equation}
+which matches \eqref{eq:appendix_neg_update} and \eqref{eq:appendix_pos_update}.
+\end{proof}
+
+\begin{remark}[Consistency with logits statistics]
+The logits evaluation report shows that after joint training the strong model exhibits lower mean logits and more extreme tails (e.g., larger magnitude minima and maxima). The mechanism above provides a local explanation: increased negative mass amplifies downward updates on many incorrect tokens, while the target receives a stronger upward push when $P_{\mathrm{mix}}(y)$ decreases. Mean shifts can further accumulate along shift-invariant directions (Appendix~\ref{sec:appendix_joint_theory}).
+\end{remark}
+Informally, this gradient amplification provides extra training signal compared to SFT, which helps reduce saturation and move optimization past local minima.
+
+
+
+
+
+
+
+\newpage
+\section{Supplementary Theoretical Analysis of Joint Training Dynamics}
+\label{sec:appendix_joint_theory}
+
+\subsection{Problem Setting and Notation}
+\paragraph{Notation.}
+Fix a context $x$ and a target index $y$, and analyze a single joint-training step; we omit the conditioning on $x$ for readability. The weak and strong models $\mathcal{M}_{\mathrm{weak}}$ and $\mathcal{M}_{\mathrm{strong}}$ have parameters $\theta_{\mathrm{weak}}$ and $\theta_{\mathrm{strong}}$, and produce logits $z_{\mathrm{weak}}(x), z_{\mathrm{strong}}(x) \in \mathbb{R}^{|\mathcal{V}|}$. The mixed logits are
+\begin{equation}
+    z_{\text{mix}} = (1-\lambda) z_{\mathrm{weak}} + \lambda z_{\mathrm{strong}}, \quad \lambda \in [0,1].
+    \label{eq:appendix_mix}
+\end{equation}
+For any logit map $z(x)$, define $P_z(\cdot\mid x)=\mathrm{Softmax}(z(x))$ and use the shorthand $P_z(k)$; let $P_{\mathrm{mix}} = P_{z_{\text{mix}}}$ and $e_y$ denote the one-hot target. We use a subscript $i \in \{\mathrm{weak}, \mathrm{strong}\}$ to index the two models in generic expressions. Let $\mathbf{1}$ be the all-ones vector in $\mathbb{R}^{|\mathcal{V}|}$.
+We use the mixed-logit loss
+\begin{equation}
+    \mathcal{L}_{\mathrm{mix}} = -\log P_{\mathrm{mix}}(y),
+    \label{eq:appendix_ce}
+\end{equation}
+and the residual
+\begin{equation}
+    g = \nabla_{z_{\text{mix}}}\mathcal{L}_{\mathrm{mix}} = P_{\mathrm{mix}}(\cdot) - e_y.
+    \label{eq:appendix_residual}
+\end{equation}
+For any negative token $k \neq y$, the margin is $m_k(z) = z[y] - z[k]$.
+We use $\eta$ to denote the learning rate.
+For each model $i \in \{\mathrm{weak}, \mathrm{strong}\}$, let $J_i = \partial z_i / \partial \theta_i$ and define the Jacobian Gram matrix
+\begin{equation}
+    K_i = J_i J_i^\top.
+    \label{eq:appendix_gram}
+\end{equation}
+
+\begin{definition}[Centered logits and centered norm]
+Let $\bar{z} = \frac{1}{|\mathcal{V}|}\mathbf{1}^\top z$ be the logit mean. The centered logits and centered norm are
+\begin{equation}
+    \tilde{z} = z - \bar{z}\mathbf{1}, \quad \|\tilde{z}\|_2 = \sqrt{\sum_{k=1}^{|\mathcal{V}|} (z[k] - \bar{z})^2}.
+    \label{eq:appendix_centered_norm}
+\end{equation}
+Since $\|\tilde{z}\|_2 = \sqrt{|\mathcal{V}|} \cdot \text{Std}(z)$, the centered norm is a shift-invariant measure of sharpness.
+\end{definition}
+
+\subsection{First-Order Gradients and Centered Linearized Dynamics}
+By the chain rule,
+\begin{align}
+    \nabla_{z_{\mathrm{weak}}} \mathcal{L}_{\mathrm{mix}} &= (1-\lambda) g, \label{eq:appendix_grad_z1} \\
+    \nabla_{z_{\mathrm{strong}}} \mathcal{L}_{\mathrm{mix}} &= \lambda g. \label{eq:appendix_grad_z2}
+\end{align}
+Thus both models receive gradients in the same direction but with different magnitudes. Under a first-order (local) linearization, we apply a Taylor expansion of logits around $\theta_i$:
+\begin{equation}
+    z_i(\theta_i + \Delta \theta_i) \approx z_i(\theta_i) + J_i \Delta \theta_i, \quad i \in \{\mathrm{weak}, \mathrm{strong}\}.
+    \label{eq:appendix_taylor_logits}
+\end{equation}
+With $\Delta \theta_i = -\eta \nabla_{\theta_i}\mathcal{L}_{\mathrm{mix}}$, this yields
+\begin{equation}
+    \Delta z_i \approx -\eta J_i J_i^\top g = -\eta K_i g,
+    \label{eq:appendix_update_z_i}
+\end{equation}
+and incorporating the mixing weights in \eqref{eq:appendix_grad_z1}--\eqref{eq:appendix_grad_z2} yields
+\begin{equation}
+    \Delta z_i \approx -\eta s_i K_i g, \quad s_{\mathrm{weak}} = 1-\lambda,\; s_{\mathrm{strong}} = \lambda.
+    \label{eq:appendix_update_weighted}
+\end{equation}
+
+To remove mean-shift effects, let $\Pi = I - \frac{1}{|\mathcal{V}|}\mathbf{1}\mathbf{1}^\top$ be the centering projector. Since $\mathbf{1}^\top g = 0$, we have $\Pi g = g$ and define the centered kernel
+\begin{equation}
+    \tilde{K}_i = \Pi K_i \Pi.
+    \label{eq:appendix_centered_kernel}
+\end{equation}
+Then the centered logit dynamics are
+\begin{equation}
+    \Delta \tilde{z}_i \approx -\eta s_i \tilde{K}_i g.
+    \label{eq:appendix_update_centered}
+\end{equation}
+
+\begin{lemma}[PSD of centered kernel]
+For each model $i \in \{\mathrm{weak}, \mathrm{strong}\}$, $\tilde{K}_i$ is positive semidefinite.
+\end{lemma}
+\begin{proof}
+For any $x \in \mathbb{R}^{|\mathcal{V}|}$, $x^\top \tilde{K}_i x = x^\top \Pi J_i J_i^\top \Pi x = \|J_i^\top \Pi x\|_2^2 \ge 0$.
+\end{proof}
+
+The fused centered update is a doubly weighted combination of model updates:
+\begin{align}
+    \Delta \tilde{z}_{\text{mix}}
+    &= (1-\lambda)\Delta \tilde{z}_{\mathrm{weak}} + \lambda \Delta \tilde{z}_{\mathrm{strong}} \nonumber\\
+    &= -\eta \left[(1-\lambda)^2 \tilde{K}_{\mathrm{weak}} + \lambda^2 \tilde{K}_{\mathrm{strong}}\right] g.
+    \label{eq:appendix_delta_mix}
+\end{align}
+The corresponding first-order loss decrease follows from a Taylor expansion of $\mathcal{L}_{\mathrm{mix}}$ at $z_{\text{mix}}$:
+\begin{equation}
+    \Delta \mathcal{L}_{\mathrm{mix}} \approx \nabla_{z_{\text{mix}}}\mathcal{L}_{\mathrm{mix}}^\top \Delta \tilde{z}_{\text{mix}}
+    = g^\top \Delta \tilde{z}_{\text{mix}}.
+    \label{eq:appendix_taylor_loss}
+\end{equation}
+Substituting \eqref{eq:appendix_delta_mix} gives
+\begin{equation}
+    \Delta \mathcal{L}_{\mathrm{mix}} \approx g^\top \Delta \tilde{z}_{\text{mix}}
+    = -\eta \left[(1-\lambda)^2 g^\top \tilde{K}_{\mathrm{weak}} g + \lambda^2 g^\top \tilde{K}_{\mathrm{strong}} g\right].
+    \label{eq:appendix_delta_loss}
+\end{equation}
+
+\subsection{Stage I: Hard-Negative Amplification and Strong-Model Dominance}
+Early in joint training, the weak model is more confused, so for many hard negatives $k$ we have $m_k(z_{\mathrm{weak}}) < m_k(z_{\mathrm{strong}})$. By the logit-mixing analysis in Appendix~\ref{sec:appendix_grad_amp} (e.g., Eq.~\eqref{eq:appendix_total_neg_mass}), mixing shrinks these margins and increases total negative probability mass. Consequently, the residual $g$ grows in magnitude and is biased toward hard negatives: the weak model acts as a \emph{gradient amplifier}, not a competitor in final accuracy.
+
+The effective per-step loss decrease attributable to model $i \in \{\mathrm{weak}, \mathrm{strong}\}$ is
+\begin{equation}
+    E_i \triangleq \eta s_i^2 g^\top \tilde{K}_i g, \quad s_{\mathrm{weak}} = 1-\lambda,\; s_{\mathrm{strong}} = \lambda.
+\end{equation}
+Dominance corresponds to $E_{\mathrm{strong}} > E_{\mathrm{weak}}$. Define the directional sensitivity $\kappa_i = g^\top \tilde{K}_i g / \|g\|_2^2$.
+
+\begin{assumption}[Sensitivity advantage of the strong model]
+Because the strong model is sharper (larger centered norm / lower entropy), its centered kernel responds more strongly along the residual direction:
+\begin{equation}
+    g^\top \tilde{K}_{\mathrm{strong}} g \approx \alpha \, g^\top \tilde{K}_{\mathrm{weak}} g, \quad \alpha > 1.
+    \label{eq:appendix_alpha}
+\end{equation}
+\end{assumption}
+
+Substituting \eqref{eq:appendix_alpha} into \eqref{eq:appendix_delta_loss} yields the total effective rate
+\begin{equation}
+    S(\lambda) = (1-\lambda)^2 + \alpha \lambda^2,
+    \label{eq:appendix_total_rate}
+\end{equation}
+and the strong model dominates the joint update when
+\begin{equation}
+    \lambda^2 \alpha > (1-\lambda)^2.
+    \label{eq:appendix_dominance}
+\end{equation}
+Solving \eqref{eq:appendix_dominance} gives the gradient-share crossover
+\begin{equation}
+    \lambda_{\text{cross}} = \frac{1}{1+\sqrt{\alpha}}.
+    \label{eq:appendix_lambda_cross}
+\end{equation}
+
+\begin{remark}[Crossover vs.\ accuracy]
+Equation~\eqref{eq:appendix_lambda_cross} characterizes a \emph{local} crossover of gradient contribution under a one-step linearization. It does \emph{not} predict an accuracy inversion. In practice, both $g$ and $\tilde{K}_{\mathrm{weak}}, \tilde{K}_{\mathrm{strong}}$ evolve with $\lambda$ and training time, while optimizer dynamics smooth the trajectory, yielding a broad optimum region rather than a sharp transition.
+\end{remark}
+
+\begin{remark}[Softmax amplification]
+Because $P_{\mathrm{mix}}(k) \propto \exp(z_{\text{mix}}[k])$, modest logit differences can disproportionately tilt $P_{\mathrm{mix}}$ and $g$. This amplifies hard-negative gradients and reinforces the early dominance in \eqref{eq:appendix_dominance}.
+\end{remark}
+
+\subsection{Stage II: Gradient Shielding via Hessian Contraction}
+We next analyze why the weak model loses effective training signal once the strong model becomes confident.
+
+\subsubsection{Softmax Jacobian and Loss Hessian}
+Recall $P_{\mathrm{mix}} = \text{Softmax}(z_{\text{mix}})$. The Jacobian of Softmax is
+\begin{equation}
+    \frac{\partial P_{\mathrm{mix}}}{\partial z_{\text{mix}}} = \text{diag}(P_{\mathrm{mix}}) - P_{\mathrm{mix}} P_{\mathrm{mix}}^\top.
+    \label{eq:appendix_softmax_jacobian}
+\end{equation}
+Since $e_y$ is constant, the Hessian of the cross-entropy loss with respect to $z_{\text{mix}}$ is
+\begin{equation}
+    \mathbf{H}_{\mathcal{L}} = \nabla^2_{z_{\text{mix}}}\mathcal{L}_{\mathrm{mix}}
+    = \frac{\partial (P_{\mathrm{mix}}-e_y)}{\partial z_{\text{mix}}}
+    = \text{diag}(P_{\mathrm{mix}}) - P_{\mathrm{mix}} P_{\mathrm{mix}}^\top.
+    \label{eq:appendix_loss_hessian}
+\end{equation}
+
+\begin{lemma}[PSD of the loss Hessian]
+$\mathbf{H}_{\mathcal{L}}$ is positive semidefinite.
+\end{lemma}
+\begin{proof}
+For any $v \in \mathbb{R}^{|\mathcal{V}|}$,
+\begin{equation}
+    v^\top \mathbf{H}_{\mathcal{L}} v
+    = \sum_{j} P_{\mathrm{mix}}[j]\, v_j^2 - \left(\sum_j P_{\mathrm{mix}}[j]\, v_j\right)^2
+    = \mathrm{Var}_{P_{\mathrm{mix}}}(v) \ge 0.
+    \label{eq:appendix_hessian_psd}
+\end{equation}
+\end{proof}
+
+\subsubsection{Interaction Hessian Between Models}
+The mixed logits depend on both models, so the cross-Hessian captures how updates in the strong model affect the gradient seen by the weak model:
+\begin{align}
+    \mathbf{H}_{\mathrm{ws}}
+    &= \frac{\partial}{\partial z_{\mathrm{strong}}}\left[\nabla_{z_{\mathrm{weak}}}\mathcal{L}_{\mathrm{mix}}\right] \nonumber\\
+    &= (1-\lambda)\frac{\partial (P_{\mathrm{mix}}-e_y)}{\partial z_{\text{mix}}}\frac{\partial z_{\text{mix}}}{\partial z_{\mathrm{strong}}} \nonumber\\
+    &= \lambda(1-\lambda)\mathbf{H}_{\mathcal{L}}.
+    \label{eq:appendix_cross_hessian}
+\end{align}
+
+\subsubsection{Shielding in the Confident Regime}
+Assume the target index is $y$ and the strong model drives the mixed prediction to $P_{\mathrm{mix}}(y) \to 1$. Then $P_{\mathrm{mix}}(k) \to 0$ for all $k \neq y$, which implies
+\begin{equation}
+    \lim_{P_{\mathrm{mix}} \to e_y}\mathbf{H}_{\mathcal{L}} = \mathbf{0}.
+    \label{eq:appendix_hessian_collapse}
+\end{equation}
+Consequently,
+\begin{equation}
+    \lim_{P_{\mathrm{mix}} \to e_y} \mathbf{H}_{\mathrm{ws}} = \mathbf{0},
+    \label{eq:appendix_cross_hessian_collapse}
+\end{equation}
+and the weak model receives vanishing curvature information. This is the mathematical form of \emph{gradient shielding}: once the strong model dominates and the prediction saturates, both the first-order residual $g$ and its local sensitivity collapse, making it difficult for the weak model to receive informative updates.
+
+\subsection{Stage III: Null-Space Drift and Mean Shift}
+We now explain the observed mean drift of the weak model logits.
+
+\subsubsection{Shift Invariance of the Mixed Softmax}
+Softmax is invariant to global shifts. For any scalar $c$,
+\begin{equation}
+    \text{Softmax}(z + c\mathbf{1}) = \text{Softmax}(z).
+    \label{eq:appendix_softmax_shift}
+\end{equation}
+Applying this to the fused logits, let $z_{\mathrm{weak}}' = z_{\mathrm{weak}} + c\mathbf{1}$. Then
+\begin{align}
+    z_{\text{mix}}'
+    &= (1-\lambda) z_{\mathrm{weak}}' + \lambda z_{\mathrm{strong}} \nonumber\\
+    &= z_{\text{mix}} + (1-\lambda) c \mathbf{1},
+    \label{eq:appendix_shift_mix}
+\end{align}
+and by \eqref{eq:appendix_softmax_shift} the predictive distribution is unchanged. Hence, the loss is flat along the mean-shift direction of each model.
+
+\subsubsection{Zero-Eigenvalue Direction of the Hessian}
+Let $\mathbf{1}$ denote the all-ones vector. From \eqref{eq:appendix_loss_hessian},
+\begin{equation}
+    \mathbf{H}_{\mathcal{L}}\mathbf{1}
+    = \text{diag}(P_{\mathrm{mix}})\mathbf{1} - P_{\mathrm{mix}}(P_{\mathrm{mix}}^\top \mathbf{1})
+    = P_{\mathrm{mix}} - P_{\mathrm{mix}} = \mathbf{0}.
+    \label{eq:appendix_null_direction}
+\end{equation}
+Thus $\mathbf{1}$ is a zero-eigenvalue direction of the Hessian, confirming that the loss has no curvature along global shifts.
+
+\subsubsection{Why Drift Accumulates in the Null Space}
+When the strong model has already fit the data, the expected gradient seen by the weak model is near zero. With stochastic training, the update can be modeled as
+\begin{equation}
+    \theta^{+} = \theta - \eta \epsilon, \quad \epsilon \sim \mathcal{N}(0,\Sigma),
+    \label{eq:appendix_sgd_stochasticity}
+\end{equation}
+which is a random walk. The logit space decomposes as
+\begin{equation}
+    z = \bar{z} \mathbf{1} + \tilde{z}, \quad
+    \tilde{z}^\top \mathbf{1} = 0,
+    \label{eq:appendix_decompose}
+\end{equation}
+where the null space is $\mathrm{span}\{\mathbf{1}\}$ and the active space is its orthogonal complement. In the active space, even small gradients can weakly restore the distribution shape. In the null space, there is no restoring force; thus the variance of $\bar{z}$ grows with time, leading to the observed mean drift without a corresponding increase in centered norm.
