@@ -78,6 +78,8 @@ All deep documentation lives in `docs/joint_training/`:
 - Modification boundaries: `docs/joint_training/constraints/boundaries/modification_boundaries.md`
 - Commit rules: `docs/joint_training/constraints/commit_rules/commit_conventions.md`
 - Testing guide: `docs/joint_training/guides/testing.md`
+- Sample efficiency tuning: `docs/joint_training/guides/sample_efficiency_tuning.md`
+- Tuning iteration log: `docs/joint_training/guides/sample_efficiency_iteration_log.md`
 - Algorithm spec: `docs/joint_training/specs/joint_training_algorithm_v1.md`
 - Experiment index: `recipe/joint_training/EXPERIMENT_INDEX.md`
 - Inference results: `recipe/joint_training/INFERENCE_RESULTS.md`
