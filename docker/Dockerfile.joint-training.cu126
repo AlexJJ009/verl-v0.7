@@ -1,0 +1,191 @@
+# ==============================================================================
+# Dockerfile: verl joint-training environment (CUDA 12.6 variant)
+#
+# Base: nvidia/cuda:12.6.3-devel-ubuntu22.04
+# Python: 3.12 (managed by uv)
+# PyTorch: 2.9.1+cu126
+# vLLM: 0.12.0 (pre-built wheel)
+#
+# Usage:
+#   docker build -f docker/Dockerfile.joint-training.cu126 -t verl-train:cu126 .
+#   docker run --gpus all --ipc=host --network=host \
+#     -v /data-1/verl07/verl:/workspace/verl \
+#     -v /data-1/dataset:/workspace/data \
+#     -v /data-1/checkpoints:/workspace/checkpoints \
+#     -v /data-1/.cache/huggingface:/root/.cache/huggingface \
+#     verl-train:cu126 bash
+# ==============================================================================
+
+FROM nvidia/cuda:12.6.3-devel-ubuntu22.04
+
+ARG DEBIAN_FRONTEND=noninteractive
+ARG PIP_NO_CACHE_DIR=1
+
+# ======================== System packages ====================================
+RUN apt-get update && apt-get install -y \
+    git \
+    wget \
+    curl \
+    cmake \
+    build-essential \
+    libibverbs-dev \
+    libnuma-dev \
+    librdmacm-dev \
+    numactl \
+    software-properties-common \
+    && add-apt-repository ppa:deadsnakes/ppa -y \
+    && apt-get update \
+    && apt-get install -y \
+    python3.12 \
+    python3.12-dev \
+    python3.12-venv \
+    && rm -rf /var/lib/apt/lists/*
+
+# ======================== Install uv =========================================
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+# ======================== Create venv with uv ================================
+ENV VIRTUAL_ENV=/opt/venv
+RUN uv venv ${VIRTUAL_ENV} --python 3.12
+ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
+
+# Install pip inside venv (needed by some packages that call pip directly)
+RUN uv pip install pip setuptools wheel
+
+# Verify
+RUN python --version && uv --version && pip --version
+
+# ======================== PyTorch 2.9.1 + CUDA 12.6 =========================
+RUN uv pip install torch==2.9.1 torchvision torchaudio \
+    --index-url https://download.pytorch.org/whl/cu126
+
+# Fix cuDNN: torch 2.9.1 ships cuDNN 9.10 which has bugs; force 9.16
+RUN sed -i '/nvidia-cudnn-cu12/d' \
+    ${VIRTUAL_ENV}/lib/python3.12/site-packages/torch-*.dist-info/METADATA 2>/dev/null || true
+RUN uv pip install --no-deps nvidia-cudnn-cu12==9.16.0.29 --reinstall
+
+# ======================== vLLM 0.12.0 (pre-built wheel) =====================
+# Install vLLM without deps first, then install its non-torch dependencies.
+# This avoids torch version conflicts (vllm may pull a different torch).
+RUN uv pip install vllm==0.12.0 --no-deps
+# Reinstall vllm WITH deps but protect our torch version:
+# 1. Record current torch version
+# 2. Let vllm pull its deps
+# 3. Force reinstall our torch
+RUN TORCH_VER=$(python -c "import torch; print(torch.__version__)") && \
+    uv pip install vllm==0.12.0 --reinstall && \
+    uv pip install torch==${TORCH_VER} torchvision torchaudio \
+        --index-url https://download.pytorch.org/whl/cu126
+
+# ======================== pybind11 + cuDNN dev ===============================
+RUN uv pip install pybind11
+
+RUN wget -q https://developer.download.nvidia.com/compute/cuda/repos/debian12/x86_64/cuda-keyring_1.1-1_all.deb && \
+    dpkg -i cuda-keyring_1.1-1_all.deb && \
+    apt-get update && \
+    apt-get -y install cudnn && \
+    rm -f cuda-keyring_1.1-1_all.deb && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN uv pip install nvidia-mathdx
+
+# ======================== APEX (NVIDIA) ======================================
+RUN MAX_JOBS=16 pip install -v --disable-pip-version-check --no-build-isolation \
+    --config-settings "--build-option=--cpp_ext" \
+    --config-settings "--build-option=--cuda_ext" \
+    git+https://github.com/NVIDIA/apex.git
+
+# ======================== TransformerEngine ==================================
+RUN NVTE_FRAMEWORK=pytorch MAX_JOBS=16 NVTE_BUILD_THREADS_PER_JOB=2 \
+    pip install --resume-retries 999 --no-build-isolation \
+    git+https://github.com/NVIDIA/TransformerEngine.git@release_v2.10
+
+# ======================== Flash Attention ====================================
+RUN uv pip install flash-attn==2.8.1 --no-build-isolation
+
+# ======================== Megatron-LM ========================================
+RUN uv pip install --no-deps git+https://github.com/NVIDIA/Megatron-LM.git@core_v0.15.0
+
+# ======================== mbridge ============================================
+RUN uv pip install git+https://github.com/ISEEKYAN/mbridge.git
+
+# ======================== DeepEP =============================================
+WORKDIR /tmp/build/deepep
+RUN git clone -b v2.5.1 https://github.com/NVIDIA/gdrcopy.git && \
+    cd gdrcopy && \
+    make prefix=/usr/local lib_install && \
+    cd .. && rm -rf gdrcopy
+
+ENV GDRCOPY_HOME=/usr/local
+
+RUN git clone -b v1.2.1 https://github.com/deepseek-ai/DeepEP.git && \
+    export NVSHMEM_DIR=${VIRTUAL_ENV}/lib/python3.12/site-packages/nvidia/nvshmem && \
+    export LD_LIBRARY_PATH="${NVSHMEM_DIR}/lib:$LD_LIBRARY_PATH" && \
+    export PATH="${NVSHMEM_DIR}/bin:$PATH" && \
+    cd ${NVSHMEM_DIR}/lib && \
+    ln -sf libnvshmem_host.so.3 libnvshmem_host.so && \
+    cd /tmp/build/deepep/DeepEP && \
+    python setup.py install
+WORKDIR /
+
+# ======================== Core Python dependencies ===========================
+# verl install_requires + extras (gpu, vllm, math, geo, test, trl)
+RUN uv pip install \
+    accelerate \
+    codetiming \
+    datasets \
+    dill \
+    hydra-core \
+    "numpy<2.0.0" \
+    pandas \
+    peft \
+    "pyarrow>=19.0.0" \
+    pylatexenc \
+    "ray[default]>=2.41.0" \
+    torchdata \
+    "tensordict>=0.8.0,<=0.10.0,!=0.9.0" \
+    "transformers<5.0.0" \
+    wandb \
+    "packaging>=20.0" \
+    tensorboard
+
+# Additional deps from requirements.txt and training scripts
+RUN uv pip install \
+    uvicorn \
+    fastapi \
+    latex2sympy2_extended \
+    math-verify \
+    liger-kernel \
+    mathruler \
+    qwen_vl_utils \
+    nvtx \
+    matplotlib
+
+# TRL (no-deps to avoid conflicts)
+RUN uv pip install --no-deps "trl<=0.9.6"
+
+# Test dependencies
+RUN uv pip install \
+    pytest \
+    pytest-asyncio \
+    pytest-rerunfailures \
+    py-spy \
+    pre-commit
+
+# ======================== Cleanup ============================================
+RUN rm -rf /tmp/build && \
+    rm -rf /root/.cache/pip && \
+    rm -rf /root/.cache/uv
+
+# ======================== Environment variables ==============================
+ENV PYTHONUNBUFFERED=1
+ENV HF_HOME=/root/.cache/huggingface
+ENV VLLM_USE_V1=1
+ENV VLLM_NO_USAGE_STATS=1
+ENV VLLM_DO_NOT_TRACK=1
+
+# verl code will be mounted at /workspace/verl
+ENV PYTHONPATH="/workspace/verl"
+
+WORKDIR /workspace
+CMD ["bash"]

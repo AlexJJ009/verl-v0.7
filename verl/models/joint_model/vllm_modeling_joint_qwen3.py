@@ -45,6 +45,13 @@ class QwenJointForCausalLM(nn.Module):
             config.hidden_size,
         )
 
+    def embed_input_ids(self, input_ids: torch.Tensor) -> torch.Tensor:
+        """Delegate to the first sub-model's embedding layer."""
+        sub = self.sub_models[0]
+        if hasattr(sub, "embed_input_ids"):
+            return sub.embed_input_ids(input_ids)
+        return sub.get_input_embeddings(input_ids)
+
     @staticmethod
     def _child_prefix(prefix: str, index: int) -> str:
         return f"{prefix}.sub_models.{index}" if prefix else f"sub_models.{index}"
