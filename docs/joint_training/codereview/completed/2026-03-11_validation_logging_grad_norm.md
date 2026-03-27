@@ -91,10 +91,9 @@ This closes the earlier observability gap where a scalar `-1` reward said “som
 
 ## 4. Tests Executed
 
-All Python / pytest commands were run after activating the required environment:
+All Python / pytest commands were run inside the Docker container (`verl-train:cu126`):
 
 ```bash
-conda activate verl07
 export RANK=0
 export WORLD_SIZE=1
 export MASTER_ADDR=127.0.0.1

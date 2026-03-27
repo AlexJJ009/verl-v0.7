@@ -4,9 +4,20 @@ This file is the table of contents for coding agents working on the joint-traini
 
 ## Environment
 
+The project runs inside a Docker container (no conda).
+
 ```bash
-conda activate verl07
+# Build the image (once)
+bash /data-1/verl07/build.sh          # → verl-train:cu126
+
+# Launch a training container
+bash /data-1/verl07/run_train.sh
 ```
+
+- Dockerfile: `docker/Dockerfile.joint-training.cu126`
+- Python 3.12 managed by uv
+- PyTorch 2.9.1+cu126, vLLM 0.12.0, flash-attn 2.8.1
+- Apex, TransformerEngine, Megatron-LM compiled from source
 
 ## Repository
 

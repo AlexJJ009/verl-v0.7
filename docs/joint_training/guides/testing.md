@@ -2,10 +2,10 @@
 
 ## Environment Setup
 
-Before running any test:
+All tests run inside the Docker container (`verl-train:cu126`). Launch it with:
 
 ```bash
-conda activate verl07
+bash /data-1/verl07/run_train.sh
 ```
 
 ## Running Joint-Training Tests
@@ -14,7 +14,6 @@ Run all joint-training tests:
 
 ```bash
 cd /data-1/verl07/verl
-conda activate verl07
 pytest tests/joint_training/ -v
 ```
 

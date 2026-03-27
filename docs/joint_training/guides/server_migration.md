@@ -78,7 +78,7 @@ snapshot_download('Qwen/Qwen3-1.7B-Base',
 **Step 2：生成 joint model**
 
 ```bash
-conda activate verl07
+# Run inside the Docker container (verl-train:cu126)
 python -m verl.models.joint_model.prepare_joint_weights \
     --base_model_path /data-1/.cache/huggingface/Qwen3-1.7B-Base \
     --output_path /data-1/.cache/huggingface/QwenJoint-1.7B \
@@ -280,10 +280,8 @@ Actor、rollout、ref 三个 worker 都读取 `actor_rollout_ref.model.override_
   □ /data-1/dataset/gsm8k/test.parquet
 
 □ 环境依赖
-  □ conda 环境 verl07 已激活
-  □ flash_attn 安装状态与 PyTorch ABI 匹配
-    - 验证: python -c "import flash_attn" （无错即可）
-    - 若报 undefined symbol → pip uninstall flash-attn
+  □ Docker 容器 verl-train:cu126 已启动（bash /data-1/verl07/run_train.sh）
+  □ flash_attn 2.8.1 预装在镜像中，无需额外安装
 
 □ 路径相关
   □ /data-1/.cache/huggingface/  存在

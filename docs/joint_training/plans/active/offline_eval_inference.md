@@ -192,7 +192,7 @@ python recipe/joint_training/extract_sub_model.py \
 CUDA_VISIBLE_DEVICES=4,5,6,7 \
 VLLM_ATTENTION_BACKEND=FLASH_ATTN \
 VLLM_USE_V1=1 \
-LD_LIBRARY_PATH=/data-1/.cache/conda/envs/verl07/lib/python3.10/site-packages/torch/lib:/data-1/.cache/conda/envs/verl07/lib \
+LD_LIBRARY_PATH=$(python -c "import torch; print(torch.__path__[0])")/lib \
 python recipe/joint_training/offline_eval.py \
     --model_path /data-1/model_weights/EXP-XX/step_100_model2 \
     --tensor_parallel 4 \
