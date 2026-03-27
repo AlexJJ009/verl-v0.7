@@ -4,6 +4,13 @@ from typing import Optional, Union
 import torch
 from torch import nn
 
+# Patch vLLM layer-index extraction early — this module is imported in every
+# vLLM worker process (including those spawned with start_method='spawn')
+# when the QwenJointForCausalLM architecture is resolved.
+from verl.models.joint_model.vllm_registry import patch_joint_vllm_layer_indexing
+
+patch_joint_vllm_layer_indexing()
+
 
 class QwenJointForCausalLM(nn.Module):
     """vLLM-native joint Qwen3 model for fused rollout and model2-only eval."""
@@ -171,13 +178,13 @@ class QwenJointForCausalLM(nn.Module):
 
         return self._pack_hidden_states(output0, output1)
 
-    def compute_logits(self, hidden_states, sampling_metadata=None) -> Optional[torch.Tensor]:
+    def compute_logits(self, hidden_states) -> Optional[torch.Tensor]:
         if self._use_model2_only:
-            return self.sub_models[1].compute_logits(hidden_states, sampling_metadata)
+            return self.sub_models[1].compute_logits(hidden_states)
 
         hidden_states0, hidden_states1 = self._unpack_hidden_states(hidden_states)
-        logits0 = self.sub_models[0].compute_logits(hidden_states0, sampling_metadata)
-        logits1 = self.sub_models[1].compute_logits(hidden_states1, sampling_metadata)
+        logits0 = self.sub_models[0].compute_logits(hidden_states0)
+        logits1 = self.sub_models[1].compute_logits(hidden_states1)
 
         if logits0 is None:
             return logits1

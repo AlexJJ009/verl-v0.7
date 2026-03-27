@@ -34,23 +34,33 @@ def patch_joint_vllm_layer_indexing() -> bool:
     if getattr(current_extract_layer_index, "_verl_joint_patch", False):
         return True
 
-    def patched_extract_layer_index(layer_name: str) -> int:
+    def patched_extract_layer_index(layer_name: str, num_attn_module: int = 1) -> int:
         joint_layer_index = _extract_joint_vllm_layer_index(layer_name)
         if joint_layer_index is not None:
             branch_index, layer_index = joint_layer_index
             return branch_index * JOINT_VLLM_LAYER_INDEX_STRIDE + layer_index
-        return current_extract_layer_index(layer_name)
+        return current_extract_layer_index(layer_name, num_attn_module)
 
     patched_extract_layer_index._verl_joint_patch = True  # type: ignore[attr-defined]
 
     model_utils.extract_layer_index = patched_extract_layer_index
 
-    for module_name in ("vllm.utils", "vllm.v1.utils"):
+    # Patch all modules that import extract_layer_index by name (local bindings).
+    # Without this, `from .utils import extract_layer_index` in qwen3.py etc.
+    # keeps the original reference even after we patch the source module.
+    for module_name in (
+        "vllm.utils",
+        "vllm.v1.utils",
+        "vllm.model_executor.models.qwen3",
+        "vllm.v1.worker.utils",
+        "vllm.attention.utils.kv_sharing_utils",
+    ):
         try:
             module = __import__(module_name, fromlist=["extract_layer_index"])
         except Exception:
             continue
-        module.extract_layer_index = patched_extract_layer_index
+        if hasattr(module, "extract_layer_index"):
+            module.extract_layer_index = patched_extract_layer_index
 
     return True
 
