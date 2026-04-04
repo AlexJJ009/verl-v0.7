@@ -4,17 +4,25 @@ This file is the table of contents for coding agents working on the joint-traini
 
 ## Environment
 
-The project runs inside a Docker container (no conda).
+The project runs inside a pre-built Docker image `verl-harness` (no conda, no build step needed).
 
 ```bash
-# Build the image (once)
-bash /data-1/verl07/build.sh          # → verl-train:cu126
+# Baseline (4 GPU)
+docker run --rm --gpus '"device=0,1,2,3"' \
+  -v /data-1/verl07/verl:/workspace/verl \
+  -v /data-1:/data-1 \
+  --ipc=host verl-harness \
+  bash /workspace/verl/recipe/joint_training/run_baseline_minirl_qwen3_1.7b_math.sh
 
-# Launch a training container
-bash /data-1/verl07/run_train.sh
+# Joint (8 GPU)
+docker run --rm --gpus all \
+  -v /data-1/verl07/verl:/workspace/verl \
+  -v /data-1:/data-1 \
+  --ipc=host verl-harness \
+  bash /workspace/verl/recipe/joint_training/run_joint_grpo_qwen3_1.7b.sh
 ```
 
-- Dockerfile: `docker/Dockerfile.joint-training.cu126`
+- Docker image: `verl-harness`
 - Python 3.12 managed by uv
 - PyTorch 2.9.1+cu126, vLLM 0.12.0, flash-attn 2.8.1
 - Apex, TransformerEngine, Megatron-LM compiled from source

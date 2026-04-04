@@ -91,7 +91,7 @@ This closes the earlier observability gap where a scalar `-1` reward said “som
 
 ## 4. Tests Executed
 
-All Python / pytest commands were run inside the Docker container (`verl-train:cu126`):
+All Python / pytest commands were run inside the Docker container (`verl-harness`):
 
 ```bash
 export RANK=0

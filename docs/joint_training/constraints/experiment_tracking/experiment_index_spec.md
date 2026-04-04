@@ -99,7 +99,7 @@ All training runs use `WANDB_MODE=offline` by default. After a run completes, th
 
 ### How to Sync
 
-1. Ensure you are inside the Docker container (`verl-train:cu126`).
+1. Ensure you are inside the Docker container (`verl-harness`).
 
 2. Find the sync command at the end of the training log:
    ```

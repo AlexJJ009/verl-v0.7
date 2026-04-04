@@ -2,10 +2,13 @@
 
 ## Environment Setup
 
-All tests run inside the Docker container (`verl-train:cu126`). Launch it with:
+All tests run inside the Docker container (`verl-harness`). Launch it with:
 
 ```bash
-bash /data-1/verl07/run_train.sh
+docker run --rm --gpus all \
+  -v /data-1/verl07/verl:/workspace/verl \
+  -v /data-1:/data-1 \
+  --ipc=host verl-harness bash
 ```
 
 ## Running Joint-Training Tests

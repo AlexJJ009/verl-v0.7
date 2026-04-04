@@ -7,13 +7,11 @@
 # vLLM: 0.12.0 (pre-built wheel)
 #
 # Usage:
-#   docker build -f docker/Dockerfile.joint-training.cu126 -t verl-train:cu126 .
-#   docker run --gpus all --ipc=host --network=host \
+#   docker build -f docker/Dockerfile.joint-training.cu126 -t verl-harness .
+#   docker run --rm --gpus all --ipc=host \
 #     -v /data-1/verl07/verl:/workspace/verl \
-#     -v /data-1/dataset:/workspace/data \
-#     -v /data-1/checkpoints:/workspace/checkpoints \
-#     -v /data-1/.cache/huggingface:/root/.cache/huggingface \
-#     verl-train:cu126 bash
+#     -v /data-1:/data-1 \
+#     verl-harness bash
 # ==============================================================================
 
 FROM nvidia/cuda:12.6.3-devel-ubuntu22.04

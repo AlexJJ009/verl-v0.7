@@ -78,7 +78,7 @@ snapshot_download('Qwen/Qwen3-1.7B-Base',
 **Step 2：生成 joint model**
 
 ```bash
-# Run inside the Docker container (verl-train:cu126)
+# Run inside the Docker container (verl-harness)
 python -m verl.models.joint_model.prepare_joint_weights \
     --base_model_path /data-1/.cache/huggingface/Qwen3-1.7B-Base \
     --output_path /data-1/.cache/huggingface/QwenJoint-1.7B \
@@ -280,7 +280,7 @@ Actor、rollout、ref 三个 worker 都读取 `actor_rollout_ref.model.override_
   □ /data-1/dataset/gsm8k/test.parquet
 
 □ 环境依赖
-  □ Docker 容器 verl-train:cu126 已启动（bash /data-1/verl07/run_train.sh）
+  □ Docker 容器 verl-harness 已启动（docker run --rm --gpus all -v /data-1/verl07/verl:/workspace/verl -v /data-1:/data-1 --ipc=host verl-harness bash）
   □ flash_attn 2.8.1 预装在镜像中，无需额外安装
 
 □ 路径相关
