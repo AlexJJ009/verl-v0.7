@@ -5,10 +5,7 @@
 All tests run inside the Docker container (`verl-harness`). Launch it with:
 
 ```bash
-docker run --rm --gpus all \
-  -v /data-1/verl07/verl:/workspace/verl \
-  -v /data-1:/data-1 \
-  --ipc=host verl-harness bash
+bash /data-1/verl07/run_train.sh
 ```
 
 ## Running Joint-Training Tests

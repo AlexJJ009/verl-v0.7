@@ -280,7 +280,8 @@ Actor、rollout、ref 三个 worker 都读取 `actor_rollout_ref.model.override_
   □ /data-1/dataset/gsm8k/test.parquet
 
 □ 环境依赖
-  □ Docker 容器 verl-harness 已启动（docker run --rm --gpus all -v /data-1/verl07/verl:/workspace/verl -v /data-1:/data-1 --ipc=host verl-harness bash）
+  □ Docker 镜像已加载（bash /data-1/verl07/build.sh）
+  □ Docker 容器 verl-harness 已启动（bash /data-1/verl07/run_train.sh）
   □ flash_attn 2.8.1 预装在镜像中，无需额外安装
 
 □ 路径相关
