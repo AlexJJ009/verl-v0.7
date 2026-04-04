@@ -256,7 +256,7 @@ class VeOmniEngineConfig(EngineConfig):
             5. `veomni_flash_attention_2_with_sp`
             6. `veomni_flash_attention_3_with_sp`
             7. `native-sparse`
-            default "flash_attention_2"
+            default "sdpa"
             Note: In case VeOmni add more attn_implementation, please check https://github.com/ByteDance-Seed/VeOmni/
         moe_implementation (str): MoE implementation to use.
             1. `eager`
@@ -299,7 +299,7 @@ class VeOmniEngineConfig(EngineConfig):
     load_checkpoint_path: Optional[str] = None
     enable_fsdp_offload: bool = False
     enable_reentrant: bool = False
-    attn_implementation: str = "flash_attention_2"
+    attn_implementation: str = "sdpa"
     moe_implementation: str = "fused"
     force_use_huggingface: bool = False
     activation_gpu_limit: float = 0.0
