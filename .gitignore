@@ -130,3 +130,6 @@ outputs
 .history
 flash_attn-*.whl
 *.whl
+
+# Temporary eval launch scripts
+run_eval*.sh

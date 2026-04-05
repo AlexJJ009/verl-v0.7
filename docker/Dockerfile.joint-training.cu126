@@ -98,9 +98,6 @@ RUN NVTE_FRAMEWORK=pytorch MAX_JOBS=16 NVTE_BUILD_THREADS_PER_JOB=2 \
     pip install --resume-retries 999 --no-build-isolation \
     git+https://github.com/NVIDIA/TransformerEngine.git@release_v2.10
 
-# ======================== Flash Attention ====================================
-RUN uv pip install flash-attn==2.8.1 --no-build-isolation
-
 # ======================== Megatron-LM ========================================
 RUN uv pip install --no-deps git+https://github.com/NVIDIA/Megatron-LM.git@core_v0.15.0
 
@@ -169,6 +166,14 @@ RUN uv pip install \
     pytest-rerunfailures \
     py-spy \
     pre-commit
+
+# ======================== Flash Attention (MUST be last pip install) ==========
+# flash_attn must be installed AFTER all other dependencies to prevent uv's
+# dependency resolver from removing it during subsequent package installs.
+ENV CUDA_HOME=/usr/local/cuda
+RUN MAX_JOBS=16 uv pip install flash-attn==2.8.1 --no-build-isolation
+# Verify installation
+RUN python3 -c "import flash_attn; print(f'flash_attn {flash_attn.__version__} installed successfully')"
 
 # ======================== Cleanup ============================================
 RUN rm -rf /tmp/build && \
