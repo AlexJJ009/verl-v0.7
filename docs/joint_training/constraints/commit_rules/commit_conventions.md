@@ -26,18 +26,19 @@ The `recipe/` directory is a git submodule. Always push `recipe/` first, then up
 cd recipe
 git add <files>
 git commit -m "..."
-git push origin feature/joint-training
+git push origin feature/on-policy-wdl-sft
 
 cd ..
 git add recipe
 git commit -m "chore(recipe): update submodule pointer"
-git push origin feature/joint-training
+git push origin feature/on-policy-wdl-sft
 ```
 
 After updating the parent repo on another server, refresh the submodule state as well.
 
 ## Branching
 
-- Active branch: `feature/joint-training`
+- Active branch: `feature/on-policy-wdl-sft`
+- Parent branch: `feature/joint-training` (Stage 1 & 2 complete)
 - This is a personal fork. No pull requests are needed — push directly to the branch.
-- Always commit to `feature/joint-training`, not `main`.
+- Always commit to `feature/on-policy-wdl-sft`, not `main`.

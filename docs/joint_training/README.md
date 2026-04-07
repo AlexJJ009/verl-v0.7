@@ -1,6 +1,10 @@
 # Joint Training Documentation
 
-This directory is the knowledge base for the joint-training effort in verl. It is organized for both human engineers and coding agents.
+This directory is the knowledge base for joint-training and on-policy WDL-SFT development in verl. It is organized for both human engineers and coding agents.
+
+## Current Focus
+
+**On-Policy Weak-Driven SFT** — combining logit fusion with on-policy rollout and forward/reverse SFT. See `plans/active/on_policy_wdl_sft.md` for the active plan.
 
 ## Directory Structure
 
@@ -16,20 +20,24 @@ docs/joint_training/
 │   ├── boundaries/               What to modify, what not to touch
 │   └── experiment_tracking/      Experiment index maintenance spec
 ├── courses/                   ← Educational docs for human learners
+│   ├── joint_minirl_reinforce_logit_mixing_theory.md
+│   ├── minirl_vs_grpo_comparison.md
 │   ├── stabilization_experience_notes.md
 │   └── verl_infra_deep_dive.md
 ├── guides/                    ← Practical how-to guides
 │   ├── testing.md
+│   ├── sample_efficiency_tuning.md
+│   ├── sample_efficiency_iteration_log.md
 │   └── server_migration.md
 ├── plans/                     ← Development plans
-│   ├── active/                   Current plans with progress tracking
-│   └── completed/                Archived plans
+│   ├── active/                   Current: on_policy_wdl_sft.md
+│   └── completed/                Archived: stage1, stage2, minirl_migration, etc.
 ├── references/                ← External materials
-│   ├── external/                 Third-party articles and resources
+│   ├── external/                 Third-party articles, papers, sft_analysis.tex
 │   └── media/                    Images, diagrams, etc.
+├── reports/                   ← Training run analysis reports
 └── specs/                     ← Technical specifications (agent-facing)
-    ├── joint_training_algorithm_v1.md
-    └── branch_status_2026-03-14.md
+    └── joint_training_algorithm_v1.md
 ```
 
 ## How to Use This Directory

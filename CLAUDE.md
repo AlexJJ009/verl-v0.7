@@ -1,6 +1,6 @@
-# Joint Training — Agent Entry Point
+# On-Policy Weak-Driven SFT — Agent Entry Point
 
-This file is the table of contents for coding agents working on the joint-training branch. It is intentionally short. Deeper context lives in `docs/joint_training/`.
+This file is the table of contents for coding agents working on the on-policy-wdl-sft branch. It is intentionally short. Deeper context lives in `docs/joint_training/`.
 
 ## Environment
 
@@ -13,14 +13,6 @@ bash /data-1/verl07/build.sh --save     # + export to /data-1/docker_images/verl
 
 # Interactive shell
 bash /data-1/verl07/run_train.sh
-
-# Baseline (4 GPU)
-GPUS='"device=0,1,2,3"' bash /data-1/verl07/run_train.sh \
-  /workspace/verl/recipe/joint_training/run_baseline_minirl_qwen3_1.7b_math.sh
-
-# Joint (8 GPU)
-bash /data-1/verl07/run_train.sh \
-  /workspace/verl/recipe/joint_training/run_joint_grpo_qwen3_1.7b.sh
 ```
 
 - Docker image: `verl-harness` (tar: `/data-1/docker_images/verl-harness.tar`)
@@ -34,20 +26,32 @@ bash /data-1/verl07/run_train.sh \
 
 - Repo: `https://github.com/AlexJJ009/verl-v0.7`
 - Upstream: `https://github.com/verl-project/verl`
-- Branch: `feature/joint-training`
+- Branch: `feature/on-policy-wdl-sft`
+- Parent branch: `feature/joint-training` (Stage 1 & 2 complete)
 - `recipe/` is a submodule → `https://github.com/AlexJJ009/verl-recipe.git`
 
 ## Current Status
 
-Stage 1 (runtime bring-up) is complete. Stage 2 (algorithm correctness) is active.
+Joint-training runtime (Stage 1) and algorithm correctness (Stage 2) are complete on the parent branch. This branch implements **On-Policy Weak-Driven SFT** — a new training algorithm combining logit fusion with on-policy rollout and forward/reverse SFT.
 
-- Active plan: `docs/joint_training/plans/active/stage2.md`
-- Completed plan: `docs/joint_training/plans/completed/stage1.md`
+- Active plan: `docs/joint_training/plans/active/on_policy_wdl_sft.md`
+- Completed plans (from parent branch): `docs/joint_training/plans/completed/`
 
 ## Design Anchor
 
 ```
-logits_fused = (1 - lambda) * logits_model1 + lambda * logits_model2
+# Fused rollout (on-policy)
+z_mix = (1 - lambda) * z_weak + lambda * z_strong
+responses = autoregressive_sample(softmax(z_mix), N)
+
+# Forward WD-SFT on correct rollouts
+L+ = -mean[ log P_mix(y_correct) ]
+
+# Reverse WD-SFT on incorrect rollouts
+L- = +mean[ log P_mix(y_incorrect) ]
+
+# Combined loss
+L = L+ + beta * L-
 ```
 
 - Model class: `verl/models/joint_model/modeling_joint_qwen3.py`
@@ -59,10 +63,10 @@ logits_fused = (1 - lambda) * logits_model1 + lambda * logits_model2
 
 ```
 verl/trainer/ppo/ray_trainer.py       # Training main loop
-verl/trainer/ppo/core_algos.py        # Core algorithms
+verl/trainer/ppo/core_algos.py        # Core algorithms (loss functions)
 verl/workers/fsdp_workers.py          # FSDP backend
 verl/workers/actor/dp_actor.py        # Actor worker
-verl/workers/rollout/vllm_rollout/    # vLLM rollout
+verl/workers/rollout/vllm_rollout/    # vLLM rollout (fused sampling)
 verl/models/joint_model/              # Joint model implementation
 tests/joint_training/                 # Joint-training tests
 recipe/joint_training/                # Recipes and launchers
@@ -76,7 +80,8 @@ All deep documentation lives in `docs/joint_training/`:
 |---|---|---|
 | `specs/` | Technical specs (agent-facing) | Before implementing any feature |
 | `constraints/` | Rules, boundaries, commit conventions | Before writing or committing code |
-| `plans/` | Active and completed development plans | Before starting a task |
+| `plans/active/` | Current development plan | Before starting a task |
+| `plans/completed/` | Archived plans from parent branch | For historical context |
 | `codereview/` | Review results (active and completed) | When reviewing or fixing issues |
 | `courses/` | Educational docs (human-facing) | When learning the codebase |
 | `guides/` | Practical how-tos (testing, migration) | When running tests or setting up |
@@ -85,13 +90,14 @@ All deep documentation lives in `docs/joint_training/`:
 
 ## Quick Links
 
+- Active plan: `docs/joint_training/plans/active/on_policy_wdl_sft.md`
 - Development principles: `docs/joint_training/constraints/principles/development_principles.md`
 - Modification boundaries: `docs/joint_training/constraints/boundaries/modification_boundaries.md`
 - Commit rules: `docs/joint_training/constraints/commit_rules/commit_conventions.md`
 - Testing guide: `docs/joint_training/guides/testing.md`
 - Sample efficiency tuning: `docs/joint_training/guides/sample_efficiency_tuning.md`
-- Tuning iteration log: `docs/joint_training/guides/sample_efficiency_iteration_log.md`
-- Algorithm spec: `docs/joint_training/specs/joint_training_algorithm_v1.md`
+- Algorithm spec (logit fusion): `docs/joint_training/specs/joint_training_algorithm_v1.md`
+- SFT analysis (theory): `docs/joint_training/references/external/sft_analysis.tex`
 - Experiment index: `recipe/joint_training/EXPERIMENT_INDEX.md`
 - Inference results: `recipe/joint_training/INFERENCE_RESULTS.md`
 - Experiment tracking spec: `docs/joint_training/constraints/experiment_tracking/experiment_index_spec.md`
