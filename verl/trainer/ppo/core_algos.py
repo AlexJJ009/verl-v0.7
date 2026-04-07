@@ -1858,6 +1858,88 @@ def compute_entropy_loss(logits, response_mask, loss_agg_mode: str = "token-mean
     return entropy_loss
 
 
+def compute_wdl_sft_loss(
+    log_prob: torch.Tensor,
+    response_mask: torch.Tensor,
+    reward_labels: torch.Tensor,
+    beta: float = 0.1,
+) -> dict[str, torch.Tensor]:
+    """Compute On-Policy Weak-Driven SFT (WDL-SFT) loss for a single prompt group.
+
+    Implements bidirectional SFT training:
+    - Forward loss (L+): standard SFT on correct rollouts (maximize probability)
+    - Reverse loss (L-): reverse SFT on incorrect rollouts (minimize probability)
+    - Total loss: L+ + beta * L-
+
+    The loss uses per-group normalization (1/k for L+, 1/(N-k) for L-) so that
+    gradient magnitude is independent of the correct/incorrect ratio.
+
+    Boundary conditions:
+    - When all responses are correct (k=N): L- = 0, total = L+ only.
+    - When all responses are incorrect (k=0): prompt is skipped (loss = 0).
+
+    Args:
+        log_prob: Per-token log probabilities of the fused model, shape (N, T).
+            These are log P_mix(y_t | x, y_{<t}) for each token in each response.
+        response_mask: Binary mask for valid response tokens, shape (N, T).
+            1.0 for real tokens, 0.0 for padding.
+        reward_labels: Per-response reward labels, shape (N,).
+            +1.0 for correct responses (in C), -1.0 for incorrect responses (in I).
+        beta: Weight for reverse SFT loss (default 0.1). Must be >= 0.
+
+    Returns:
+        Dict with keys:
+            'total_loss': L+ + beta * L- (scalar tensor)
+            'loss_positive': L+ forward SFT loss (scalar tensor)
+            'loss_negative': L- reverse SFT loss (scalar tensor)
+        All values are finite (no NaN/Inf) for valid inputs.
+    """
+    device = log_prob.device
+    dtype = log_prob.dtype
+
+    # Per-sequence log-likelihood: sum of log_prob over valid tokens for each response
+    # seq_log_probs[i] = sum_t log_prob[i,t] * mask[i,t]
+    seq_log_probs = (log_prob * response_mask).sum(dim=-1)  # (N,)
+
+    # Partition responses into correct (C) and incorrect (I) sets
+    correct_mask = (reward_labels > 0).float()  # (N,) 1.0 for correct
+    incorrect_mask = (reward_labels < 0).float()  # (N,) 1.0 for incorrect
+
+    k = correct_mask.sum()  # |C|
+    n_minus_k = incorrect_mask.sum()  # |I| = N - k
+
+    # Edge case: all incorrect (k=0) -> skip this prompt entirely
+    if k.item() == 0:
+        zero = torch.zeros(1, device=device, dtype=dtype).squeeze(0)
+        return {
+            "total_loss": zero,
+            "loss_positive": zero,
+            "loss_negative": zero,
+        }
+
+    # Forward loss: L+ = -(1/k) * sum_{i in C} sum_t log P(y^i_t | ...)
+    # This is the mean negative log-likelihood over correct responses (standard SFT).
+    loss_positive = -(correct_mask * seq_log_probs).sum() / k
+
+    # Reverse loss: L- = (1/(N-k)) * sum_{j in I} sum_t log P(y^j_t | ...)
+    # Since log probs are negative, L- is negative, and minimizing beta*L-
+    # pushes the probability of incorrect responses down.
+    if n_minus_k.item() > 0:
+        loss_negative = (incorrect_mask * seq_log_probs).sum() / n_minus_k
+    else:
+        # All correct (k=N): no reverse loss
+        loss_negative = torch.zeros(1, device=device, dtype=dtype).squeeze(0)
+
+    # Total loss: L = L+ + beta * L-
+    total_loss = loss_positive + beta * loss_negative
+
+    return {
+        "total_loss": total_loss,
+        "loss_positive": loss_positive,
+        "loss_negative": loss_negative,
+    }
+
+
 def compute_value_loss(
     vpreds: torch.Tensor,
     returns: torch.Tensor,
