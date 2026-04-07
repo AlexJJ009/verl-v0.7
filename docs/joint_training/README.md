@@ -1,6 +1,8 @@
-# Joint Training Documentation
+# Joint Training Documentation (ARCHIVAL)
 
-This directory is the knowledge base for joint-training and on-policy WDL-SFT development in verl. It is organized for both human engineers and coding agents.
+> **Note**: This documentation was created during the `feature/joint-training` branch development (Stages 1 & 2). The current experiment is **On-Policy WDL-SFT** on branch `feature/on-policy-wdl-sft`. The infrastructure docs here (joint model, logit fusion, FSDP workers) remain relevant as background, but the training algorithm and recipe have changed. See `CLAUDE.md` at the repo root for the current experiment context.
+
+This directory is the knowledge base for joint-training infrastructure in verl. It is organized for both human engineers and coding agents.
 
 ## Current Focus
 
