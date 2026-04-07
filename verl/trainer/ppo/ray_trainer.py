@@ -1783,6 +1783,25 @@ class RayPPOTrainer:
                             config=self.config.algorithm,
                         )
 
+                        # WDL-SFT: override advantages with raw per-response reward labels
+                        # The WDL-SFT loss needs binary reward labels (+1.0/-1.0), not
+                        # GRPO-normalized advantages. We use the advantages tensor to carry
+                        # reward labels through the existing training pipeline.
+                        wdl_sft_loss_mode = self.config.actor_rollout_ref.actor.policy_loss.get("loss_mode", "vanilla")
+                        if wdl_sft_loss_mode == "wdl_sft":
+                            reward_labels = batch.batch["token_level_scores"].sum(dim=-1)  # (N,) +1.0/-1.0
+                            # Log WDL-SFT reward statistics
+                            n_correct = (reward_labels > 0).sum().item()
+                            n_incorrect = (reward_labels < 0).sum().item()
+                            n_total = reward_labels.numel()
+                            metrics["wdl_sft/n_correct"] = n_correct
+                            metrics["wdl_sft/n_incorrect"] = n_incorrect
+                            metrics["wdl_sft/correct_ratio"] = n_correct / max(n_total, 1)
+                            # Broadcast to token-level shape: (N, T) so it fits in advantages
+                            batch.batch["advantages"] = reward_labels.unsqueeze(-1).expand_as(
+                                batch.batch["response_mask"]
+                            ).clone()
+
                     # update critic
                     if self.use_critic:
                         with marked_timer("update_critic", timing_raw, color="pink"):

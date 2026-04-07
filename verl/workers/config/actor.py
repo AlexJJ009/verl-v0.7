@@ -87,6 +87,8 @@ class PolicyLossConfig(BaseConfig):
     clip_cov_ub: float = 5.0
     kl_cov_ratio: float = 0.0002
     ppo_kl_coef: float = 0.1
+    # WDL-SFT: reverse SFT weight β (only used when loss_mode="wdl_sft")
+    wdl_sft_beta: float = 0.1
 
 
 @dataclass

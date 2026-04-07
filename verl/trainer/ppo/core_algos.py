@@ -1858,6 +1858,65 @@ def compute_entropy_loss(logits, response_mask, loss_agg_mode: str = "token-mean
     return entropy_loss
 
 
+@register_policy_loss("wdl_sft")
+def compute_policy_loss_wdl_sft(
+    old_log_prob: torch.Tensor,
+    log_prob: torch.Tensor,
+    advantages: torch.Tensor,
+    response_mask: torch.Tensor,
+    loss_agg_mode: str = "seq-mean-token-sum",
+    config: Optional[DictConfig | ActorConfig] = None,
+    rollout_is_weights: torch.Tensor | None = None,
+) -> tuple[torch.Tensor, dict[str, Any]]:
+    """Policy loss wrapper for On-Policy WDL-SFT.
+
+    Adapts compute_wdl_sft_loss to the standard PolicyLossFn interface used by
+    the verl training loop. Extracts reward_labels and beta from the config,
+    then delegates to compute_wdl_sft_loss.
+
+    The 'advantages' tensor is repurposed to carry per-response reward labels
+    (+1.0 for correct, -1.0 for incorrect). These are set by the training loop
+    when loss_mode="wdl_sft" — specifically, token_level_scores.sum(dim=-1)
+    produces the per-response reward scores.
+
+    WDL-SFT does NOT use old_log_prob, rollout_is_weights, or loss_agg_mode.
+    """
+    assert config is not None
+
+    # Extract beta from config (default 0.1)
+    beta = config.policy_loss.get("wdl_sft_beta", 0.1) if hasattr(config, "policy_loss") else 0.1
+
+    # Extract per-response reward labels from advantages
+    # In WDL-SFT mode, the training loop sets advantages = token_level_scores.sum(dim=-1)
+    # which gives per-response reward labels (+1.0 / -1.0), broadcast to (N, T).
+    # We take the first token's value per response as the per-response label.
+    reward_labels = advantages[:, 0]  # (N,)
+
+    result = compute_wdl_sft_loss(
+        log_prob=log_prob,
+        response_mask=response_mask,
+        reward_labels=reward_labels,
+        beta=beta,
+    )
+
+    pg_loss = result["total_loss"]
+    # When C=∅ (all incorrect), compute_wdl_sft_loss returns a detached zero tensor.
+    # We need a zero that's connected to the computation graph for backward() to work.
+    if not pg_loss.requires_grad:
+        pg_loss = (log_prob * response_mask).sum() * 0.0
+
+    pg_metrics = {
+        "actor/wdl_sft_loss_positive": result["loss_positive"].detach().item(),
+        "actor/wdl_sft_loss_negative": result["loss_negative"].detach().item(),
+        "actor/wdl_sft_loss_total": result["total_loss"].detach().item(),
+        "actor/wdl_sft_beta": beta,
+        "actor/pg_clipfrac": 0.0,
+        "actor/ppo_kl": 0.0,
+        "actor/pg_clipfrac_lower": 0.0,
+    }
+    return pg_loss, pg_metrics
+
+
 def compute_wdl_sft_loss(
     log_prob: torch.Tensor,
     response_mask: torch.Tensor,
