@@ -68,6 +68,8 @@ After all runs complete, compare validation metrics across checkpoints to select
 ## Next Steps After LR Search
 
 Once the best LR is identified:
-1. Launch a full-length training run (1745 steps, ~2 epochs)
+1. Launch production training run (~300 steps, same scale as search runs) with best LR
 2. Run comprehensive evaluation at best checkpoint via /vllm-eval
 3. Compare against baseline (weak model, strong model, static WD-SFT)
+
+> Note: 300 steps is sufficient for this method — M5.5 baseline already showed good results at this scale. No need for 1745-step full-epoch runs.

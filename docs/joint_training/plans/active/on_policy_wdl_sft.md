@@ -161,8 +161,8 @@ $$\nabla_{\theta_{\text{weak}}} \mathcal{L} = (1-\lambda) \cdot g, \quad \nabla_
 - [ ] 对比各 LR 在 MATH-500 和 AIME-2025 上的验证精度
 - [ ] 选定最佳 LR
 
-### Phase 4: 大规模训练
+### Phase 4: 最终训练与评估
 
-- [ ] 使用最佳 LR 进行完整训练（1745 步, ~2 epochs）
+- [ ] 使用最佳 LR 进行训练（~300 步，足够收敛）
 - [ ] 综合评估（/vllm-eval）
 - [ ] 与 baseline（weak model、strong model、static WD-SFT）对比
