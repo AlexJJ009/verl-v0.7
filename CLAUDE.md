@@ -1,6 +1,6 @@
 # On-Policy Weak-Driven SFT (WDL-SFT) — Agent Entry Point
 
-This file is the table of contents for coding agents working on the **On-Policy WDL-SFT** experiment on branch `feature/on-policy-wdl-sft`. This experiment extends standard Weak-Driven SFT with on-policy rollout and bidirectional (forward + reverse) SFT training.
+This file is the table of contents for coding agents working on the **On-Policy WDL-SFT** experiment on branch `feature/on-policy-wdl-sft`. This experiment extends standard Weak-Driven SFT with on-policy rollout and **forward-only** SFT training on correct rollouts.
 
 ## Experiment Overview
 
@@ -8,8 +8,10 @@ This file is the table of contents for coding agents working on the **On-Policy 
 
 1. **Fused Rollout**: Sample N responses from the fused distribution `P_mix = Softmax((1-λ)·z_weak + λ·z_strong)`
 2. **Reward Judgment**: Score each response via reward function → correct set C, incorrect set I
-3. **Bidirectional WD-SFT**: Forward SFT (L+) on correct rollouts, Reverse SFT (L-) on incorrect rollouts
-4. **Combined Loss**: `L = L+ + β·L-`
+3. **Forward SFT (L+)**: SFT on correct rollouts only (β=0, reverse SFT disabled)
+4. **Loss**: `L = L+` (cross-entropy on correct rollouts)
+
+> **Note**: Reverse SFT (L-, β>0) was experimentally tested in M5 (lr=1e-6) and M5.6 (lr=5e-7) — both runs crashed due to training instability. Reverse SFT is **abandoned** as it is inherently unstable for this setup. All future work uses forward-only mode (β=0).
 
 This is distinct from MiniRL/GRPO — it preserves SFT simplicity while gaining on-policy self-adaptive training signals.
 
@@ -79,17 +81,32 @@ recipe/joint_training/                # Joint-training recipe (ARCHIVAL — from
 - 3-tier verification: LaTeX semantic → math_verify → string matching
 - Returns binary reward: +1.0 (correct) / -1.0 (incorrect), -1.0 for truncated (no EOS)
 
-## Default Hyperparameters
+## Current Hyperparameters
 
-| Parameter | Value |
-|-----------|-------|
-| λ (logit mixing weight) | 0.5 |
-| β (reverse SFT weight) | 0.1 |
-| N (rollouts per prompt) | 8 |
-| Learning rate | 1e-6 |
-| Batch size (prompts/step) | 64 |
-| Max prompt length | 500 |
-| Max response length | 4096 |
+| Parameter | Value | Notes |
+|-----------|-------|-------|
+| λ (logit mixing weight) | 0.5 | |
+| β (reverse SFT weight) | **0.0** | Reverse SFT disabled — unstable |
+| N (rollouts per prompt) | 8 | |
+| Learning rate | **5e-7** | Baseline from M5.5; LR search planned |
+| Batch size (prompts/step) | 64 | |
+| Max prompt length | 500 | |
+| Max response length | 4096 | |
+| grad_clip | 500.0 | |
+| weight_decay | 0.1 | |
+| lr_warmup_steps | 5 | |
+
+## Training History
+
+| Run | Config | Steps | Result |
+|-----|--------|-------|--------|
+| M5 | lr=1e-6, β=0.1 (bidirectional) | ~1000 | Unstable, training diverged |
+| M5.5 | lr=5e-7, β=0.0 (forward-only) | **300 (complete)** | Stable. 12 checkpoints (every 25 steps). Baseline run. |
+| M5.6 | lr=5e-7, β=0.1 (reverse re-test) | ~236 | Crashed — confirms reverse SFT instability |
+
+Checkpoints from M5.5 have been transferred to a secondary mount. These serve as the basis for upcoming LR hyperparameter search.
+
+**Next step**: Learning rate search — see `docs/joint_training/plans/active/lr_search.md`
 
 ## Documentation (Archival)
 
@@ -105,9 +122,30 @@ Documentation in `docs/joint_training/` was created during the parent branch's j
 | `guides/` | Testing, tuning, migration guides | Partially applicable |
 | `references/` | External articles and papers | ARCHIVAL — background reference |
 
+## Operational Best Practices (MANDATORY)
+
+Before launching any training, monitoring, checkpoint transfer, or large file operation, **always read and follow** these rules:
+
+1. **Use tmux for all long-running work**: Training scripts, monitoring scripts, checkpoint transfers (`rsync`/`cp` to secondary mounts), and large file downloads must all run inside tmux sessions. This prevents job loss due to SSH disconnection or terminal closure. Example:
+   ```bash
+   tmux new-session -s train
+   bash recipe/on_policy_wdl_sft/run_on_policy_wdl_sft_qwen3_4b_math_m5_5.sh
+   # Ctrl-B D to detach; tmux attach -t train to re-attach
+   ```
+
+2. **Checkpoint transfer**: When transferring checkpoints to a secondary mount, always use tmux. Large model checkpoints (~8GB+ per checkpoint) take significant time.
+
+3. **Monitor in tmux**: If running a monitoring/tail script alongside training, put it in its own tmux pane or window.
+
+## Agent Guidelines
+
+- **Subagents**: Use subagents (Agent tool) for exploratory/independent work to save main context. Subagents should use the **Haiku** model (`model: "haiku"`) for cost efficiency — do NOT use Opus for subagent work unless the task specifically requires strong reasoning.
+- **Plans**: Active plans live in `docs/joint_training/plans/active/`. When creating or updating experiment plans, always update the index in this CLAUDE.md file.
+
 ## Quick Links
 
 - On-Policy WDL-SFT plan: `docs/joint_training/plans/active/on_policy_wdl_sft.md`
+- LR search plan: `docs/joint_training/plans/active/lr_search.md`
 - Joint model code: `verl/models/joint_model/modeling_joint_qwen3.py`
 - Joint config: `verl/models/joint_model/configuration_joint_qwen3.py`
 - Weight utils: `verl/models/joint_model/weight_utils.py`

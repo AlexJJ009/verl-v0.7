@@ -1,9 +1,12 @@
-# On-Policy Weak-Driven SFT（正向 + 反向）
+# On-Policy Weak-Driven SFT（仅正向）
 
-- 状态：**规划中**
+- 状态：**进行中 — LR 搜参阶段**
 - 分支：`feature/on-policy-wdl-sft`
 - 创建日期：2026-04-06
+- 更新日期：2026-04-16
 - 前置分支：`feature/joint-training`（Stage 1 & 2 完成）
+
+> **重要变更 (2026-04-16)**: 反向 SFT（β>0）已永久放弃。M5 (lr=1e-6) 和 M5.6 (lr=5e-7) 两次实验均因训练崩溃证实反向 SFT 本身是不稳定因素。后续所有工作均使用 β=0（仅正向 SFT）。当前基线为 M5.5 (lr=5e-7, β=0, 300 steps 完成)。下一步：学习率搜参，见 `lr_search.md`。
 
 ---
 
@@ -127,34 +130,39 @@ $$\nabla_{\theta_{\text{weak}}} \mathcal{L} = (1-\lambda) \cdot g, \quad \nabla_
 
 ## 实现计划
 
-> 待细化——以下为初步阶段划分
+### Phase 0: 基础设施准备 — DONE
 
-### Phase 0: 基础设施准备
+- [x] 在 `core_algos.py` 中注册新的 loss function `wdl_sft`
+- [x] 实现正向 WD-SFT loss（fused logits + teacher-forcing on correct rollouts）
+- [x] 实现反向 WD-SFT loss（minimize probability of incorrect rollouts）
+- [x] 添加 $\beta$ 系数配置
+- [x] 单元测试覆盖
 
-- [ ] 在 `core_algos.py` 中注册新的 loss function `on_policy_wdl_sft`
-- [ ] 实现正向 WD-SFT loss（fused logits + teacher-forcing on correct rollouts）
-- [ ] 实现反向 WD-SFT loss（minimize probability of incorrect rollouts）
-- [ ] 添加 $\beta$ 系数配置（静态 + 动态 $k/(N-k)$ 两种模式）
-- [ ] 单元测试覆盖
+### Phase 1: 训练循环集成 — DONE
 
-### Phase 1: 训练循环集成
+- [x] 修改 `ray_trainer.py` 中的训练循环以支持 on-policy SFT 模式
+- [x] 复用现有 vLLM rollout 基础设施进行 fused rollout
+- [x] 复用现有 reward computation 判定正误
+- [x] 将 rollout 结果按正确/错误分组后送入 SFT loss
+- [x] 处理边界情况：$\mathcal{C} = \emptyset$（全错）和 $\mathcal{I} = \emptyset$（全对）
 
-- [ ] 修改 `ray_trainer.py` 中的训练循环以支持 on-policy SFT 模式
-- [ ] 复用现有 vLLM rollout 基础设施进行 fused rollout
-- [ ] 复用现有 reward computation 判定正误
-- [ ] 将 rollout 结果按正确/错误分组后送入 SFT loss
-- [ ] 处理边界情况：$\mathcal{C} = \emptyset$（全错）和 $\mathcal{I} = \emptyset$（全对）
+### Phase 2: 训练验证 — DONE（结论：仅正向可行）
 
-### Phase 2: 训练验证
+- [x] M5: 双向训练（β=0.1, lr=1e-6）— 训练不稳定，~1000 步后崩溃
+- [x] M5.5: 仅正向训练（β=0, lr=5e-7）— **稳定完成 300 步**，12 个 checkpoint
+- [x] M5.6: 重新测试双向（β=0.1, lr=5e-7）— ~236 步崩溃，确认反向 SFT 不稳定
+- [x] **结论**：反向 SFT 永久放弃，后续仅使用 β=0
 
-- [ ] 小规模实验验证 loss 下降和 reward 上升
-- [ ] 监控 $\mathcal{L}^+$ 和 $\mathcal{L}^-$ 分别的趋势
-- [ ] 验证负 SFT 的稳定性（熵监控）
-- [ ] 与 baseline MiniRL 和标准 WD-SFT 对比
+### Phase 3: 学习率搜参 — IN PROGRESS
 
-### Phase 3: 调优与扩展
+详见 `lr_search.md`。
 
-- [ ] $\beta$ 调参实验
-- [ ] rollout_n 的影响实验
-- [ ] $\lambda$ schedule 实验
-- [ ] 大规模训练验证
+- [ ] LR grid search: 1e-7, 2e-7, (5e-7 已完成), 1e-6, 2e-6, 5e-6
+- [ ] 对比各 LR 在 MATH-500 和 AIME-2025 上的验证精度
+- [ ] 选定最佳 LR
+
+### Phase 4: 大规模训练
+
+- [ ] 使用最佳 LR 进行完整训练（1745 步, ~2 epochs）
+- [ ] 综合评估（/vllm-eval）
+- [ ] 与 baseline（weak model、strong model、static WD-SFT）对比
