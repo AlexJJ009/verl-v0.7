@@ -1,6 +1,6 @@
 # WDL-SFT-IS：给 On-Policy WDL-SFT 补齐稳定性机制
 
-- 状态：**ACTIVE — 方案敲定，等待实现**
+- 状态：**ACTIVE — 实现完成，1a 运行中**
 - 分支：`feature/on-policy-wdl-sft`（不新开分支，本算法仍是 WDL-SFT 家族）
 - 创建日期：2026-04-19
 - 前置：
@@ -111,11 +111,11 @@ v1 用 `seq-mean-token-sum` + `1/k` 归一化：长序列贡献的 token 数更�
 - `algorithm.rollout_correction.rollout_is="token"`, `threshold=5.0`
 - 300 steps，val_freq=25，save_freq=25
 
-| 实验 | loss_mode | lr | β | 主要问题 |
-|---|---|---|---|---|
-| **1a** | wdl_sft_is | 5e-7 | 0 | 正向 SFT + IS/clip 的真实上限。期望 mean@1 > 70%。|
-| **1b** | wdl_sft_is | 5e-7 | 0.1 | 在有 IS/clip 保护下 reverse SFT 是否仍不稳？推翻/确认 "reverse SFT abandoned"。|
-| **1c** | wdl_sft_is | 1e-6 | 0 | 高 LR 在有 IS/clip 下是否稳？回答 "v1 step 125 后漂移是 LR 问题还是 loss 问题"。|
+| 实验 | loss_mode | lr | β | 状态 | Run ID |
+|---|---|---|---|---|---|
+| **1a** (EXP-16) | wdl_sft_is | 5e-7 | 0 | **运行中** 2026-04-19 16:57 | `WDL-SFT-Qwen3-4B-MATH-1A_1776589025` |
+| **1b** (EXP-17) | wdl_sft_is | 5e-7 | 0.1 | 待 1a 方向性结论 | — |
+| **1c** (EXP-18) | wdl_sft_is | 1e-6 | 0 | 待 1a 稳定 | — |
 
 **决策流**：
 - 1a 跑出来 mean@1 < 70% → (W) 的 weak-driven rollout 想法没想象中那么强，本研究方向的故事需要重写。
@@ -166,11 +166,13 @@ GPU/sample-efficiency config（`ACTOR_PPO_MAX_TOKEN_LEN`, `TRAIN_PROMPT_BSZ`, `T
 
 ## 8. Timeline
 
-1. 文档与 spec：本次会话完成（Claude 执行）
-2. 代码 + 单元测试：本次会话完成（Claude 执行，测试全绿才算完成）
-3. 实验 1a 启动：用户 review 代码后启动，预计 24-30h 跑完 300 steps
-4. 1a 结果分析：分析完根据 §4 决策流决定是否启动 1b/1c
-5. 最迟 2026-04-25 给出 1a 结论
+1. ✅ 文档与 spec：2026-04-19 完成
+2. ✅ 代码 + 单元测试：2026-04-19 完成（12/12 通过 + MiniRL 10/10 回归通过）
+3. ✅ Git commit + push：2026-04-19 完成（主 repo `a8aaedc7`，recipe submodule `b37a0e3`）
+4. ✅ **1a 启动**：2026-04-19 16:57（tmux `wdl_sft_is_1a`，预计 ~24h 跑完 300 steps）
+5. 🔄 1a 结果分析：预计 2026-04-20 下午
+6. 待定 1b / 1c 启动：根据 §4 决策流
+7. 最迟 2026-04-25 给出 1a 结论
 
 ## 9. 相关代码引用
 

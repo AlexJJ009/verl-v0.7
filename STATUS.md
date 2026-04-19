@@ -1,7 +1,7 @@
 # Project Status — On-Policy WDL-SFT
 
 **Branch**: `feature/on-policy-wdl-sft`
-**Last updated**: 2026-04-19
+**Last updated**: 2026-04-19 (EXP-16 1a 启动后)
 **Updated by**: Claude
 
 ---
@@ -29,13 +29,31 @@ EXP-12~15 四次 offline eval 完成后确认：WDL-SFT v1 的 model2 上限稳�
 
 详见 `docs/joint_training/plans/active/wdl_sft_is.md`。三个 A/B 对照：
 
-| 实验 | loss | lr | β | 要回答的问题 |
-|---|---|---|---|---|
-| EXP-16 (1a) | wdl_sft_is | 5e-7 | 0 | 补齐 IS/clip 后正向 SFT 的真实上限（>70% 表明方向靠谱）|
-| EXP-17 (1b) | wdl_sft_is | 5e-7 | 0.1 | reverse SFT 在 IS/clip 保护下是否仍不稳 |
-| EXP-18 (1c) | wdl_sft_is | 1e-6 | 0 | 高 LR 在有 IS/clip 下是否稳；区分 v1 漂移是 LR 问题还是 loss 问题 |
+| 实验 | loss | lr | β | 状态 | Run ID |
+|---|---|---|---|---|---|
+| **EXP-16 (1a)** | wdl_sft_is | 5e-7 | 0 | **运行中**（2026-04-19 16:57 启动） | `WDL-SFT-Qwen3-4B-MATH-1A_1776589025` |
+| EXP-17 (1b) | wdl_sft_is | 5e-7 | 0.1 | 待 1a 有方向性结论后决策 | — |
+| EXP-18 (1c) | wdl_sft_is | 1e-6 | 0 | 待 1a 稳定后并行 | — |
 
-## 4. 代码与文档执行状态（本次会话）
+### EXP-16 (1a) 监控清单
+
+| 项 | 路径 |
+|---|---|
+| 主训练 log | `recipe/on_policy_wdl_sft/WDL-SFT-Qwen3-4B-MATH-1A_1776589025.log` |
+| Metrics JSONL | `recipe/on_policy_wdl_sft/metrics/OnPolicyWDLSFT/WDL-SFT-Qwen3-4B-MATH-1A_1776589025.jsonl` |
+| Checkpoints | `/data-1/checkpoints/WDL-SFT-Qwen3-4B-MATH-1A_1776589025/` |
+| Val 原始 dump | `recipe/on_policy_wdl_sft/validation/WDL-SFT-Qwen3-4B-MATH-1A_1776589025/`（gitignore，本地保留） |
+| WandB offline | `/data-1/wandb_runs/WDL-SFT-Qwen3-4B-MATH-1A/wandb/offline-run-20260419_090049-5ca47aqk/` |
+| Tmux session | `wdl_sft_is_1a` |
+| 预计结束时间 | ~24 小时（300 steps × ~90s/step + 12 次 val） |
+
+关键监控指标（通过 WandB 或直接读 jsonl）：
+- **IS 触发**：`actor/pg_clipfrac`（正样本上界 clip 比例），`actor/pg_clipfrac_lower`（负样本下界 clip 比例，1a β=0 时应始终为 0），`rollout_is_ratio_fraction_high/low`（vLLM↔FSDP IS 超阈值比例），`rollout_is_eff_sample_size`（ESS）
+- **Drift 度**：`actor/ppo_kl`（ratio 偏离 1 的量）、`actor/entropy`（健康下降 vs 漂移上升）
+- **Joint 训练**：`jointTraining/model{1,2}_grad_norm`, `model_grad_cosine_similarity`
+- **Val**：`val-core/HuggingFaceH4/MATH-500/acc/mean@1`（对标 M5.5 step 300 = 67.94%，1a 目标 > 70%）
+
+## 4. 本次会话执行状态
 
 | 任务 | 状态 |
 |---|---|
@@ -44,11 +62,14 @@ EXP-12~15 四次 offline eval 完成后确认：WDL-SFT v1 的 model2 上限稳�
 | 新 spec `docs/joint_training/specs/wdl_sft_is.md` | ✅ 完成 |
 | 更新 `CLAUDE.md`（v1/v2 区分、超参、training history） | ✅ 完成 |
 | 更新 `STATUS.md`（本文件） | ✅ 完成 |
-| 更新 auto-memory（`project_reverse_sft.md`, `project_training_status.md`） | 🔄 进行中 |
-| 实现 `compute_policy_loss_wdl_sft_is` | 🔄 待做 |
-| 单元测试 `tests/joint_training/test_wdl_sft_is_loss.py` | 🔄 待做 |
-| pytest 验证通过 | 🔄 待做 |
-| 训练脚本 `run_on_policy_wdl_sft_qwen3_4b_math_1a.sh` 等 | 🔄 待做 |
+| 更新 auto-memory（`project_reverse_sft.md`, `project_training_status.md`） | ✅ 完成 |
+| 更新 v1 plan `on_policy_wdl_sft.md`（加 SUPERSEDED 头） | ✅ 完成 |
+| 实现 `compute_policy_loss_wdl_sft_is` | ✅ 完成 |
+| 单元测试 `tests/on_policy_wdl_sft/test_wdl_sft_is_loss.py` | ✅ 完成（12/12 通过） |
+| pytest 验证通过（含 MiniRL 10/10 回归） | ✅ 完成 |
+| 训练脚本 1a/1b/1c（`run_on_policy_wdl_sft_qwen3_4b_math_{1a,1b,1c}.sh`） | ✅ 完成 |
+| Git commit + push（主 repo + recipe submodule） | ✅ 完成 |
+| **EXP-16 (1a) 启动** | ✅ **运行中** |
 
 ## 5. 关键文件路径
 

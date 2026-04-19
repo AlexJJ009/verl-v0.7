@@ -1,12 +1,19 @@
-# On-Policy Weak-Driven SFT（仅正向）
+# On-Policy Weak-Driven SFT（仅正向） — v1 原始方案
 
-- 状态：**进行中 — LR 搜参阶段**
+- 状态：**SUPERSEDED（2026-04-19）by `wdl_sft_is.md`（v2）**
 - 分支：`feature/on-policy-wdl-sft`
 - 创建日期：2026-04-06
-- 更新日期：2026-04-16
+- 归入 v1：2026-04-19
 - 前置分支：`feature/joint-training`（Stage 1 & 2 完成）
 
-> **重要变更 (2026-04-16)**: 反向 SFT（β>0）已永久放弃。M5 (lr=1e-6) 和 M5.6 (lr=5e-7) 两次实验均因训练崩溃证实反向 SFT 本身是不稳定因素。后续所有工作均使用 β=0（仅正向 SFT）。当前基线为 M5.5 (lr=5e-7, β=0, 300 steps 完成)。下一步：学习率搜参，见 `lr_search.md`。
+> **2026-04-19 — 本文档归为 v1 原始方案，不再是当前主线**：
+> EXP-12~15 四次实验结束后确认：WDL-SFT v1 的 model2 在 MATH-500 mean@3 上限固定在 79-80%（三种配置差异 < 方差），mean@1 ~68%（baseline MiniRL 同机可达 ~74%）。根因是 loss 层缺稳定性机制（无 `old_log_prob`、无 ratio clip、无 `rollout_is_weights`）。当前主线改到 v2 loss（`loss_mode=wdl_sft_is`），详见 `wdl_sft_is.md`。
+>
+> **2026-04-16 的"反向 SFT 永久放弃"判断也已撤回**：那个结论基于 v1 loss 下的 M5 和 M5.6，但 v1 没有任何 clip 保护。v2 会在 EXP-17（1b 实验）下重测 β=0.1，那时才能给出最终判断。
+>
+> **LR 搜参计划已归档**到 `plans/completed/lr_search.md`。
+>
+> 以下原文作为历史记录保留。
 
 ---
 

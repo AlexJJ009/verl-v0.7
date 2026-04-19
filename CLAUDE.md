@@ -135,13 +135,13 @@ Key finding from v1: model2 ceiling ≈ 79-80% MATH-500 mean@3 regardless of lr/
 
 **v2 runs (loss_mode=wdl_sft_is)**:
 
-| Run | Config | Status |
-|-----|--------|--------|
-| EXP-16 (1a) | lr=5e-7, β=0, v2 | Pending |
-| EXP-17 (1b) | lr=5e-7, β=0.1, v2 | Pending |
-| EXP-18 (1c) | lr=1e-6, β=0, v2 | Pending |
+| Run | Config | Status | Run ID |
+|-----|--------|--------|--------|
+| **EXP-16 (1a)** | lr=5e-7, β=0, v2 | **Running** (launched 2026-04-19 16:57) | `WDL-SFT-Qwen3-4B-MATH-1A_1776589025` |
+| EXP-17 (1b) | lr=5e-7, β=0.1, v2 | Pending (decision after 1a) | — |
+| EXP-18 (1c) | lr=1e-6, β=0, v2 | Pending | — |
 
-**Next step**: Implement v2 loss + tests, then launch 1a. See `docs/joint_training/plans/active/wdl_sft_is.md`.
+**Current focus**: Monitor 1a — critical milestones: step 25 (first val), step 125 (v1's peak-and-crash point → v2 should be stable here). See `docs/joint_training/plans/active/wdl_sft_is.md` §4 for decision criteria.
 
 ## Documentation (Archival)
 
