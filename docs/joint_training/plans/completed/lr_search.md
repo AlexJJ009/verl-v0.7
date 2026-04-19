@@ -1,8 +1,33 @@
 # Learning Rate Hyperparameter Search
 
-- Status: **ACTIVE**
+- Status: **COMPLETED / ABANDONED (2026-04-19)**
 - Branch: `feature/on-policy-wdl-sft`
 - Created: 2026-04-16
+- Closed: 2026-04-19
+
+---
+
+## 结论（2026-04-19，LR3 跑完之后）
+
+**LR 搜索不是解药，已终止**。四个实验（EXP-12~15）offline eval 完成后数据清楚地显示：
+
+- WDL-SFT v1 的 model2 在 MATH-500 mean@3 的上限固定在 79–80%，对 lr 和 β 都不敏感：
+  - M5.5 (lr=5e-7, step 300): 78.6%
+  - M5.6 (lr=5e-7, β=0.1, step 300): 79.1%
+  - LR3 (lr=1e-6, step 125): 79.6%
+- 同机同初始化下 baseline MiniRL 在 step 100 就能到 mean@1 ≈ 74%，WDL-SFT v1 跑完 300 步 mean@1 ≈ 68%。
+- 上限由 loss 缺少的稳定性机制决定（IS 修正、ratio clipping、train-infer 一致性），不是 LR。
+
+**下一步**：见 `docs/joint_training/plans/active/wdl_sft_is.md`（WDL-SFT-IS：补齐稳定性机制）。
+
+LR3、M5.5、M5.6 的现有 checkpoint 作为 WDL-SFT v1 的对照保留，未来 v2 做对比时复用。
+
+---
+
+（以下是原 plan 内容，仅作归档保留）
+
+---
+
 - Prerequisite: M5.5 baseline (forward-only, lr=5e-7, 300 steps, stable)
 
 ---

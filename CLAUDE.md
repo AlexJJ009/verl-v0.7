@@ -4,16 +4,36 @@ This file is the table of contents for coding agents working on the **On-Policy 
 
 ## Experiment Overview
 
-**On-Policy WDL-SFT** combines logit fusion with on-policy rollout:
+**On-Policy WDL-SFT** combines logit fusion with on-policy rollout. The algorithm is now versioned:
 
-1. **Fused Rollout**: Sample N responses from the fused distribution `P_mix = Softmax((1-λ)·z_weak + λ·z_strong)`
-2. **Reward Judgment**: Score each response via reward function → correct set C, incorrect set I
-3. **Forward SFT (L+)**: SFT on correct rollouts only (β=0, reverse SFT disabled)
-4. **Loss**: `L = L+` (cross-entropy on correct rollouts)
+- **v1 (naive, `loss_mode=wdl_sft`)** — EXP-12 through EXP-15. No stability mechanisms in the loss.
+- **v2 (IS-corrected, `loss_mode=wdl_sft_is`)** — EXP-16+. Adds binary-mask ratio clipping and `rollout_is_weights` correction.
 
-> **Note**: Reverse SFT (L-, β>0) was experimentally tested in M5 (lr=1e-6) and M5.6 (lr=5e-7) — both runs crashed due to training instability. Reverse SFT is **abandoned** as it is inherently unstable for this setup. All future work uses forward-only mode (β=0).
+### Common to both versions
 
-This is distinct from MiniRL/GRPO — it preserves SFT simplicity while gaining on-policy self-adaptive training signals.
+1. **Fused Rollout**: Sample N responses from the fused distribution `P_mix = Softmax((1-λ)·z_weak + λ·z_strong)`.
+2. **Reward Judgment**: Score each response via reward function → correct set C, incorrect set I.
+3. **Both sub-models trained**: `freeze_model1=False` (default). Gradients flow into both model1 and model2. model1 is intentionally "sacrificed" to amplify model2's gradient through the fused logits — **evaluation targets model2 only**, not the joint fused model.
+
+### v1 loss (naive)
+
+$$L = L^+ + \beta \cdot L^-$$
+
+where $L^+ = -\tfrac{1}{|C|}\sum_{i \in C}\sum_t \log P_\theta(y^i_t)$ and $L^- = \tfrac{1}{|I|}\sum_{j \in I}\sum_t \log P_\theta(y^j_t)$.
+No `old_log_prob`, no IS correction, no clip.
+
+### v2 loss (IS-corrected)
+
+Same $L^+, L^-$ structure, plus:
+- Binary mask on ratio $r = \pi_\theta / \pi_\text{old}$: upper-bound clip on C, lower-bound clip on I (MiniRL-style).
+- `rollout_is_weights` (token-level, from `rollout_correction`) multiplied into token loss.
+- Addresses the two sources of π_old ≠ π_new relevant to this setup: (A) multi-mini-batch updates per rollout, (B) vLLM/FSDP numerical mismatch. The fused-vs-submodel mismatch (source C) is intentional and left unmodified.
+
+See `docs/joint_training/specs/wdl_sft_is.md` for exact formulas and `docs/joint_training/plans/active/wdl_sft_is.md` for the current experiment plan.
+
+### Status of "reverse SFT abandoned"
+
+Previous documents declared reverse SFT (β>0) permanently abandoned based on EXP-12 (M5, lr=1e-6) and EXP-14 (M5.6, lr=5e-7) instability. **This conclusion is now tentative** — those runs used v1 loss with no stability mechanisms, so β>0 was operating in a completely unprotected regime. EXP-17 (experiment 1b in the plan) will re-test β=0.1 under v2 loss before the decision is finalized.
 
 ## Environment
 
@@ -51,8 +71,8 @@ bash /data-1/verl07/run_train.sh
 
 | Role | Model | Path |
 |------|-------|------|
-| Weak model | Qwen3-4B-Base (pretrained) | `/data-1/.cache/huggingface/models--Qwen--Qwen3-4B-Base` |
-| Strong model | Qwen3-4B-Base-SFT-stage-1 (SFT-finetuned) | `/data-1/.cache/Qwen3-4B-Base-SFT-stage-1` |
+| Weak model (model1, sub_models.0) | Qwen3-4B-Base (pretrained init; trained jointly, not frozen) | `/data-1/.cache/huggingface/models--Qwen--Qwen3-4B-Base` |
+| Strong model (model2, sub_models.1) | Qwen3-4B-Base-SFT-stage-1 (SFT-finetuned init; trained jointly) | `/data-1/.cache/Qwen3-4B-Base-SFT-stage-1` |
 
 ## Datasets
 
@@ -81,32 +101,47 @@ recipe/joint_training/                # Joint-training recipe (ARCHIVAL — from
 - 3-tier verification: LaTeX semantic → math_verify → string matching
 - Returns binary reward: +1.0 (correct) / -1.0 (incorrect), -1.0 for truncated (no EOS)
 
-## Current Hyperparameters
+## Current Hyperparameters (v2 defaults — for experiments 1a/1b/1c)
 
 | Parameter | Value | Notes |
 |-----------|-------|-------|
+| loss_mode | `wdl_sft_is` | v2. Pin to `wdl_sft` to reproduce v1 runs. |
 | λ (logit mixing weight) | 0.5 | |
-| β (reverse SFT weight) | **0.0** | Reverse SFT disabled — unstable |
+| β (reverse SFT weight) | **0.0** (1a/1c), 0.1 (1b) | Re-testing reverse SFT under v2. |
 | N (rollouts per prompt) | 8 | |
-| Learning rate | **5e-7** | Baseline from M5.5; LR search planned |
+| Learning rate | **5e-7** (1a/1b), 1e-6 (1c) | Full re-test with v2 stability |
 | Batch size (prompts/step) | 64 | |
 | Max prompt length | 500 | |
 | Max response length | 4096 | |
 | grad_clip | 500.0 | |
 | weight_decay | 0.1 | |
 | lr_warmup_steps | 5 | |
+| clip_ratio_low / high | 0.2 / 0.27 | v2 only (binary mask thresholds) |
+| rollout_is | `token` | v2 only (token-level IS weights) |
+| rollout_is_threshold | 5.0 | v2 only (MiniRL default) |
 
 ## Training History
 
-| Run | Config | Steps | Result |
-|-----|--------|-------|--------|
-| M5 | lr=1e-6, β=0.1 (bidirectional) | ~1000 | Unstable, training diverged |
-| M5.5 | lr=5e-7, β=0.0 (forward-only) | **300 (complete)** | Stable. 12 checkpoints (every 25 steps). Baseline run. |
-| M5.6 | lr=5e-7, β=0.1 (reverse re-test) | ~236 | Crashed — confirms reverse SFT instability |
+**v1 runs (loss_mode=wdl_sft)**:
 
-Checkpoints from M5.5 have been transferred to a secondary mount. These serve as the basis for upcoming LR hyperparameter search.
+| Run | Config | Steps | MATH-500 mean@3 (model2 offline) | Notes |
+|-----|--------|-------|------|-------|
+| EXP-12 M5 | lr=1e-6, β=0.1 | ~1000 | — | Diverged, checkpoints discarded |
+| EXP-13 M5.5 | lr=5e-7, β=0 | 300 (complete) | 78.6% | Stable baseline |
+| EXP-14 M5.6 | lr=5e-7, β=0.1 | ~458 | 79.1% | Stable at lr=5e-7; model1 collapsed −21.6% |
+| EXP-15 LR3 | lr=1e-6, β=0 | 125 (best) → 274 (killed) | 79.6% | Peaked at step 125, then drifted |
 
-**Next step**: Learning rate search — see `docs/joint_training/plans/active/lr_search.md`
+Key finding from v1: model2 ceiling ≈ 79-80% MATH-500 mean@3 regardless of lr/β — the loss itself caps performance. Baseline MiniRL (same init) hits ~74% mean@1 at step 100 while v1 reaches ~68% mean@1 at step 300. Motivates v2.
+
+**v2 runs (loss_mode=wdl_sft_is)**:
+
+| Run | Config | Status |
+|-----|--------|--------|
+| EXP-16 (1a) | lr=5e-7, β=0, v2 | Pending |
+| EXP-17 (1b) | lr=5e-7, β=0.1, v2 | Pending |
+| EXP-18 (1c) | lr=1e-6, β=0, v2 | Pending |
+
+**Next step**: Implement v2 loss + tests, then launch 1a. See `docs/joint_training/plans/active/wdl_sft_is.md`.
 
 ## Documentation (Archival)
 
@@ -116,7 +151,10 @@ Documentation in `docs/joint_training/` was created during the parent branch's j
 |---|---|---|
 | `specs/` | Technical specs for joint model / logit fusion | ARCHIVAL — infrastructure reference |
 | `constraints/` | Development rules and boundaries | Still applicable |
-| `plans/active/on_policy_wdl_sft.md` | On-Policy WDL-SFT plan | ACTIVE |
+| `plans/active/wdl_sft_is.md` | **WDL-SFT v2 (IS-corrected) — current focus** | ACTIVE |
+| `plans/active/on_policy_wdl_sft.md` | v1 plan (original) | STILL OPEN, v1 sections archival |
+| `specs/wdl_sft_is.md` | v1 vs v2 loss comparison | ACTIVE |
+| `plans/completed/lr_search.md` | LR search — abandoned, see wdl_sft_is.md | ARCHIVAL |
 | `plans/completed/` | Archived plans from Stage 1 & 2 | ARCHIVAL |
 | `courses/` | Educational docs on joint-training theory | ARCHIVAL — background reference |
 | `guides/` | Testing, tuning, migration guides | Partially applicable |
@@ -144,8 +182,14 @@ Before launching any training, monitoring, checkpoint transfer, or large file op
 
 ## Quick Links
 
-- On-Policy WDL-SFT plan: `docs/joint_training/plans/active/on_policy_wdl_sft.md`
-- LR search plan: `docs/joint_training/plans/active/lr_search.md`
+- **Current focus**: `docs/joint_training/plans/active/wdl_sft_is.md` (v2 plan, 1a/1b/1c)
+- v1 vs v2 loss spec: `docs/joint_training/specs/wdl_sft_is.md`
+- v1 loss code: `verl/trainer/ppo/core_algos.py:1861` (wdl_sft)
+- v2 loss code (pending): same file, registered as `wdl_sft_is`
+- MiniRL reference (clip/IS implementation): `verl/trainer/ppo/core_algos.py:1782`
+- Rollout correction helper: `verl/trainer/ppo/rollout_corr_helper.py`
+- On-Policy WDL-SFT original plan (v1): `docs/joint_training/plans/active/on_policy_wdl_sft.md`
+- Archived LR search plan: `docs/joint_training/plans/completed/lr_search.md`
 - Joint model code: `verl/models/joint_model/modeling_joint_qwen3.py`
 - Joint config: `verl/models/joint_model/configuration_joint_qwen3.py`
 - Weight utils: `verl/models/joint_model/weight_utils.py`

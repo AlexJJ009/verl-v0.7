@@ -1999,6 +1999,166 @@ def compute_wdl_sft_loss(
     }
 
 
+@register_policy_loss("wdl_sft_is")
+def compute_policy_loss_wdl_sft_is(
+    old_log_prob: torch.Tensor,
+    log_prob: torch.Tensor,
+    advantages: torch.Tensor,
+    response_mask: torch.Tensor,
+    loss_agg_mode: str = "seq-mean-token-sum",
+    config: Optional[DictConfig | ActorConfig] = None,
+    rollout_is_weights: torch.Tensor | None = None,
+) -> tuple[torch.Tensor, dict[str, Any]]:
+    """Policy loss wrapper for On-Policy WDL-SFT v2 (IS-corrected).
+
+    Addresses two sources of pi_old != pi_new that v1 ignored:
+    (A) multi-mini-batch updates per rollout (ratio-based IS clip)
+    (B) vLLM/FSDP numerical mismatch (rollout_is_weights)
+
+    Source (C) — fused P_mix sampling vs per-submodel training — is the
+    algorithm's intended mechanism (amplify model2's gradient via the fused
+    logits) and is intentionally left unmodified. See
+    docs/joint_training/specs/wdl_sft_is.md for the full spec.
+
+    Clipping strategy: binary mask (MiniRL style), not PPO min-clip.
+    - Positive samples (reward = +1): mask out tokens with ratio > 1 + clip_high
+    - Negative samples (reward = -1): mask out tokens with ratio < 1 - clip_low
+    Clipped tokens receive zero gradient (not a substituted clipped ratio).
+    """
+    assert config is not None
+
+    # Config extraction (mirror v1 pattern)
+    beta = config.policy_loss.get("wdl_sft_beta", 0.0) if hasattr(config, "policy_loss") else 0.0
+    clip_ratio_low = config.clip_ratio_low if config.clip_ratio_low is not None else config.clip_ratio
+    clip_ratio_high = config.clip_ratio_high if config.clip_ratio_high is not None else config.clip_ratio
+
+    # Per-response reward labels from broadcast advantages (same convention as v1)
+    reward_labels = advantages[:, 0]  # (N,)
+
+    result = compute_wdl_sft_is_loss(
+        old_log_prob=old_log_prob,
+        log_prob=log_prob,
+        response_mask=response_mask,
+        reward_labels=reward_labels,
+        beta=beta,
+        clip_ratio_low=clip_ratio_low,
+        clip_ratio_high=clip_ratio_high,
+        rollout_is_weights=rollout_is_weights,
+    )
+
+    pg_loss = result["total_loss"]
+    # Connect zero-loss to the graph so backward() works when both sets are empty or all clipped
+    if not pg_loss.requires_grad:
+        pg_loss = (log_prob * response_mask).sum() * 0.0
+
+    pg_metrics = {
+        "actor/wdl_sft_loss_positive": result["loss_positive"].detach().item(),
+        "actor/wdl_sft_loss_negative": result["loss_negative"].detach().item(),
+        "actor/wdl_sft_loss_total": result["total_loss"].detach().item(),
+        "actor/wdl_sft_beta": beta,
+        "actor/ppo_kl": result["ppo_kl"].detach().item(),
+        "actor/pg_clipfrac": result["clipfrac_positive"].detach().item(),
+        "actor/pg_clipfrac_lower": result["clipfrac_negative"].detach().item(),
+    }
+    return pg_loss, pg_metrics
+
+
+def compute_wdl_sft_is_loss(
+    old_log_prob: torch.Tensor,
+    log_prob: torch.Tensor,
+    response_mask: torch.Tensor,
+    reward_labels: torch.Tensor,
+    beta: float = 0.0,
+    clip_ratio_low: float = 0.2,
+    clip_ratio_high: float = 0.27,
+    rollout_is_weights: torch.Tensor | None = None,
+) -> dict[str, torch.Tensor]:
+    """Core WDL-SFT-IS loss — IS-corrected forward/reverse SFT with binary clip.
+
+    Args:
+        old_log_prob: (N, T) log P_old(y_t | ...). In on-policy WDL-SFT this is
+            the log-prob under the rollout-time policy (first mini-batch
+            recompute), used to build the IS ratio.
+        log_prob: (N, T) log P_theta(y_t | ...) under the current training step.
+        response_mask: (N, T) 1.0 for real tokens, 0.0 for padding.
+        reward_labels: (N,) +1.0 for correct, -1.0 for incorrect.
+        beta: weight of the reverse SFT loss; >=0.
+        clip_ratio_low, clip_ratio_high: IS ratio clip bounds (binary mask).
+            Tokens where the ratio falls outside the respective bound contribute
+            zero gradient.
+        rollout_is_weights: (N, T) optional token-level IS weights from the
+            rollout_correction system (vLLM<->FSDP mismatch correction).
+
+    Returns:
+        Dict with keys:
+            total_loss:          L+ + beta * L- (scalar)
+            loss_positive:       L+ (scalar)
+            loss_negative:       L- (scalar)
+            ppo_kl:              masked mean of (log_prob - old_log_prob) over all real tokens
+            clipfrac_positive:   fraction of positive real tokens clipped (ratio > 1+high)
+            clipfrac_negative:   fraction of negative real tokens clipped (ratio < 1-low)
+
+    Notes vs v1:
+        - v1 early-returned all-zero when k==0 (all incorrect). v2 computes L+=0
+          normally and still produces L- when beta>0. This enables negative-only
+          prompts to contribute reverse SFT signal.
+        - v1 aggregation is seq-mean-token-sum (per-group 1/k, 1/(N-k)). v2 keeps
+          the same aggregation so A/B differs only in IS/clip, not normalization.
+    """
+    # Per-token IS ratio (clamped for numerical safety, same as MiniRL)
+    negative_approx_kl = log_prob - old_log_prob
+    negative_approx_kl = torch.clamp(negative_approx_kl, min=-20.0, max=20.0)
+    ratio = torch.exp(negative_approx_kl)
+    ppo_kl = verl_F.masked_mean(-negative_approx_kl, response_mask)
+
+    # Partition response labels into C (correct, +1) and I (incorrect, -1)
+    correct_mask = (reward_labels > 0).float()  # (N,)
+    incorrect_mask = (reward_labels < 0).float()  # (N,)
+    k = correct_mask.sum()
+    n_minus_k = incorrect_mask.sum()
+
+    # Per-token binary masks: response_mask * response-label * ratio-clip
+    # Broadcast correct/incorrect_mask from (N,) to (N,1) against (N,T) tensors.
+    pos_keep = correct_mask.unsqueeze(1) * response_mask * (ratio <= 1.0 + clip_ratio_high).float()
+    neg_keep = incorrect_mask.unsqueeze(1) * response_mask * (ratio >= 1.0 - clip_ratio_low).float()
+
+    # Gradient path: through log_prob only (ratio mask is a detached selector).
+    pos_keep = pos_keep.detach()
+    neg_keep = neg_keep.detach()
+
+    # Optional vLLM<->FSDP IS correction (detached to avoid double-counting grad)
+    if rollout_is_weights is not None:
+        w = rollout_is_weights.detach()
+        pos_keep = pos_keep * w
+        neg_keep = neg_keep * w
+
+    # Per-group normalized losses. Use clamp to avoid 0/0; when k==0 the
+    # numerator is also zero by construction, so loss_positive is exactly 0.
+    # L+ = -(1/k) * sum_{i in C} sum_t (keep_i,t) * log P
+    loss_positive = -(pos_keep * log_prob).sum() / torch.clamp(k, min=1.0)
+    # L- = +(1/(N-k)) * sum_{j in I} sum_t (keep_j,t) * log P
+    loss_negative = (neg_keep * log_prob).sum() / torch.clamp(n_minus_k, min=1.0)
+
+    total_loss = loss_positive + beta * loss_negative
+
+    # Clip diagnostics (fraction of real tokens in each group that got clipped)
+    pos_real = correct_mask.unsqueeze(1) * response_mask
+    neg_real = incorrect_mask.unsqueeze(1) * response_mask
+    pos_clipped = pos_real * (ratio > 1.0 + clip_ratio_high).float()
+    neg_clipped = neg_real * (ratio < 1.0 - clip_ratio_low).float()
+    clipfrac_positive = pos_clipped.sum() / torch.clamp(pos_real.sum(), min=1.0)
+    clipfrac_negative = neg_clipped.sum() / torch.clamp(neg_real.sum(), min=1.0)
+
+    return {
+        "total_loss": total_loss,
+        "loss_positive": loss_positive,
+        "loss_negative": loss_negative,
+        "ppo_kl": ppo_kl,
+        "clipfrac_positive": clipfrac_positive,
+        "clipfrac_negative": clipfrac_negative,
+    }
+
+
 def compute_value_loss(
     vpreds: torch.Tensor,
     returns: torch.Tensor,
