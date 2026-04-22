@@ -1,0 +1,41 @@
+[base]
+afo.app.name = verl-probe-pampas-derived
+type = ml-easy-job
+
+[resource]
+usergroup = hadoop-ai-search
+queue = root.shxs_training_cluster.hadoop-fridayagi.friday_h20_train
+
+[roles]
+workers = 1
+worker.memory = 480000
+worker.vcore = 32
+worker.gcoresh20-141g = 2
+
+worker.script = bash probe/jupyter.sh
+
+[user_args]
+
+[am]
+afo.app.am.resource.mb = 4096
+
+[tensorboard]
+with.tensor.board = false
+
+[docker]
+# TODO: replace with the derived-image URL after building in MLP 新建镜像.
+# Format: registry-offlinebiz.sankuai.com/custom_prod/com.sankuai.data.hadoop.gpu/ai-search/<repo>:<tag>
+afo.docker.image.name = <FILL_IN_AFTER_BUILD>
+
+[data]
+afo.data.prefetch = false
+
+[failover]
+afo.app.support.engine.failover = true
+
+[others]
+client.git.revision.publish=false
+afo.app.env.YARN_CONTAINER_RUNTIME_DOCKER_SHM_SIZE_BYTES = 68719476736
+with_requirements = false
+afo.dolphinfs.otherusers = hadoop-mtsearch-assistant
+afo.app.env.PROBE_OUT_DIR = /mnt/dolphinfs/ssd_pool/docker/user/hadoop-ai-search/yangfengkai02/lgx/verl-exp/logs

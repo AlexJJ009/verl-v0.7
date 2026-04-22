@@ -1,0 +1,39 @@
+[base]
+afo.app.name = verl-probe-pampas-derived-v2
+type = ml-easy-job
+
+[resource]
+usergroup = hadoop-ai-search
+queue = root.shxs_training_cluster.hadoop-fridayagi.friday_h20_train
+
+[roles]
+workers = 1
+worker.memory = 480000
+worker.vcore = 32
+worker.gcoresh20-141g = 2
+
+worker.script = bash probe/jupyter.sh
+
+[user_args]
+
+[am]
+afo.app.am.resource.mb = 4096
+
+[tensorboard]
+with.tensor.board = false
+
+[docker]
+afo.docker.image.name = registry-offlinebiz.sankuai.com/custom_prod/com.sankuai.data.hadoop.gpu/ai-search/training_ubuntu22_cuda12.9_python3.12_torch2.9.1_vllm0.12.0_deepep1.2.1_megatron0.15.0_verl_dep_0.6.0_test_2_4_fbd2080c:1.0.0
+
+[data]
+afo.data.prefetch = false
+
+[failover]
+afo.app.support.engine.failover = true
+
+[others]
+client.git.revision.publish=false
+afo.app.env.YARN_CONTAINER_RUNTIME_DOCKER_SHM_SIZE_BYTES = 68719476736
+with_requirements = false
+afo.dolphinfs.otherusers = hadoop-mtsearch-assistant
+afo.app.env.PROBE_OUT_DIR = /mnt/dolphinfs/ssd_pool/docker/user/hadoop-ai-search/yangfengkai02/lgx/verl-exp/logs

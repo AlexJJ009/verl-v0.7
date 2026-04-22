@@ -1,0 +1,21 @@
+ENV http_proxy=http://10.229.18.27:8412
+ENV https_proxy=http://10.229.18.27:8412
+
+RUN set -eux; \
+    if ! getent group hadoop-ai-search >/dev/null; then \
+        groupadd -o -g 1500008585 hadoop-ai-search; \
+    fi; \
+    if ! getent passwd hadoop-ai-search >/dev/null; then \
+        useradd --no-log-init -o -u 1500008585 -g 1500008585 -m -s /bin/bash hadoop-ai-search; \
+    fi; \
+    id hadoop-ai-search; \
+    pip install --no-cache-dir mathruler qwen_vl_utils
+
+ENV VLLM_USE_V1=1
+ENV VLLM_NO_USAGE_STATS=1
+ENV VLLM_DO_NOT_TRACK=1
+ENV PYTHONUNBUFFERED=1
+ENV TOKENIZERS_PARALLELISM=false
+
+ENV http_proxy=
+ENV https_proxy=

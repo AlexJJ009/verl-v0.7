@@ -25,6 +25,13 @@
 set -uo pipefail
 set -x
 
+# --- Hardcoded default for PROBE_OUT_DIR (dolphinfs log target).
+# This is the user's persistent dolphinfs path, visible to both Codelab PCs
+# and AFO worker pods. Externally-set PROBE_OUT_DIR still wins — the `:=`
+# idiom only assigns when the var is unset or empty.
+: "${PROBE_OUT_DIR:=/mnt/dolphinfs/ssd_pool/docker/user/hadoop-ai-search/yangfengkai02/lgx/verl-exp/logs}"
+export PROBE_OUT_DIR
+
 # --- Resolve LGX_DIR (dolphinfs anchor) from script location. Mirrors the
 # pattern in dpo-experiment/platform/probe/jupyter.sh so the file is relocatable.
 SCRIPT_PATH="${BASH_SOURCE[0]:-$0}"
@@ -42,11 +49,44 @@ done
 if [ -z "${LGX_DIR}" ]; then LGX_DIR="$(cd "${SCRIPT_DIR}/.." 2>/dev/null && pwd)"; fi
 REPO_DIR_GUESS="${LGX_DIR}/verl-exp"
 
+# --- Resolve LOG_ROOT with a clear priority order.
+#  1. PROBE_OUT_DIR env override (user sets this in the AFO task env to force
+#     a specific dolphinfs path — this is the reliable escape hatch).
+#  2. Auto-detected ${LGX_DIR}/logs if writable.
+#  3. Known dolphinfs anchor candidates (//verl-exp/logs, //dpo-exp/logs, etc.).
+#  4. Worker-local /tmp/probe_logs — EPHEMERAL, flagged so the SUMMARY can
+#     try a safety rsync to dolphinfs before the pod is torn down.
 LOG_ROOT=""
-if mkdir -p "${LGX_DIR}/logs" 2>/dev/null && [ -w "${LGX_DIR}/logs" ]; then
-  LOG_ROOT="${LGX_DIR}/logs"
+LOG_IS_EPHEMERAL=0
+try_log_root() {
+  local d="$1"
+  [ -z "$d" ] && return 1
+  # Refuse to auto-create under '/' (root fs) — that's a sign detection failed.
+  local parent; parent="$(dirname "$d")"
+  [ "$parent" = "/" ] && [ "$d" != "/tmp/probe_logs" ] && return 1
+  mkdir -p "$d" 2>/dev/null || return 1
+  [ -w "$d" ] || return 1
+  LOG_ROOT="$d"
+  return 0
+}
+if [ -n "${PROBE_OUT_DIR:-}" ]; then
+  try_log_root "${PROBE_OUT_DIR}" || echo "WARN: PROBE_OUT_DIR=${PROBE_OUT_DIR} not writable, falling through"
 fi
-[ -z "${LOG_ROOT}" ] && { LOG_ROOT="/tmp/probe_logs"; mkdir -p "${LOG_ROOT}"; }
+if [ -z "${LOG_ROOT}" ]; then
+  try_log_root "${LGX_DIR}/logs" || true
+fi
+if [ -z "${LOG_ROOT}" ]; then
+  for cand in //verl-exp/logs //dpo-exp/logs //hope_dir/logs; do
+    parent="$(dirname "${cand}")"
+    # Only try if the dolphinfs anchor already exists (don't create // children).
+    if [ -d "${parent}" ] && try_log_root "${cand}"; then break; fi
+  done
+fi
+if [ -z "${LOG_ROOT}" ]; then
+  LOG_ROOT="/tmp/probe_logs"
+  mkdir -p "${LOG_ROOT}"
+  LOG_IS_EPHEMERAL=1
+fi
 TS=$(date +%Y%m%d_%H%M%S)
 LOG_FILE="${LOG_ROOT}/verl_probe_${TS}_$$.log"
 exec > >(tee -a "${LOG_FILE}") 2>&1
@@ -189,7 +229,7 @@ for mod in [
     "accelerate", "peft", "datasets", "tensordict", "liger_kernel",
     "deepspeed", "trl", "hydra", "codetiming", "dill",
     "pylatexenc", "latex2sympy2_extended", "math_verify", "mathruler",
-    "qwen_vl_utils", "nvtx", "matplotlib", "fastapi", "uvicorn",
+    "qwen_vl_utils", "swanlab", "nvtx", "matplotlib", "fastapi", "uvicorn",
     "pybind11", "pyarrow", "pandas", "numpy", "tensorboard", "wandb",
     "torchdata", "torchvision", "torchaudio",
 ]:
@@ -324,6 +364,70 @@ except Exception as e:
     line_fail(f"vllm import failed: {e!r}")
     traceback.print_exc()
 
+# ==================== M2. vLLM 0.12-specific API surface (branch compat) ====================
+# This user's branch (feature/on-policy-wdl-sft, commit 8fa7cad7) is hardcoded
+# to vLLM 0.12 API. These checks detect the specific breakage on older vLLM.
+print("---- M2. vLLM API surface required by this branch ----")
+try:
+    # V1 engine imports (unconditional at module load in vllm_async_server.py:35)
+    from vllm.v1.engine.async_llm import AsyncLLM  # noqa: F401
+    from vllm.v1.engine import FinishReason  # noqa: F401
+    line_ok("vllm.v1.engine.async_llm.AsyncLLM import ok")
+    line_ok("vllm.v1.engine.FinishReason import ok")
+except Exception as e:
+    line_fail(f"vllm V1 engine import failed (breaks vllm_async_server.py): {e!r}")
+
+try:
+    # compute_logits signature — branch commit 8fa7cad7 calls without sampling_metadata.
+    # vLLM 0.12 removed sampling_metadata; 0.10.x still requires it.
+    import inspect
+    from vllm.model_executor.models.qwen3 import Qwen3ForCausalLM
+    sig = inspect.signature(Qwen3ForCausalLM.compute_logits)
+    params = list(sig.parameters.keys())
+    has_sampling_metadata = "sampling_metadata" in params
+    if has_sampling_metadata:
+        line_fail(f"Qwen3.compute_logits still has sampling_metadata arg (params={params}) "
+                  f"→ your branch code will TypeError on this vLLM. Need vLLM 0.12+.")
+    else:
+        line_ok(f"Qwen3.compute_logits matches your branch (params={params})")
+except Exception as e:
+    line_info(f"Qwen3ForCausalLM compute_logits check skipped: {e!r}")
+
+try:
+    # extract_layer_index signature — branch patches with num_attn_module kwarg.
+    # vLLM 0.12 adds num_attn_module; 0.10.x doesn't. Module location also
+    # moved between vllm versions — try the known candidate paths in order.
+    import inspect
+    extract_layer_index = None
+    found_in = None
+    for candidate in (
+        "vllm.utils",
+        "vllm.v1.utils",
+        "vllm.model_executor.models.utils",
+        "vllm.model_executor.utils",
+    ):
+        try:
+            module = __import__(candidate, fromlist=["extract_layer_index"])
+            extract_layer_index = getattr(module, "extract_layer_index", None)
+            if extract_layer_index is not None:
+                found_in = candidate
+                break
+        except ImportError:
+            continue
+    if extract_layer_index is None:
+        line_fail("extract_layer_index NOT FOUND in any known vLLM module path")
+    else:
+        sig = inspect.signature(extract_layer_index)
+        params = list(sig.parameters.keys())
+        has_num_attn_module = "num_attn_module" in params
+        if has_num_attn_module:
+            line_ok(f"extract_layer_index in {found_in}, matches your branch (params={params})")
+        else:
+            line_fail(f"extract_layer_index in {found_in} is single-arg (params={params}) "
+                      f"→ your branch's patched_extract_layer_index will TypeError. Need vLLM 0.12+.")
+except Exception as e:
+    line_info(f"extract_layer_index check skipped: {e!r}")
+
 # ==================== N. sglang import smoke ====================
 print("---- N. sglang import smoke ----")
 try:
@@ -383,20 +487,22 @@ fi
 
 # ==================== Q. beacon ====================
 section "Q. beacon"
-if [ -d "${LGX_DIR}" ]; then
-  mkdir -p "${LGX_DIR}/beacons" 2>/dev/null || true
-  BEACON="${LGX_DIR}/beacons/verl_probe_$(hostname)_$(date +%s).txt"
-  {
-    echo "verl probe alive at $(date -Is)"
-    echo "host: $(hostname)"
-    echo "LGX_DIR: ${LGX_DIR}"
-    echo "fails: ${#FAILS[@]}"
-    echo "log:   ${LOG_FILE}"
-    echo "py_report: ${PY_REPORT}"
-    echo "pip_list:  ${PIP_LIST}"
-    echo "pip_check: ${PIP_CHECK}"
-  } > "${BEACON}" 2>&1 && record_ok "beacon written: ${BEACON}"
-fi
+# Write beacon into LOG_ROOT so it shares the same persistence guarantees as
+# the artifacts. (Previous version wrote into ${LGX_DIR}/beacons/ which failed
+# when LGX_DIR resolved to '/'.)
+BEACON="${LOG_ROOT}/verl_probe_beacon_$(hostname)_$(date +%s).txt"
+{
+  echo "verl probe alive at $(date -Is)"
+  echo "host: $(hostname)"
+  echo "LGX_DIR: ${LGX_DIR}"
+  echo "LOG_ROOT: ${LOG_ROOT}"
+  echo "LOG_IS_EPHEMERAL: ${LOG_IS_EPHEMERAL}"
+  echo "fails: ${#FAILS[@]}"
+  echo "log:   ${LOG_FILE}"
+  echo "py_report: ${PY_REPORT}"
+  echo "pip_list:  ${PIP_LIST}"
+  echo "pip_check: ${PIP_CHECK}"
+} > "${BEACON}" 2>&1 && record_ok "beacon written: ${BEACON}"
 
 # ==================== SUMMARY ====================
 section "SUMMARY"
@@ -413,6 +519,44 @@ else
   echo "PROBE FAILURES (${#FAILS[@]}):"
   for f in "${FAILS[@]}"; do echo "  - $f"; done
   PROBE_RC=1
+fi
+
+# ==================== R. persistence safety net ====================
+# If LOG_ROOT ended up on worker-local /tmp, the artifacts will be destroyed
+# when the AFO pod is torn down (typically seconds after this script exits).
+# Try to copy them onto dolphinfs before the sleep window ends — user may still
+# kill the pod early, so do this BEFORE sleep 300, not after.
+if [ "${LOG_IS_EPHEMERAL}" -eq 1 ]; then
+  section "R. emergency copy-to-dolphinfs (LOG_ROOT is ephemeral)"
+  COPIED=0
+  for cand_parent in //verl-exp //dpo-exp //hope_dir; do
+    if [ -d "${cand_parent}" ]; then
+      dest="${cand_parent}/logs"
+      if mkdir -p "${dest}" 2>/dev/null && [ -w "${dest}" ]; then
+        cp -v "${LOG_FILE}" "${PY_REPORT}" "${PIP_LIST}" "${PIP_CHECK}" "${BEACON}" "${dest}/" 2>&1 \
+          && { record_ok "copied artifacts to ${dest}"; COPIED=1; break; }
+      fi
+    fi
+  done
+  if [ "${COPIED}" -eq 0 ]; then
+    echo
+    echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+    echo "!! WARNING: could not find a writable dolphinfs path."
+    echo "!! Artifacts are ONLY on worker-local /tmp and will be LOST"
+    echo "!! when this pod terminates."
+    echo "!!"
+    echo "!! Worker hostname: $(hostname)"
+    echo "!! Files to rescue manually (during sleep window below):"
+    for f in "${LOG_FILE}" "${PY_REPORT}" "${PIP_LIST}" "${PIP_CHECK}" "${BEACON}"; do
+      echo "!!   ${f}"
+    done
+    echo "!!"
+    echo "!! Next run: pre-create one of //verl-exp //dpo-exp //hope_dir"
+    echo "!! from Jupyter, OR set PROBE_OUT_DIR=<writable-dolphinfs-path>"
+    echo "!! in the AFO task env."
+    echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+    echo
+  fi
 fi
 
 echo "=== sleeping 300s for UI inspection ==="
