@@ -152,6 +152,7 @@ Documentation in `docs/joint_training/` was created during the parent branch's j
 | `specs/` | Technical specs for joint model / logit fusion | ARCHIVAL — infrastructure reference |
 | `constraints/` | Development rules and boundaries | Still applicable |
 | `plans/active/wdl_sft_is.md` | **WDL-SFT v2 (IS-corrected) — current focus** | ACTIVE |
+| `plans/active/ablation_single_model.md` | **Single-model ablation (2A/B/C + 2Z baseline)** | ACTIVE |
 | `plans/active/on_policy_wdl_sft.md` | v1 plan (original) | STILL OPEN, v1 sections archival |
 | `specs/wdl_sft_is.md` | v1 vs v2 loss comparison | ACTIVE |
 | `plans/completed/lr_search.md` | LR search — abandoned, see wdl_sft_is.md | ARCHIVAL |
@@ -183,6 +184,8 @@ Before launching any training, monitoring, checkpoint transfer, or large file op
 ## Quick Links
 
 - **Current focus**: `docs/joint_training/plans/active/wdl_sft_is.md` (v2 plan, 1a/1b/1c)
+- Single-model ablation plan: `docs/joint_training/plans/active/ablation_single_model.md`
+- Single-model ablation scripts: `recipe/on_policy_wdl_sft/ablation_single_model/`
 - v1 vs v2 loss spec: `docs/joint_training/specs/wdl_sft_is.md`
 - v1 loss code: `verl/trainer/ppo/core_algos.py:1861` (wdl_sft)
 - v2 loss code (pending): same file, registered as `wdl_sft_is`
