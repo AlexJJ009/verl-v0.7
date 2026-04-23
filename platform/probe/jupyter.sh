@@ -207,7 +207,7 @@ line_info(f"sys.path[0:3]: {sys.path[:3]}")
 print("---- D. tag-promised packages (required by base image advertisement) ----")
 probe("torch",        required=True, want="2.8",    op=">=")
 probe("vllm",         required=True, want="0.10",   op=">=")
-probe("sglang",       required=True)
+probe("sglang")  # optional — new base (verl_dep_0.6.0) ships vllm-only, no sglang
 probe("transformers", required=True, want="4.57",   op=">=")
 probe("ray",          required=True, want="2.50",   op=">=")
 
@@ -433,8 +433,10 @@ print("---- N. sglang import smoke ----")
 try:
     import sglang
     line_ok(f"sglang import ok (version={sglang.__version__})")
+except ModuleNotFoundError:
+    line_missing("sglang not installed (not needed for vllm-only rollout)")
 except Exception as e:
-    line_fail(f"sglang import failed: {e!r}")
+    line_fail(f"sglang broken (present but unimportable): {e!r}")
 PY
 PY_RC=$?
 if [ "${PY_RC}" -ne 0 ]; then
