@@ -33,7 +33,7 @@ See `docs/joint_training/specs/wdl_sft_is.md` for exact formulas and `docs/joint
 
 ### Status of "reverse SFT abandoned"
 
-Previous documents declared reverse SFT (β>0) permanently abandoned based on EXP-12 (M5, lr=1e-6) and EXP-14 (M5.6, lr=5e-7) instability. **This conclusion is now tentative** — those runs used v1 loss with no stability mechanisms, so β>0 was operating in a completely unprotected regime. EXP-17 (experiment 1b in the plan) will re-test β=0.1 under v2 loss before the decision is finalized.
+Previous documents declared reverse SFT (β>0) permanently abandoned based on EXP-12 (M5, lr=1e-6) and EXP-14 (M5.6, lr=5e-7) instability. **Under v2 loss (EXP-17, completed 2026-04-21) this conclusion is no longer supported at the training/online level**: 1B (β=0.1, lr=5e-7, v2) ran 300 steps without drift and tracked 1A (β=0) to within 0.5 pp throughout — online MATH-500 model2-only peaked at 70.97% (steps 225/275) and landed at 70.36% (step 300), indistinguishable from 1A. **Final decision still pending offline eval on 1B model1**: v1's actual failure mode was EVAL-15's model1 format-compliance collapse (MATH-500 −21.6%, extraction_fail 24–28%), which was invisible online. v2's lower-bound binary mask on negatives is the hypothesized countermeasure, but it has not yet been offline-verified on 1B's model1.
 
 ## Environment
 
@@ -135,13 +135,15 @@ Key finding from v1: model2 ceiling ≈ 79-80% MATH-500 mean@3 regardless of lr/
 
 **v2 runs (loss_mode=wdl_sft_is)**:
 
-| Run | Config | Status | Run ID |
-|-----|--------|--------|--------|
-| **EXP-16 (1a)** | lr=5e-7, β=0, v2 | **Running** (launched 2026-04-19 16:57) | `WDL-SFT-Qwen3-4B-MATH-1A_1776589025` |
-| EXP-17 (1b) | lr=5e-7, β=0.1, v2 | Pending (decision after 1a) | — |
-| EXP-18 (1c) | lr=1e-6, β=0, v2 | Pending | — |
+| Run | Config | Status | Peak MATH-500 (online model2, step) | Step-300 final | Run ID |
+|-----|--------|--------|------|------|--------|
+| **EXP-16 (1a)** | lr=5e-7, β=0, v2 | Complete (2026-04-20) | **71.37%** (step 225) | 70.36% | `WDL-SFT-Qwen3-4B-MATH-1A_1776594597` |
+| **EXP-17 (1b)** | lr=5e-7, β=0.1, v2 | Complete (2026-04-21) | **70.97%** (step 225 & 275) | 70.36% | `WDL-SFT-Qwen3-4B-MATH-1B_1776695220` |
+| EXP-18 (1c) | lr=1e-6, β=0, v2 | **Running** (launched 2026-04-21 18:53) | — | — | `WDL-SFT-Qwen3-4B-MATH-1C_1776768784` |
 
-**Current focus**: Monitor 1a — critical milestones: step 25 (first val), step 125 (v1's peak-and-crash point → v2 should be stable here). See `docs/joint_training/plans/active/wdl_sft_is.md` §4 for decision criteria.
+Key finding so far: **v2 breaks the v1 online ceiling** (+2.4 pp at step 300 vs M5.5). 1B matches 1A online despite β=0.1 — training-level evidence that v2 contains the reverse SFT instability. Preliminary offline eval on 1A step 225 model2: MATH-500 mean@3 = 83.07% (vs v1 EVAL-10 = 79.6%).
+
+**Current focus**: Monitor 1C — key milestone step 125 (v1's LR3 peak-and-crash). Run offline eval on 1A full trio (step 225 model1 + model2) and 1B full trio (model1 is the critical test — see "Status of reverse SFT abandoned" above). See `docs/joint_training/plans/active/wdl_sft_is.md` §4 for decision criteria.
 
 ## Documentation (Archival)
 

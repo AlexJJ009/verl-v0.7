@@ -1,0 +1,377 @@
+% ============================================================================
+% Method Section: On-Policy Weak-Driven SFT (WDL-SFT)
+% ----------------------------------------------------------------------------
+% 用于 \input 到主论文中的 method 章节。不含 \documentclass / \begin{document}。
+% 建议在主文档 preamble 中包含：
+%   \usepackage{amsmath,amssymb,bbm}
+%   \usepackage{booktabs}
+%   \usepackage{algorithm,algpseudocode}
+%   \usepackage{multirow}
+% ============================================================================
+
+\section{方法：On-Policy Weak-Driven SFT}
+\label{sec:method}
+
+本节提出 \textbf{On-Policy Weak-Driven SFT}（下文简称 WDL-SFT），一种在 logit 融合（logit fusion）架构上结合 on-policy rollout 的双模型监督微调算法。我们先陈述动机（\S\ref{subsec:motivation}），再给出两个算法版本的损失函数（\S\ref{subsec:loss}）和训练流程的伪代码（\S\ref{subsec:algorithm}），然后在统一的梯度形式下与 GRPO 和 MiniRL 进行对比（\S\ref{subsec:comparison}），最后汇报已有的实证结果（\S\ref{subsec:results}）。
+
+\subsection{动机}
+\label{subsec:motivation}
+
+给定两个已有的预训练语言模型：weak model（参数 $\theta_1$，能力较弱）和 strong model（参数 $\theta_2$，能力较强，通常是在 weak 基础上继续 SFT 得到的结果）。标准实践是直接在 strong model 上做强化学习或继续 SFT。我们希望回答一个正交的问题：\textit{能否用 weak model 作为"锚"，通过与 strong model 的 logit 融合形成一个分布，再用在这一分布下的 on-policy 轨迹回过头来同时训练两个模型}？
+
+这一设计的直觉有三点：
+\begin{itemize}
+\item \textbf{融合分布偏移采样空间}。设 $z^{(1)}, z^{(2)} \in \mathbb{R}^{|V|}$ 为两个子模型在某个上下文下输出的 logits，$|V|$ 为词表大小。令融合 logits 为
+\begin{equation}
+z_{\text{mix}}(x, y_{<t}) = (1-\lambda)\, z^{(1)}(x, y_{<t}; \theta_1) + \lambda\, z^{(2)}(x, y_{<t}; \theta_2),\quad \lambda \in [0, 1],
+\end{equation}
+对应概率分布 $\pi^{\text{mix}}_\theta(\cdot\mid x, y_{<t}) = \mathrm{softmax}(z_{\text{mix}})$。由于 weak model 与 strong model 通常在不同的 token 上置信度不同，$\pi^{\text{mix}}_\theta$ 相较于任一个子模型的分布在高置信区间有所平滑，在低置信区间有所锐化，从而产生相较纯 strong 分布更丰富的、同时仍然合理的采样轨迹。
+\item \textbf{梯度被动态分配到两个模型}。对任意可微损失 $\mathcal{L}$，沿融合 logits 做链式求导得到
+\begin{equation}
+\nabla_{\theta_1} \mathcal{L} = (1-\lambda)\, J_1^{\top} g,\qquad \nabla_{\theta_2} \mathcal{L} = \lambda\, J_2^{\top} g,\qquad g \;=\; \frac{\partial \mathcal{L}}{\partial z_{\text{mix}}},
+\end{equation}
+其中 $J_k = \partial z^{(k)}/\partial \theta_k$ 为第 $k$ 个子模型的 Jacobian。两个模型接收\textit{同方向、不同幅度}的梯度：$\lambda$ 调节 strong 模型的梯度权重，$1-\lambda$ 调节 weak 模型。
+\item \textbf{On-policy 信号避免与 ground truth 解题风格绑定}。采样自 $\pi^{\text{mix}}_\theta$ 的轨迹在推理风格上与当前模型一致，而不受外部标注解法的格式与用词限制。正确轨迹构成正向 SFT 的 label，错误轨迹在 $\beta>0$ 时被做反向 SFT，这样的数据分配自动随训练动态调整。
+\end{itemize}
+
+算法最初以\textbf{朴素}形式实现（记作 v1，\S\ref{subsubsec:v1}）。在运行了四组 v1 实验后（EXP-12 至 EXP-15，详见 \S\ref{subsec:results}），我们观察到以下现象：
+\begin{enumerate}
+\item 在 MATH-500 上，取出 strong 子模型（model2）做离线评测，\textit{mean@3 准确率稳定地被压在 $79\%\sim 80\%$ 附近}，对学习率 $\mathrm{lr}\in\{5\text{e-}7, 1\text{e-}6\}$、反向系数 $\beta\in\{0, 0.1\}$ 以及 125--300 的训练步数都近似不敏感。
+\item 在相同初始化（Qwen3-4B-Base）、相同数据集（EnsembleLLM MATH）上，标准 MiniRL baseline 训练 100 步即可把 MATH-500 mean@1 推到 $\sim 74\%$，而 WDL-SFT v1 训练 300 步 mean@1 仅 $\sim 68\%$。
+\item 训练中期（step 125 附近）开始出现 response 长度、token-level entropy、$\boxed{\cdot}$ 抽取失败率同步漂移的现象，并非学习率单独可以解释。
+\end{enumerate}
+
+我们将这三点归因到 v1 在 loss 层\textit{缺失了 on-policy 场景下一整类标准的稳定性机制}：重要性采样（Importance Sampling, IS）修正、ratio clipping、train--inference 数值一致性修正。在 on-policy WDL-SFT 中，\textit{rollout 采样分布} $\mu^{\text{mix}}_{\theta_\text{old}}$ 与\textit{参数更新时使用的训练分布} $\pi^{\text{mix}}_\theta$ 的差异来自三个来源：
+\begin{itemize}
+\item[(A)] \textbf{Off-policy drift}：单次 rollout 产出一个 batch 的数据后被切分为多个 mini-batch 连续更新参数，第 2 个及之后的 mini-batch 使用的是 $\theta_{\text{old}}$ 采出的 label 与 $\theta_{i-1}$ 产出的 logits。
+\item[(B)] \textbf{Train--inference 数值差异}：rollout 在 vLLM 上以 FlashInfer + BF16 运行，训练在 FSDP 上以 FlashAttention-2 + mixed precision 运行。即使参数完全相同，两侧的 log-prob 也不一致。
+\item[(C)] \textbf{Fused 分布 vs.\ per-submodel 分布}：rollout 从 $\pi^{\text{mix}}_{\theta_\text{old}}$ 采样，而\textit{训练损失中的 log-prob 是由融合 logits 计算的}，与采样分布在这一层面保持一致；但 \textit{子模型各自的边际分布} $\pi^{(1)}_{\theta_1}, \pi^{(2)}_{\theta_2}$ 与 $\pi^{\text{mix}}_\theta$ 不同，这是算法设计意图——用融合分布"借用" strong 模型的采样轨迹放大 weak 模型侧的梯度，不属于需要修正的不一致。
+\end{itemize}
+
+v1 同时忽略了来源 (A) 和 (B)。在 v2 中（\S\ref{subsubsec:v2}）我们引入 token 级 ratio clip 应对 (A)，引入 vLLM $\leftrightarrow$ FSDP 级 importance weights 应对 (B)；来源 (C) 仍刻意保持不变。
+
+\subsection{损失函数}
+\label{subsec:loss}
+
+设对 prompt $x$ 采样出 $N$ 条 response $\{y^1, \ldots, y^N\}$，每条长度为 $T_i$，response mask $m^i_t \in \{0,1\}$（实 token 为 1，padding 为 0）。reward function 返回二元奖励 $R(x, y^i) \in \{+1, -1\}$，记正确集 $\mathcal{C} = \{i : R(x, y^i) = +1\}$，错误集 $\mathcal{I} = \{i : R(x, y^i) = -1\}$，$k = |\mathcal{C}|$, $N-k = |\mathcal{I}|$。
+
+\subsubsection{v1：朴素 WDL-SFT（\texttt{loss\_mode=wdl\_sft}）}
+\label{subsubsec:v1}
+
+\begin{align}
+\mathcal{L}^+_{\text{v1}}(x) &= -\frac{1}{k} \sum_{i \in \mathcal{C}} \sum_{t=1}^{T_i} m^i_t \, \log \pi^{\text{mix}}_\theta(y^i_t \mid x, y^i_{<t}), \label{eq:v1_pos}\\
+\mathcal{L}^-_{\text{v1}}(x) &= \phantom{-}\frac{1}{N-k} \sum_{j \in \mathcal{I}} \sum_{t=1}^{T_j} m^j_t \, \log \pi^{\text{mix}}_\theta(y^j_t \mid x, y^j_{<t}), \label{eq:v1_neg}\\
+\mathcal{L}_{\text{v1}}(x) &= \mathcal{L}^+_{\text{v1}}(x) + \beta \cdot \mathcal{L}^-_{\text{v1}}(x). \label{eq:v1_total}
+\end{align}
+
+$\mathcal{L}^+_{\text{v1}}$ 为标准 SFT 的负对数似然，minimize 之等价于在正确集上提高融合分布对 $y^i$ 的似然；$\mathcal{L}^-_{\text{v1}}$ 没有负号，log-prob 为负数，minimize $\beta\mathcal{L}^-_{\text{v1}}$ 等价于 \textit{降低}融合分布对 $y^j$ 的似然。边界条件：$\mathcal{C} = \varnothing$（$k=0$）时整个 prompt 跳过（置 $\mathcal{L}_{\text{v1}}=0$），$\mathcal{I}=\varnothing$（$k=N$）时 $\mathcal{L}^-_{\text{v1}}=0$。聚合模式采用 \texttt{seq-mean-token-sum}，以保持每个 prompt 的组内归一化 $1/k$ 与 $1/(N-k)$。
+
+v1 \textit{不使用} \texttt{old\_log\_prob}，\textit{不使用} ratio clip，\textit{不使用} \texttt{rollout\_is\_weights}。实现上参见 \texttt{verl/trainer/ppo/core\_algos.py} 中的 \texttt{compute\_wdl\_sft\_loss}（第 1920--1999 行）及其 wrapper（第 1861--1917 行）。
+
+\subsubsection{v2：IS 修正版 WDL-SFT（\texttt{loss\_mode=wdl\_sft\_is}）}
+\label{subsubsec:v2}
+
+记 $\log \pi^{\text{mix}}_{\theta_\text{old}}$ 为训练引擎在 $\theta_\text{old}$ 下对同一轨迹重新前向计算的 log-prob，记 $w_{i,t}$ 为 \texttt{rollout\_is\_weights}（vLLM $\leftrightarrow$ FSDP 的 token 级 IS 修正，由 \texttt{rollout\_corr\_helper} 产出，取截断阈值 $5.0$）。token 级 policy staleness ratio 定义为
+\begin{equation}
+r^i_t(\theta) \;=\; \exp\!\bigl(\mathrm{clamp}\bigl(\log \pi^{\text{mix}}_\theta(y^i_t \mid \cdot)-\log \pi^{\text{mix}}_{\theta_\text{old}}(y^i_t \mid \cdot),\,-20,\,20\bigr)\bigr).
+\end{equation}
+
+定义正/负样本的 \textbf{binary 保留 mask}（被 clip 的 token 梯度为 $0$，不改变其它 token 的权重；这是 MiniRL 风格而非 PPO min-clip 风格）：
+\begin{align}
+M^+_{i,t}(\theta) &= \mathbb{1}[i \in \mathcal{C}] \cdot m^i_t \cdot \mathbb{1}\bigl[r^i_t(\theta) \le 1 + \varepsilon_{\text{high}}\bigr],\\
+M^-_{j,t}(\theta) &= \mathbb{1}[j \in \mathcal{I}] \cdot m^j_t \cdot \mathbb{1}\bigl[r^j_t(\theta) \ge 1 - \varepsilon_{\text{low}}\bigr],
+\end{align}
+其中 $\varepsilon_{\text{low}}=0.2$, $\varepsilon_{\text{high}}=0.27$。两个 mask 相对 $\theta$ detach，$w_{i,t}$ 也 detach，因此梯度仅通过 $\log \pi^{\text{mix}}_\theta$ 这一路回传。
+
+v2 损失定义为
+\begin{align}
+\mathcal{L}^+_{\text{v2}}(x) &= -\frac{1}{\max(k, 1)} \sum_{i \in \mathcal{C}} \sum_{t=1}^{T_i} M^+_{i,t} \cdot w_{i,t} \cdot \log \pi^{\text{mix}}_\theta(y^i_t \mid \cdot), \label{eq:v2_pos}\\
+\mathcal{L}^-_{\text{v2}}(x) &= \phantom{-}\frac{1}{\max(N-k, 1)} \sum_{j \in \mathcal{I}} \sum_{t=1}^{T_j} M^-_{j,t} \cdot w_{j,t} \cdot \log \pi^{\text{mix}}_\theta(y^j_t \mid \cdot), \label{eq:v2_neg}\\
+\mathcal{L}_{\text{v2}}(x) &= \mathcal{L}^+_{\text{v2}}(x) + \beta \cdot \mathcal{L}^-_{\text{v2}}(x). \label{eq:v2_total}
+\end{align}
+实现见 \texttt{compute\_wdl\_sft\_is\_loss}（\texttt{core\_algos.py:2066--2159}）。我们用一个简单的 sanity check 保证 v1/v2 的对齐：当 $\log\pi^{\text{mix}}_\theta \equiv \log\pi^{\text{mix}}_{\theta_\text{old}}$、$w_{i,t}\equiv 1$ 且 $\beta=0$ 时，$\mathcal{L}_{\text{v2}}$ 与 $\mathcal{L}_{\text{v1}}$ 在数值上一致（单元测试 \texttt{tests/joint\_training/test\_wdl\_sft\_is\_loss.py}，$12/12$ 通过）。
+
+\subsubsection{三个不一致来源的覆盖}
+
+下表总结 v1 与 v2 对 \S\ref{subsec:motivation} 中三个来源的处理：
+
+\begin{center}
+\small
+\begin{tabular}{lccc}
+\toprule
+来源 & v1 处理 & v2 处理 & 对应机制 \\
+\midrule
+(A) Off-policy drift & 无修正 & 有 & token 级 binary ratio clip \\
+(B) vLLM vs.\ FSDP 数值差异 & 无修正 & 有 & token 级 \texttt{rollout\_is\_weights}（截断 IS） \\
+(C) Fused vs.\ per-submodel & \multicolumn{2}{c}{刻意不修正} & 算法设计意图 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{训练流程}
+\label{subsec:algorithm}
+
+\begin{algorithm}[H]
+\caption{On-Policy WDL-SFT（一个全局步）}
+\label{alg:wdl_sft_step}
+\begin{algorithmic}[1]
+\Require prompt batch $\{x_b\}_{b=1}^{B}$；子模型参数 $\theta = (\theta_1, \theta_2)$；融合权重 $\lambda$；每 prompt rollout 数 $N$；反向权重 $\beta$；mini-batch 数 $M$；损失版本 $v \in \{\text{v1}, \text{v2}\}$
+\Ensure 更新后的 $(\theta_1, \theta_2)$
+\State \textit{// Stage 1: Fused rollout（vLLM + FlashInfer，BF16）}
+\For{$b \in [B]$}
+  \State 从融合策略 $\mu^{\text{mix}}_{\theta_\text{old}} = \mathrm{softmax}\bigl((1-\lambda) z^{(1)}_{\theta_\text{old}} + \lambda z^{(2)}_{\theta_\text{old}}\bigr)$ 自回归采样 $N$ 条 response $\{y^{b,i}\}_{i=1}^{N}$
+\EndFor
+\State \textit{// Stage 2: Reward judgment}
+\For{$(b, i) \in [B]\times[N]$}
+  \State $R(x_b, y^{b,i}) \gets \textsc{RewardFn}(x_b, y^{b,i}) \in \{+1, -1\}$
+\EndFor
+\State 构造 $\mathcal{C}_b = \{i : R(x_b, y^{b,i}) = +1\}$ 与 $\mathcal{I}_b = \{i : R(x_b, y^{b,i}) = -1\}$
+\State \textit{// Stage 3: Old-policy recompute（FSDP + FlashAttention-2，用于 v2）}
+\If{$v = \text{v2}$}
+  \State 在训练引擎上用 $\theta_\text{old}$ 重算 $\log \pi^{\text{mix}}_{\theta_\text{old}}(y^{b,i}_t \mid \cdot)$，记为 \texttt{old\_log\_prob}
+  \State 对 rollout log-prob 与 old log-prob 计算 token 级截断 IS 权重 $w_{b,i,t}$（阈值 $5.0$）
+\EndIf
+\State \textit{// Stage 4: Mini-batch updates}
+\State 把 $\{(x_b, y^{b,i})\}$ 切成 $M$ 个 mini-batch
+\For{$m = 1, \ldots, M$}
+  \State 在训练引擎上前向计算 $\log \pi^{\text{mix}}_\theta(y^{b,i}_t \mid \cdot)$（沿融合 logits）
+  \If{$v = \text{v1}$}
+    \State 按式 \eqref{eq:v1_pos}--\eqref{eq:v1_total} 计算 $\mathcal{L}_{\text{v1}}$（逐 prompt 组内归一化）
+  \Else
+    \State 按式 \eqref{eq:v2_pos}--\eqref{eq:v2_total} 计算 $\mathcal{L}_{\text{v2}}$，其中 mask/weights 均 detach
+  \EndIf
+  \State 反向传播：$\nabla_{\theta_1} \mathcal{L} = (1-\lambda)\, J_1^{\top} g$, \; $\nabla_{\theta_2} \mathcal{L} = \lambda\, J_2^{\top} g$，\quad $g = \partial\mathcal{L}/\partial z_{\text{mix}}$
+  \State 优化器更新（AdamW，grad clip $500.0$，weight decay $0.1$）
+\EndFor
+\State \Return $(\theta_1, \theta_2)$
+\end{algorithmic}
+\end{algorithm}
+
+\textbf{实现要点}。两个子模型不共享隐藏状态，仅在 logits 层交互。Rollout 阶段为两次独立前向；训练阶段为一次融合前向 + 一次反向。由于融合 logits 线性，反向时 $\theta_1$ 与 $\theta_2$ 接收到\textit{同方向}（即 $g$ 相同）、\textit{不同幅度}（比例为 $(1-\lambda) : \lambda$）的梯度。我们取 $\lambda=0.5$ 作为主实验设置，使两侧梯度幅度相同。$\lambda$ 的其他取值留待后续消融。
+
+\subsection{与 GRPO 和 MiniRL 的对比}
+\label{subsec:comparison}
+
+本小节先在同一梯度框架下写出 GRPO、MiniRL 与 WDL-SFT 的 token 级梯度表达，再用 \citet{zheng2024stabilizing} 提出的 first-order approximation 视角审视三者与真实 sequence-level 梯度之间的逼近质量。为了避免符号混乱，以下所有表达式中的 $\pi_\theta$ 均按方法各自的定义解读（MiniRL/GRPO 中为单模型 $\pi_\theta$；WDL-SFT 中为融合分布 $\pi^{\text{mix}}_\theta$）。
+
+\subsubsection{统一的梯度形式}
+\label{subsubsec:unified_grad}
+
+三个算法在一个全局步内的 token 级梯度可以写成统一的形式：
+\begin{equation}
+\label{eq:unified_grad}
+\nabla_\theta \mathcal{L} \;=\; -\,\mathbb{E}_{x,\,y \sim \mu_{\theta_\text{old}}}\!\left[\sum_{i=1}^{G} \sum_{t=1}^{|y_i|} \underbrace{w^{\text{IS}}_{i,t}}_{\text{IS 权重}} \cdot \underbrace{M_{i,t}(\theta)}_{\text{mask/clip}} \cdot \underbrace{\widehat{R}_{i,t}}_{\text{信号}} \cdot \nabla_\theta \log \pi_\theta\bigl(y^i_t \mid x, y^i_{<t}\bigr) \right],
+\end{equation}
+下表给出三种方法在这一形式下各项的具体取值。$r_{i,t}(\theta) = \pi_\theta(y^i_t\mid\cdot)/\pi_{\theta_\text{old}}(y^i_t\mid\cdot)$，$\widehat{A}_{i,t}$ 为 group-normalized advantage，$R_i \in \{+1, -1\}$，$w_{i,t}$ 为 vLLM $\leftrightarrow$ FSDP 的 token 级截断 IS 权重，$\mathrm{sg}[\cdot]$ 表示 stop-gradient。
+
+\begin{center}
+\small
+\begin{tabular}{l l l l l}
+\toprule
+ & Rollout 分布 & IS 权重 $w^{\text{IS}}_{i,t}$ & Mask/clip $M_{i,t}$ & 信号 $\widehat{R}_{i,t}$（含归一化）\\
+\midrule
+\textbf{GRPO} & $\mu_{\theta_\text{old}}$ & $r_{i,t}(\theta)$ & PPO min-clip & $\widehat{A}_{i,t}\,/\,(G\,|y_i|)$ \\[2pt]
+\textbf{MiniRL} & $\mu_{\theta_\text{old}}$ & $\mathrm{sg}\!\left[\dfrac{\pi_{\theta_\text{old}}(y^i_t|\cdot)}{\mu_{\theta_\text{old}}(y^i_t|\cdot)}\right]$，截断 $5$ & $\mathbb{1}[\text{binary clip}]$ & $\widehat{A}(x,y_i)$, detach \\[6pt]
+\textbf{WDL-SFT v1} & $\mu^{\text{mix}}_{\theta_\text{old}}$ & $1$ & $1$ & $\dfrac{\mathbb{1}[i\in\mathcal{C}]}{k}-\beta\cdot\dfrac{\mathbb{1}[i\in\mathcal{I}]}{N-k}$ \\[6pt]
+\textbf{WDL-SFT v2} & $\mu^{\text{mix}}_{\theta_\text{old}}$ & $w_{i,t}$ (detached, 截断 $5$) & binary clip, 正负分别上/下界 & 同 v1 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+GRPO 的 $w^{\text{IS}}_{i,t}$ 是当前策略对 $\theta_\text{old}$ 的 ratio（非 stop-gradient），梯度同时经过 $r_{i,t}(\theta)$ 与 $\log \pi_\theta$ 两条路；其等价写法见式 \eqref{eq:grpo_grad}。MiniRL 的 IS 权重用于修正 train--inference 的数值差异（来源 B），被 stop-gradient；staleness（来源 A）由 binary mask 控制。v2 在 WDL-SFT 上采用与 MiniRL 同一范式。
+
+GRPO 的完整梯度（见 \citealt{zheng2024stabilizing} 附录 A）为
+\begin{equation}
+\nabla_\theta \mathcal{L}_{\text{GRPO}} = -\mathbb{E}\!\left[\frac{1}{G}\sum_{i=1}^{G}\frac{1}{|y_i|}\sum_{t=1}^{|y_i|} \nabla_\theta \min\!\bigl(r_{i,t}(\theta)\widehat{A}_{i,t},\,\mathrm{clip}(r_{i,t}(\theta), 1-\varepsilon_{\text{low}}, 1+\varepsilon_{\text{high}})\widehat{A}_{i,t}\bigr)\right],
+\label{eq:grpo_grad}
+\end{equation}
+在 PPO min-clip 的未截断区域内有 $\nabla_\theta(r_{i,t}\widehat{A}_{i,t}) = r_{i,t}\widehat{A}_{i,t}\,\nabla_\theta\log\pi_\theta(y^i_t\mid\cdot)$，即梯度经由 $\nabla r_{i,t} = r_{i,t}\nabla\log\pi_\theta$ 汇入 $\log\pi_\theta$，与表中的 unified form 一致。MiniRL 的梯度
+\begin{equation}
+\label{eq:minirl_grad}
+\nabla_\theta \mathcal{L}_{\text{MiniRL}} = -\mathbb{E}\!\left[\sum_{i,t} M_{i,t}\cdot \mathrm{sg}\!\left[\frac{\pi_{\theta_\text{old}}(y^i_t|\cdot)}{\mu_{\theta_\text{old}}(y^i_t|\cdot)}\right]\widehat{A}(x,y_i)\,\nabla_\theta \log \pi_\theta(y^i_t\mid\cdot)\right],
+\end{equation}
+其中 $M_{i,t}$ 是二值 mask，IS 权重对 $\theta$ detach。
+
+WDL-SFT v1 梯度（展开 \eqref{eq:v1_total} 对 $\theta$ 的梯度）：
+\begin{equation}
+\label{eq:v1_grad}
+\nabla_\theta \mathcal{L}_{\text{v1}} = -\mathbb{E}\!\left[\sum_{i,t} \Bigl(\frac{\mathbb{1}[i\in\mathcal{C}]}{k} - \beta\cdot\frac{\mathbb{1}[i\in\mathcal{I}]}{N-k}\Bigr)\,m^i_t\,\nabla_\theta \log \pi^{\text{mix}}_\theta(y^i_t\mid\cdot)\right].
+\end{equation}
+v2 梯度（展开 \eqref{eq:v2_total}）：
+\begin{equation}
+\label{eq:v2_grad}
+\nabla_\theta \mathcal{L}_{\text{v2}} = -\mathbb{E}\!\left[\sum_{i,t} \Bigl(\frac{M^+_{i,t}}{k} - \beta\cdot\frac{M^-_{i,t}}{N-k}\Bigr)\,w_{i,t}\,\nabla_\theta \log \pi^{\text{mix}}_\theta(y^i_t\mid\cdot)\right],
+\end{equation}
+其中 $M^\pm_{i,t}$、$w_{i,t}$ 均对 $\theta$ detach。v2 的梯度经由式 (2) 的链式分配传到两个子模型。
+
+\subsubsection{与 sequence-level"真实"梯度的逼近关系}
+\label{subsubsec:first_order_approx}
+
+\citet{zheng2024stabilizing} 把真正想优化的 sequence-level 目标写作
+\begin{equation}
+\mathcal{J}^{\text{seq}}(\theta) = \mathbb{E}_{y\sim\pi_\theta}\bigl[R(x,y)\bigr] = \mathbb{E}_{y\sim\mu_{\theta_\text{old}}}\!\left[\frac{\pi_\theta(y\mid x)}{\mu_{\theta_\text{old}}(y\mid x)}\, R(x,y)\right],
+\end{equation}
+其 "最精确"的梯度为
+\begin{equation}
+\label{eq:seq_grad}
+\nabla_\theta \mathcal{J}^{\text{seq}}(\theta) = \mathbb{E}_{y\sim\mu_{\theta_\text{old}}}\!\left[\frac{\pi_\theta(y\mid x)}{\mu_{\theta_\text{old}}(y\mid x)}\, R(x,y)\, \sum_{t=1}^{|y|} \nabla_\theta \log \pi_\theta(y_t\mid\cdot)\right].
+\end{equation}
+由于 sequence-level 似然比的数值范围和方差都太大，式 \eqref{eq:seq_grad} 在实际训练中几乎无法使用。替代的 token-level 近似 \citep[][eq.~6]{zheng2024stabilizing} 为
+\begin{equation}
+\label{eq:token_grad}
+\nabla_\theta \mathcal{J}^{\text{token}}(\theta) = \mathbb{E}_{y\sim\mu_{\theta_\text{old}}}\!\left[\sum_{t=1}^{|y|} \frac{\pi_\theta(y_t\mid\cdot)}{\mu_{\theta_\text{old}}(y_t\mid\cdot)} R(x,y)\, \nabla_\theta \log \pi_\theta(y_t\mid\cdot)\right].
+\end{equation}
+将式 \eqref{eq:seq_grad} 中的 sequence-level 比 $\prod_t(1+\delta_t)\approx 1+\sum_t \delta_t$ 做一阶展开（$\delta_t = \pi_\theta(y_t|\cdot)/\mu_{\theta_\text{old}}(y_t|\cdot) - 1$ 为小量），即可证明 $\nabla_\theta\mathcal{J}^{\text{seq}} \approx \nabla_\theta \mathcal{J}^{\text{token}}$。这一一阶近似成立的条件是 $\pi_\theta$ 与 $\mu_{\theta_\text{old}}$ 足够接近，即 (A) 训练引擎对推理引擎的数值差异与 (B) 策略 staleness 都必须被约束在小范围内。
+
+在这一框架下三个算法的逼近情况如下：
+
+\paragraph{MiniRL} 的 token 级梯度 \eqref{eq:minirl_grad} 等价于式 \eqref{eq:token_grad} 中把 $R(x,y)$ 替换为 group-centered $\widehat{A}(x,y)$（等价变换，因为把 $R$ 减去基线只改变方差不改变梯度的期望），再把 $\pi_\theta/\mu_{\theta_\text{old}}$ 分解为 $\underbrace{\pi_{\theta_\text{old}}/\mu_{\theta_\text{old}}}_\text{train-infer}\cdot\underbrace{\pi_\theta/\pi_{\theta_\text{old}}}_\text{staleness}$ 并在 staleness 一侧用 binary clip 压住。train-infer 一侧的 IS 权重被保留并 detach，因此 MiniRL 的梯度在两个条件都满足的 token 上等于式 \eqref{eq:token_grad} 的 unbiased 估计。
+
+\paragraph{GRPO} 由于在式 \eqref{eq:token_grad} 中引入了长度归一化 $1/|y_i|$，且略去了 train-infer IS 权重，其梯度已不再与 \eqref{eq:seq_grad} 的梯度相等或线性正比，即一阶近似不再成立（\citealt{zheng2024stabilizing} \S4.3 的实证也验证这一点：GRPO 式的长度归一化会引入有偏的 token 级目标，长期训练下性能受限）。
+
+\paragraph{WDL-SFT v1 和 v2}
+
+与 MiniRL/GRPO 的目标函数\textit{性质不同}——WDL-SFT 不是在最大化 $\mathbb{E}_\pi[R]$，而是在做\textit{带方向性的监督微调}：正确轨迹做正向 SFT（最大化似然），错误轨迹做反向 SFT（最小化似然）。但 v1 和 v2 的梯度仍可纳入式 \eqref{eq:unified_grad} 的统一形式：将"信号" $\widehat{R}_{i,t}$ 看作逐 prompt 组内归一化的有符号标签 $\mathbb{1}[i\in\mathcal{C}]/k - \beta \mathbb{1}[i\in\mathcal{I}]/(N-k)$，则 v1 的梯度 \eqref{eq:v1_grad} 等同于式 \eqref{eq:token_grad} 中 $R$ 被此标签替换、且 IS 权重被置为 $1$ 的变种。
+
+因此在 \citet{zheng2024stabilizing} 的一阶近似框架下：
+\begin{itemize}
+\item \textbf{v1 的梯度是未做 IS 修正的 token 级近似}，同时丢弃了来源 (A) 与 (B) 的修正项。等价于假设 $\pi^{\text{mix}}_\theta \equiv \mu^{\text{mix}}_{\theta_\text{old}}$ 完全一致——这一假设在多 mini-batch 更新和 vLLM/FSDP 数值差异的场景下并不成立，是 v1 中期漂移的结构性来源。
+\item \textbf{v2 的梯度恢复了 token 级 IS 修正的两个因子}：$w_{i,t}$ 吸收了 train-infer 分量（来源 B），binary mask $M^\pm_{i,t}$ 约束了 staleness 分量（来源 A）。除 $w$ 和 $M$ 外，v2 的其他组件（$\widehat{R}$ 的 $\pm 1/k$、$\mp\beta/(N-k)$ 归一化、融合 logit 结构）与 v1 完全一致，因此差异可被干净地归因到 IS/clip 两个机制。
+\item \textbf{GRPO 的长度归一化 + 缺 train-infer IS 导致其梯度不是式 \eqref{eq:token_grad} 的 unbiased 估计}，在我们的 on-policy WDL-SFT 场景下不是一个合适的参照系。MiniRL 才是与 v2 最直接可比的 token 级基线。
+\end{itemize}
+
+\paragraph{与 GRPO/MiniRL 的结构性差异}
+
+除梯度表达差异外，WDL-SFT 与前两者还存在三个结构上的区别，这些差异与逼近质量正交，但会影响训练动力学：
+\begin{enumerate}
+\item \textbf{双模型联合更新}：梯度沿式 (2) 按比例分配到 weak 与 strong 两个子模型，两者一次 loss 同时更新。MiniRL 与 GRPO 都只有一个被训练的策略。
+\item \textbf{Rollout 来自融合分布}而非单模型分布。
+\item \textbf{信号不按 advantage 归一化}：v1/v2 中 $\widehat{R}_{i,t}$ 只依赖 $\pm 1$ 标签与 $k, N-k, \beta$，不使用 $\{R_i\}$ 的组均值或标准差；换言之，正负样本\textit{等权}，由 $\beta$ 单独控制平衡。这与 GRPO 的 advantage 标准化、MiniRL 的 advantage centering 都不同。
+\end{enumerate}
+
+\subsection{实验结果}
+\label{subsec:results}
+
+\subsubsection{实验设置}
+
+所有 WDL-SFT 实验共享以下设置：
+\begin{itemize}
+\item \textbf{模型}：QwenJoint-4B，\ model1 = Qwen3-4B-Base（weak），model2 = Qwen3-4B-Base-SFT-stage-1（strong），$\lambda=0.5$，两个子模型都\textit{不冻结}。
+\item \textbf{数据集}：训练用 EnsembleLLM MATH（\texttt{train\_rl\_format.parquet}，$\sim\!111\mathrm{K}$ prompts）；训练时的 online validation 用 MATH-500 与 AIME-2025 的 fused-model mean@1；离线评测提取 model2/model1 各自的权重后用 vLLM 0.12.0 跑 $n{=}3$ 的 mean@3（7 个 benchmark）。
+\item \textbf{Rollout 与训练超参}：batch 为 $64$ prompts，每 prompt $N{=}8$ 个 response，max response length $4096$，grad\_clip $500$，weight decay $0.1$，warmup $5$ 步，val\_freq $25$ 步，AdamW。v2 专有：$\varepsilon_{\text{low}}=0.2$, $\varepsilon_{\text{high}}=0.27$，\texttt{rollout\_is\_weights} 阈值 $5.0$。
+\end{itemize}
+
+\subsubsection{训练设定对照}
+
+\begin{table}[htbp]
+\small
+\centering
+\caption{已完成的 WDL-SFT 训练实验。"Online MATH-500 peak" 为训练过程中 fused-model 在 MATH-500 上 mean@1 的最高值；"Status" 概括训练动力学。$\star$ 标记当前 v1/v2 的最佳对照点。}
+\label{tab:training_runs}
+\begin{tabular}{l l c c r l l}
+\toprule
+Run & Loss & lr & $\beta$ & Steps & Online MATH-500 peak & Status \\
+\midrule
+EXP-12 (M5)    & v1 & $1\mathrm{e}{-}6$ & $0.1$ & 1043 & $66.94\%$ (step 100) & Diverged after step 300 \\
+$\star$EXP-13 (M5.5) & v1 & $5\mathrm{e}{-}7$ & $0$    & 300  & $67.94\%$ (step 300) & Stable \\
+EXP-14 (M5.6)  & v1 & $5\mathrm{e}{-}7$ & $0.1$ & $\sim\!458$ & $68.15\%$ (step 300) & Stable \\
+EXP-15 (LR3)   & v1 & $1\mathrm{e}{-}6$ & $0$    & 274 (stopped) & $68.15\%$ (step 125)  & Peaked at 125, drift \\
+$\star$EXP-16 (1A)   & \textbf{v2} & $5\mathrm{e}{-}7$ & $0$ & 300 & $\mathbf{71.37\%}$ (step 225) & Stable \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{离线评测：model2（strong 子模型）}
+
+EXP-12 checkpoints 在发散后被丢弃；EXP-16 的离线 mean@3 评测尚未完成。对 EXP-13、EXP-14、EXP-15 已有完整的 7-benchmark 离线评测。数据见表 \ref{tab:model2_eval}。
+
+\begin{table}[htbp]
+\small
+\centering
+\caption{WDL-SFT v1 训练后 model2（strong 子模型）的离线 mean@3 准确率（\%）。EXP-11 为同初始化下 Qwen3-4B-Base-SFT-stage-1 $\to$ DPO 的外部基线。Generation params：temperature $=1.0$, top-$p=0.95$, max tokens $=4096$，$n=3$。}
+\label{tab:model2_eval}
+\begin{tabular}{l c c c c c}
+\toprule
+Benchmark & EXP-11 (SFT-DPO) & EXP-13 M5.5 m2 & EXP-14 M5.6 m2 & EXP-15 LR3 m2 \\
+ & 365 steps & step 300 & step 300 & step 125 \\
+\midrule
+MATH-500      & $67.7$ & $78.6$ & $79.1$ & $\mathbf{79.6}$ \\
+AIME-2025     & $7.8$  & $\mathbf{20.0}$ & $17.8$ & $\mathbf{20.0}$ \\
+AMC-2023      & $40.8$ & $\mathbf{55.8}$ & $52.5$ & $51.7$ \\
+AQUA          & $65.0$ & $\mathbf{80.1}$ & $79.9$ & $73.8$ \\
+GSM8K         & $89.8$ & $\mathbf{91.8}$ & $91.6$ & $91.3$ \\
+MAWPS         & $94.4$ & $95.2$ & $95.1$ & $\mathbf{95.6}$ \\
+SVAMP         & $90.7$ & $93.4$ & $93.3$ & $\mathbf{94.8}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{离线评测：model1（weak 子模型/锚）}
+
+\begin{table}[htbp]
+\small
+\centering
+\caption{WDL-SFT v1 训练后 model1（weak 子模型）的离线 mean@3 准确率（\%）。EXP-08 为未经训练的 Qwen3-4B-Base。}
+\label{tab:model1_eval}
+\begin{tabular}{l c c c c}
+\toprule
+Benchmark & EXP-08 (Base) & EXP-13 M5.5 m1 & EXP-14 M5.6 m1 $\,^\dagger$ & EXP-15 LR3 m1 \\
+ & no training & step 300 & step 300 & step 125 \\
+\midrule
+MATH-500    & $32.5$ & $\mathbf{70.5}$ & $48.9$ & $63.7$ \\
+AIME-2025   & $3.3$  & $\mathbf{8.9}$  & $5.6$  & $6.7$ \\
+AMC-2023    & $15.0$ & $\mathbf{45.8}$ & $30.8$ & $36.7$ \\
+AQUA        & $6.8$  & $\mathbf{57.5}$ & $20.9$ & $45.9$ \\
+GSM8K       & $27.8$ & $\mathbf{82.0}$ & $64.4$ & $70.7$ \\
+MAWPS       & $21.7$ & $\mathbf{84.9}$ & $64.3$ & $80.7$ \\
+SVAMP       & $25.9$ & $\mathbf{85.3}$ & $62.7$ & $77.4$ \\
+\bottomrule
+\multicolumn{5}{l}{\small $^\dagger$ EXP-14 (M5.6, $\beta=0.1$) 的 model1 在全部 7 个 benchmark 上 extraction failure 率均匀升至 $24$--$28\%$；}\\
+\multicolumn{5}{l}{\small \phantom{$^\dagger$ }反向 SFT 项在 $\beta=0.1$ 下系统性损伤了 anchor 的 $\boxed{\cdot}$ 格式合规性。pass@3 指标与 m5\_5 仍接近。}\\
+\end{tabular}
+\end{table}
+
+\subsubsection{Online 训练指标（v1 vs v2 对照）}
+
+EXP-13（v1 baseline）与 EXP-16（v2）除 \texttt{loss\_mode}、\texttt{rollout\_is}、\texttt{clip\_ratio\_low/high} 外\textit{所有超参完全相同}，构成严格的 A/B 对照。表 \ref{tab:online_val} 给出两者的 online MATH-500 mean@1 轨迹。
+
+\begin{table}[htbp]
+\small
+\centering
+\caption{EXP-13 (v1) 与 EXP-16 (v2) 的 online validation：MATH-500 fused-model mean@1（\%）。其他所有超参完全一致（lr $=5\mathrm{e}{-}7$, $\beta=0$, batch $=64$ prompts, $N=8$, max resp $=4096$, 300 steps）。}
+\label{tab:online_val}
+\begin{tabular}{c c c | c c c}
+\toprule
+Step & EXP-13 (v1) & EXP-16 (v2) & Step & EXP-13 (v1) & EXP-16 (v2) \\
+\midrule
+$0$   & $59.7$ & $58.9$ & $175$ & $67.7$ & $68.6$ \\
+$25$  & $63.5$ & $65.9$ & $200$ & $65.7$ & $69.6$ \\
+$50$  & $63.9$ & $66.3$ & $225$ & $67.5$ & $\mathbf{71.4}$ \\
+$75$  & $64.1$ & $66.3$ & $250$ & $66.9$ & $69.6$ \\
+$100$ & $63.5$ & $69.8$ & $275$ & $67.7$ & $70.4$ \\
+$125$ & $65.3$ & $69.2$ & $300$ & $67.9$ & $\mathbf{70.4}$ \\
+$150$ & $65.1$ & $70.0$ & \multicolumn{3}{l}{$\Delta$(step 300, v2$-$v1) $=+2.4$ pp} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{主要实证结论}
+
+\begin{enumerate}
+\item \textbf{v1 把 model2 的 MATH-500 mean@3 压在 $79$--$80\%$ 附近}：三个 v1 run（EXP-13 步 300、EXP-14 步 300、EXP-15 步 125）落点在 $\pm 1\%$ 范围内，对 lr（$5\mathrm{e}{-}7$ vs.\ $1\mathrm{e}{-}6$）、$\beta$（$0$ vs.\ $0.1$）和训练步数（125 vs.\ 300）均弱相关。这说明 v1 的天花板由\textit{损失结构本身决定}，不是学习率或步数可以突破的。
+\item \textbf{v2 在相同设置下突破了 v1 的 online 天花板}：EXP-16（v2, lr $=5\mathrm{e}{-}7$, $\beta=0$, 300 步）在 step 225 达到 online MATH-500 mean@1 $=71.4\%$，step 300 收在 $70.4\%$，\textit{较 EXP-13 同步数高 $+2.4$ 个百分点}（\ref{tab:online_val}）。由于两者其他超参完全一致，差距\textit{只能}归因到 v2 的 IS/clip 两项机制。
+\item \textbf{v1 下 $\beta>0$ 的稳定性结论需要修正}：EXP-14（v1, lr $=5\mathrm{e}{-}7$, $\beta=0.1$）model2 与 EXP-13 基本持平，说明先前认为的"反向 SFT 不稳定"实际来自高学习率（lr $=1\mathrm{e}{-}6$ 的 EXP-12）而非 $\beta$ 项本身。但 model1 一侧 EXP-14 出现了 $\sim\!20$ 个百分点的下跌，同时 extraction failure 从 $5$--$8\%$ 抬升到 $24$--$28\%$——反向 SFT 项\textit{系统性损伤了 anchor 的格式合规性}。在 v1 下，$\beta>0$ 的成本应被重新归类为"伤 anchor 而非伤 strong"，这是一个明确且可复现的负面发现。对 v2 下 $\beta>0$ 的稳定性需单独实验（待 EXP-17）。
+\item \textbf{v1 下 lr $=1\mathrm{e}{-}6$（EXP-15）在 step 125 前加速拟合，其后发散}；v2 下 lr $=1\mathrm{e}{-}6$ 是否仍漂移需要进一步的实验验证（待 EXP-18）。
+\end{enumerate}
+
+综上，v1 已经给出了一个稳定但有上限的 WDL-SFT 基线；v2 在 loss 层补齐标准 on-policy 稳定性机制后，首次在相同训练预算下显著突破 v1 的 fused-model 在线准确率。下一步工作是完成 EXP-16 的离线 model2/model1 多 benchmark 评测，验证 online 的 $+2.4$ pp 增益在 mean@3 指标上是否同样成立。
+
+% -----------------------------------------------------------------------------
+% 如需在主文档引用 Zheng et al.\ 2024 (stabilizing RL with LLMs)，可在 BibTeX 中添加：
+% @article{zheng2024stabilizing,
+%   title = {Stabilizing Reinforcement Learning with LLMs: Formulation and Practices},
+%   author = {Zheng, Chujie and Dang, Kai and Yu, Bowen and others},
+%   journal = {COLM},
+%   year = {2024}
+% }
+% -----------------------------------------------------------------------------

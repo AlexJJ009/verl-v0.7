@@ -678,8 +678,11 @@ class RayPPOTrainer:
     def _validate(self, merged: bool = False):
         # Joint training: switch to model2-only weights for evaluation
         is_joint = getattr(self, "_is_joint_training", False)
+        print(f"[WDL-SFT VERIFY] _validate() entered, _is_joint_training={is_joint}", flush=True)
         if is_joint:
+            print("[WDL-SFT VERIFY] calling checkpoint_manager.update_weights(eval_only=True)", flush=True)
             self.checkpoint_manager.update_weights(eval_only=True)
+            print("[WDL-SFT VERIFY] update_weights(eval_only=True) returned", flush=True)
 
         data_source_lst = []
         reward_extra_infos_dict: dict[str, list] = defaultdict(list)

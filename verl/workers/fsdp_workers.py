@@ -789,15 +789,21 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
         )
 
         # Joint training: extract model2 weights for eval-only mode
+        print(f"[WDL-SFT VERIFY] rollout_mode(eval_only={eval_only}) called", flush=True)
         if eval_only:
             from verl.models.joint_model.weight_utils import (
                 extract_sub_model_weights,
                 is_joint_model_state_dict,
             )
 
-            if is_joint_model_state_dict(params):
+            is_joint = is_joint_model_state_dict(params)
+            print(f"[WDL-SFT VERIFY] eval_only=True path: is_joint_state_dict={is_joint}", flush=True)
+            if is_joint:
+                print("[WDL-SFT VERIFY] extracting model2-only weights (sub_model_index=1)", flush=True)
                 logger.info("Joint training eval mode: extracting model2 weights only")
                 params = extract_sub_model_weights(params, sub_model_index=1)
+            else:
+                print("[WDL-SFT VERIFY] WARNING: state_dict not recognized as joint — eval_only had no effect", flush=True)
 
         # Special handling for LoRA with sleep_level=2:
         # When sleep_level=2, base model weights are destroyed during each sleep cycle.

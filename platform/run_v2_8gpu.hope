@@ -1,5 +1,5 @@
 [base]
-afo.app.name = verl-probe-pampas-derived-v2
+afo.app.name = verl-probe-pampas-derived-v2-8gpu
 type = ml-easy-job
 
 [resource]
@@ -8,9 +8,9 @@ queue = root.shxs_training_cluster.hadoop-fridayagi.friday_h20_train
 
 [roles]
 workers = 1
-worker.memory = 480000
-worker.vcore = 32
-worker.gcoresh20-141g = 2
+worker.memory = 1920000
+worker.vcore = 128
+worker.gcoresh20-141g = 8
 
 worker.script = bash jupyter.sh
 
@@ -23,7 +23,7 @@ afo.app.am.resource.mb = 4096
 with.tensor.board = false
 
 [docker]
-afo.docker.image.name = registry-offlinebiz.sankuai.com/custom_prod/com.sankuai.data.hadoop.gpu/ai-search/training_ubuntu22_cuda12.9_python3.12_torch2.9.1_vllm0.12.0_deepep1.2.1_megatron0.15.0_verl_dep_0.6.0_test_2_4_fbd2080c:1.0.0
+afo.docker.image.name = <FILL_IN_V2_IMAGE_URL>
 
 [data]
 afo.data.prefetch = false
@@ -33,7 +33,7 @@ afo.app.support.engine.failover = true
 
 [others]
 client.git.revision.publish=false
-afo.app.env.YARN_CONTAINER_RUNTIME_DOCKER_SHM_SIZE_BYTES = 68719476736
+afo.app.env.YARN_CONTAINER_RUNTIME_DOCKER_SHM_SIZE_BYTES = 549755813888
 with_requirements = false
 afo.dolphinfs.otherusers = hadoop-mtsearch-assistant
 afo.app.env.PROBE_OUT_DIR = /mnt/dolphinfs/ssd_pool/docker/user/hadoop-ai-search/yangfengkai02/lgx/verl-exp/logs

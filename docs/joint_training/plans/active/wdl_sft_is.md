@@ -1,6 +1,6 @@
 # WDL-SFT-IS：给 On-Policy WDL-SFT 补齐稳定性机制
 
-- 状态：**ACTIVE — 实现完成，1a 运行中**
+- 状态：**ACTIVE — 1a/1b 训练完成，1c 运行中，offline eval 待跑**
 - 分支：`feature/on-policy-wdl-sft`（不新开分支，本算法仍是 WDL-SFT 家族）
 - 创建日期：2026-04-19
 - 前置：
@@ -111,19 +111,23 @@ v1 用 `seq-mean-token-sum` + `1/k` 归一化：长序列贡献的 token 数更�
 - `algorithm.rollout_correction.rollout_is="token"`, `threshold=5.0`
 - 300 steps，val_freq=25，save_freq=25
 
-| 实验 | loss_mode | lr | β | 状态 | Run ID |
-|---|---|---|---|---|---|
-| **1a** (EXP-16) | wdl_sft_is | 5e-7 | 0 | **运行中** 2026-04-19 16:57 | `WDL-SFT-Qwen3-4B-MATH-1A_1776589025` |
-| **1b** (EXP-17) | wdl_sft_is | 5e-7 | 0.1 | 待 1a 方向性结论 | — |
-| **1c** (EXP-18) | wdl_sft_is | 1e-6 | 0 | 待 1a 稳定 | — |
+| 实验 | loss_mode | lr | β | 状态 | 在线 MATH-500 peak / step-300 final (model2-only) | Run ID |
+|---|---|---|---|---|---|---|
+| **1a** (EXP-16) | wdl_sft_is | 5e-7 | 0 | **完成** 2026-04-20 | 71.37% (step 225) / 70.36% | `WDL-SFT-Qwen3-4B-MATH-1A_1776594597` |
+| **1b** (EXP-17) | wdl_sft_is | 5e-7 | 0.1 | **完成** 2026-04-21 | 70.97% (step 225 & 275) / 70.36% | `WDL-SFT-Qwen3-4B-MATH-1B_1776695220` |
+| **1c** (EXP-18) | wdl_sft_is | 1e-6 | 0 | **运行中** 2026-04-21 18:53 | — | `WDL-SFT-Qwen3-4B-MATH-1C_1776768784` |
 
-**决策流**：
-- 1a 跑出来 mean@1 < 70% → (W) 的 weak-driven rollout 想法没想象中那么强，本研究方向的故事需要重写。
-- 1a mean@1 > 70% → IS/clip 是必要的；继续 1b/1c 收集完整对照。
-- 1b model2 性能 ≥ 1a → reverse SFT 有增量价值，修正之前的结论。
-- 1b model2 性能 < 1a → reverse SFT 确实不增益，之前的判断正确但理由错了。
-- 1c 稳定 → v1 的 step 125 漂移是 loss 层缺 IS 的问题，和 LR 无关。
-- 1c 仍漂 → lr=1e-6 确实越过边界，保留 5e-7 作为默认 LR。
+**决策流**（更新）：
+- ✅ 1a mean@1 = 71.37% > 70% → IS/clip 必要，v2 突破 v1 在线 ceiling（+2.4 pp @ step 300 vs M5.5）；方向有效。
+- ✅ 1b model2 在线 ≈ 1a（差距 < 0.5 pp 贯穿 13 个 val 点）→ **β=0.1 在 v2 下训练侧稳定**，v1 时期"reverse SFT 必崩"在训练层被推翻。
+- ⚠️ 1b 决策**仍未最终**：v1 的真正失败模式是 EVAL-15 model1 **offline** 格式崩溃（MATH-500 −21.6%，extraction_fail 24–28%），**online 看不到**。v2 的 lower-bound clip 是假设的反制，但尚未在 1b model1 offline 上验证。
+- 1c 正在跑，关注 step 125（v1 LR3 崩溃点）。
+
+**离线 eval 下一步优先级**：
+1. 1b model1 offline（**决定性**，验证 β>0 在 v2 下是否保持 format compliance）
+2. 1b model2 offline（对标 1a 83.07% preliminary）
+3. 1a step 225 model2 offline 已跑得 MATH-500 mean@3 = 83.07%，补齐 EVAL-XX ID + model1 eval
+4. 1c 完成后同上
 
 ## 5. Validation 策略变更：model2-only
 
@@ -169,10 +173,13 @@ GPU/sample-efficiency config（`ACTOR_PPO_MAX_TOKEN_LEN`, `TRAIN_PROMPT_BSZ`, `T
 1. ✅ 文档与 spec：2026-04-19 完成
 2. ✅ 代码 + 单元测试：2026-04-19 完成（12/12 通过 + MiniRL 10/10 回归通过）
 3. ✅ Git commit + push：2026-04-19 完成（主 repo `a8aaedc7`，recipe submodule `b37a0e3`）
-4. ✅ **1a 启动**：2026-04-19 16:57（tmux `wdl_sft_is_1a`，预计 ~24h 跑完 300 steps）
-5. 🔄 1a 结果分析：预计 2026-04-20 下午
-6. 待定 1b / 1c 启动：根据 §4 决策流
-7. 最迟 2026-04-25 给出 1a 结论
+4. ✅ 1a 训练：2026-04-19 16:57 → 2026-04-20 完成（300 steps，peak 71.37% @ step 225）
+5. ✅ 1a step 225 model2 初步 offline：MATH-500 mean@3 = 83.07%（EVAL-ID 待补）
+6. ✅ 1b 训练：2026-04-20 14:30 → 2026-04-21 完成（300 steps，peak 70.97%；在线稳定，β=0.1 v2 训练侧不崩）
+7. ✅ 1c 启动：2026-04-21 18:53（tmux `wdl_sft_is_1c`，ETA ~20h）
+8. 🔄 1b offline eval（model1 决定性 + model2 对标）：下一步
+9. 🔄 1c 训练完成 + offline eval：预计 2026-04-22 下午
+10. 最迟 2026-04-25 给出 v2 三联对照的完整结论
 
 ## 9. 相关代码引用
 

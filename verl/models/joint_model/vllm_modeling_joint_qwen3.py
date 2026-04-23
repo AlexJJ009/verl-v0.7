@@ -195,6 +195,11 @@ class QwenJointForCausalLM(nn.Module):
 
     def load_weights(self, weights: Iterable[tuple[str, torch.Tensor]]) -> set[str]:
         is_joint, model0_weights, model1_weights, model2_only_weights = self._split_joint_weights(weights)
+        print(
+            f"[WDL-SFT VERIFY] vllm_joint.load_weights: is_joint={is_joint}, "
+            f"will set _use_model2_only={not is_joint}",
+            flush=True,
+        )
 
         if is_joint:
             self._use_model2_only = False
