@@ -161,6 +161,7 @@ Documentation in `docs/joint_training/` was created during the parent branch's j
 | `plans/completed/` | Archived plans from Stage 1 & 2 | ARCHIVAL |
 | `courses/` | Educational docs on joint-training theory | ARCHIVAL — background reference |
 | `guides/` | Testing, tuning, migration guides | Partially applicable |
+| `guides/meituan_platform.md` | **Meituan AFO layered launch + cross-host portability playbook** — MUST follow when adding any experiment that will run on Meituan | ACTIVE |
 | `references/` | External articles and papers | ARCHIVAL — background reference |
 
 ## Operational Best Practices (MANDATORY)
@@ -178,6 +179,8 @@ Before launching any training, monitoring, checkpoint transfer, or large file op
 
 3. **Monitor in tmux**: If running a monitoring/tail script alongside training, put it in its own tmux pane or window.
 
+4. **Meituan-bound experiments follow the layered playbook**: When an experiment is confirmed to run on the Meituan AFO platform, it MUST be authored according to `docs/joint_training/guides/meituan_platform.md` — four-layer launch path, default-local-overridable-everything paths in `run_*.sh`, dolphinfs overrides isolated to `recipe/.../meituan/env.sh`. Local-only experiments don't need layers 1–3, but must still write `run_*.sh` by the same portability rules so migration later is a one-file change. Every experiment must run on BOTH the local box and Meituan without per-host branches in the experiment script itself.
+
 ## Agent Guidelines
 
 - **Subagents**: Use subagents (Agent tool) for exploratory/independent work to save main context. Subagents should use the **Haiku** model (`model: "haiku"`) for cost efficiency — do NOT use Opus for subagent work unless the task specifically requires strong reasoning.
@@ -188,6 +191,7 @@ Before launching any training, monitoring, checkpoint transfer, or large file op
 - **Current focus**: `docs/joint_training/plans/active/wdl_sft_is.md` (v2 plan, 1a/1b/1c)
 - Single-model ablation plan: `docs/joint_training/plans/active/ablation_single_model.md`
 - Single-model ablation scripts: `recipe/on_policy_wdl_sft/ablation_single_model/`
+- **Meituan platform playbook** (how to add experiments that run on both local + AFO): `docs/joint_training/guides/meituan_platform.md`
 - v1 vs v2 loss spec: `docs/joint_training/specs/wdl_sft_is.md`
 - v1 loss code: `verl/trainer/ppo/core_algos.py:1861` (wdl_sft)
 - v2 loss code (pending): same file, registered as `wdl_sft_is`

@@ -340,13 +340,15 @@ def apply_monkey_patch(
     )
 
     if is_trl_available():
-        from trl import AutoModelForCausalLMWithValueHead  # type: ignore
-
-        def state_dict(self, *args, **kwargs):
-            return torch.nn.Module.state_dict(self, *args, **kwargs)
-
-        AutoModelForCausalLMWithValueHead.state_dict = state_dict
-        print("Monkey patch state_dict in AutoModelForCausalLMWithValueHead. ")
+        try:
+            from trl import AutoModelForCausalLMWithValueHead  # type: ignore
+        except ImportError:
+            pass
+        else:
+            def state_dict(self, *args, **kwargs):
+                return torch.nn.Module.state_dict(self, *args, **kwargs)
+            AutoModelForCausalLMWithValueHead.state_dict = state_dict
+            print("Monkey patch state_dict in AutoModelForCausalLMWithValueHead.")
 
     # TODO: VLM models only, unify monkey patch to LLM models.
     if model.config.model_type in ["qwen2_5_vl", "qwen2_vl"]:
