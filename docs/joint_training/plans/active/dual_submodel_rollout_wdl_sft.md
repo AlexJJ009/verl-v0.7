@@ -392,15 +392,27 @@ Validation criteria:
 - [ ] Run Docker smoke test.
 - [ ] Update this plan with implementation notes and any changed decisions.
 
-## 9. Discussion Queue
+## 9. Confirmed Decisions and Remaining Naming Question
 
-Before implementation, confirm:
+Confirmed for first implementation:
 
-1. Should `rollout.n=8` mean 8 per source, or total 8 split across model1/model2?
-   - Current recommendation: 8 per source, selected model2 gives 8 training samples per prompt, matching 1A data budget while adding model1 diagnostics cost.
-2. Should model1 rollout be generated in the first run if it is not selected?
-   - Current recommendation: yes, because it gives direct evidence for the advisor question and future selector policies.
-3. How should historical `wdl_sft_is` results be labeled after the reward-label fix?
-   - Current recommendation: mark EXP-16/17/18 and related 2X runs as pre-fix/current-implementation results; use new experiment IDs for post-fix spec-correct reruns.
-4. Should the new algorithm get a new public name beyond "dual-submodel rollout WDL-SFT"?
-   - Current recommendation: keep the descriptive name until the boundary is stable.
+1. `rollout.n=8` means **8 samples per rollout source**, not 8 total split across model1/model2.
+   - model1 generates 8 samples per prompt.
+   - model2 generates 8 samples per prompt.
+   - selected model2 data still gives 8 training samples per prompt, matching the 1A training data budget.
+2. Model1 rollout is generated in the first run even though it is not selected for training.
+   - Reason: it gives direct evidence for the advisor question and future selector policies.
+3. `rollout_is_weights` are disabled for loss multiplication by default.
+   - Keep diagnostics if cheap.
+   - Do not silently correct model2 rollout data back toward the fused rollout policy.
+4. `β` remains configurable.
+   - 3A uses `β=0.0`.
+   - 3B uses `β=0.1`.
+   - Both route through `WDL_SFT_BETA` / `actor_rollout_ref.actor.policy_loss.wdl_sft_beta`.
+5. Historical `wdl_sft_is` results should be labeled as pre-fix/current-implementation results after the reward-label fix.
+   - Use new experiment IDs for post-fix spec-correct reruns.
+
+Remaining naming question:
+
+- Should the new algorithm get a public name beyond "dual-submodel rollout WDL-SFT"?
+  - Current recommendation: keep the descriptive name until the boundary is stable.
