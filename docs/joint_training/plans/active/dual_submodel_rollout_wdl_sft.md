@@ -42,7 +42,8 @@ $$
 
 - Evaluation target remains model2, not fused joint output.
 - Default core loss remains `wdl_sft_is` unless explicitly changed after discussion.
-- Default experiment scale remains the 1A schedule: 300 steps, save/test every 25 steps, `lr=5e-7`, `β=0`, `rollout.n=8`, prompt batch size 64.
+- Default experiment scale remains the 1A schedule: 300 steps, save/test every 25 steps, `lr=5e-7`, default `β=0`, `rollout.n=8`, prompt batch size 64.
+- Reverse-SFT weight `β` must remain configurable through `actor_rollout_ref.actor.policy_loss.wdl_sft_beta` / `WDL_SFT_BETA`, supporting both `0.0` and nonzero values such as `0.1`.
 
 ### Changed
 
@@ -196,13 +197,15 @@ This is a correctness cleanup for label semantics. It should be fixed before or 
 
 Historical `wdl_sft_is` results should be labeled as pre-fix/current-implementation results until rerun or audited. Do not silently treat EXP-16/17/18 as spec-correct `wdl_sft_is` runs.
 
-## 5. Clip / Mask Decisions To Confirm
+## 5. Clip / Mask Decisions
 
-This is the main unresolved design boundary.
+Status: **confirmed design boundary for first implementation**.
+
+Principle: keep masks that protect valid token accounting or training-time stability after the selected data batch is fixed. Disable mechanisms that would implicitly turn model2 rollout data back into fused-policy rollout data.
 
 ### 5.1 Keep: Training-Time Ratio Binary Mask
 
-Candidate: keep `wdl_sft_is` ratio masking between `log_prob` and `old_log_prob`.
+Decision: keep `wdl_sft_is` ratio masking between `log_prob` and `old_log_prob`.
 
 Why:
 
@@ -214,9 +217,9 @@ Risk:
 
 - If `old_log_probs` are computed under fused logits but the data came from model2, the ratio is not correcting sampling-policy mismatch. It is only a local trust-region proxy for fused training updates.
 
-Default recommendation for first implementation: **keep it**.
+Default for first implementation: **keep it**.
 
-### 5.2 Discuss: `rollout_is_weights` From vLLM/FSDP Mismatch
+### 5.2 Disable By Default: `rollout_is_weights` Loss Multiplication
 
 Current v2 uses `rollout_is_weights` computed from:
 
@@ -234,26 +237,24 @@ In dual-submodel rollout, selected data comes from model2. If the training polic
 
 That may conflict with the new philosophy: model2 is deliberately the data policy, while fused logits are deliberately the training-time gradient amplifier.
 
-Options:
+Decision for first implementation: **disable loss multiplication by `rollout_is_weights`, but keep rollout/FSDP log-prob diagnostics if cheap**.
 
-1. Disable `rollout_is_weights` in dual-submodel default.
-   - Pro: preserves the new algorithm idea cleanly.
-   - Pro: avoids suppressing model2's higher-quality data distribution toward fused rollout.
-   - Con: loses vLLM/FSDP mismatch correction.
-2. Keep `rollout_is_weights`.
-   - Pro: closer to v2 machinery and current MiniRL-style stability.
-   - Con: may undo the point of decoupling rollout from fusion.
-3. Compute rollout log-probs for diagnostics only; do not multiply the loss.
-   - Pro: gives evidence before deciding.
-   - Con: still requires code/log plumbing.
+Why:
 
-Default recommendation for first implementation: **disable loss multiplication by `rollout_is_weights`, but log off-policy diagnostics if cheap**.
+- This preserves the new algorithm idea cleanly: model2 is deliberately the data policy.
+- It avoids suppressing model2's higher-quality data distribution toward the fused policy.
+- The remaining ratio binary mask still provides a local training-time trust-region proxy.
 
-### 5.3 Discuss: Rejection Sampling Masks
+Tradeoff:
+
+- This gives up the original v2 interpretation of `rollout_is_weights` as vLLM/FSDP mismatch correction.
+- If later evidence suggests this correction is needed, add an explicit opt-in ablation. Do not make it the default for 3A.
+
+### 5.3 Disable: Rejection Sampling Masks
 
 Current recipe sets `rollout_rs=null`, so no rejection-sampling mask is active.
 
-Recommendation: keep it disabled in the first dual-submodel run.
+Decision: keep it disabled in the first dual-submodel run.
 
 Why:
 
@@ -280,7 +281,31 @@ Recommended initial default:
 | `rollout_is_weights` loss multiplication | disable | avoid correcting away model2 rollout policy |
 | rollout correction metrics | keep if available | diagnostic only |
 | rejection sampling `rollout_rs` | disable | avoid confounding data selection |
-| reverse SFT `β` | `0.0` | match 1A default and avoid known β risk |
+| reverse SFT `β` | default `0.0`, configurable | match 1A default while allowing `β=0.1` ablation |
+
+### 5.6 Reverse-SFT `β` Is A Configurable Loss Weight
+
+`β` is not a clip or mask. It controls whether incorrect responses contribute the reverse-SFT term:
+
+$$
+L = L^+ + \beta L^-
+$$
+
+Required behavior:
+
+- `β=0.0` must be supported and remains the 3A default.
+- `β=0.1` and other nonnegative values must be supported through the same config path used by existing scripts:
+
+```bash
+WDL_SFT_BETA=${WDL_SFT_BETA:-0.0}
++actor_rollout_ref.actor.policy_loss.wdl_sft_beta=${WDL_SFT_BETA}
+```
+
+Interpretation:
+
+- `β=0.0`: forward-only learning from correct model2 rollouts.
+- `β>0`: bidirectional WDL-SFT, with reverse-SFT pressure on incorrect selected model2 rollouts.
+- After the `wdl_sft_is` reward-label fix, all-incorrect groups only produce reverse-SFT signal when `β>0`; this should be covered by tests.
 
 ## 6. Recipe Plan
 
@@ -290,14 +315,16 @@ Create:
 recipe/on_policy_wdl_sft/dual_submodel_rollout/
 ├── README.md
 ├── _common_dual_rollout.sh
-└── run_3a_model2_rollout.sh
+├── run_3a_model2_rollout_beta0.sh
+└── run_3b_model2_rollout_beta01.sh
 ```
 
-Initial experiment:
+Initial experiments:
 
 | Run | Rollout sources | Selected data | Training forward | Loss | β | lr | Compare |
 |---|---|---|---|---|---:|---:|---|
 | 3A | model1 + model2 | model2 only | fused joint logits | `wdl_sft_is` | 0 | 5e-7 | 1A, 2A-SFT, 2Z-SFT |
+| 3B | model1 + model2 | model2 only | fused joint logits | `wdl_sft_is` | 0.1 | 5e-7 | 3A, 1B, 2B-SFT |
 
 Script rules:
 
@@ -306,6 +333,9 @@ Script rules:
 - Use default-local-overridable-everything path style.
 - Keep `VLLM_ATTENTION_BACKEND=FLASHINFER`.
 - Keep FSDP `attn_implementation=flash_attention_2`.
+- Put shared defaults in `_common_dual_rollout.sh`, with `WDL_SFT_BETA=${WDL_SFT_BETA:-0.0}` as an overridable environment variable.
+- `run_3a_model2_rollout_beta0.sh` should export `WDL_SFT_BETA=0.0`.
+- `run_3b_model2_rollout_beta01.sh` should export `WDL_SFT_BETA=0.1`.
 
 ## 7. Tests and Validation Gates
 
@@ -320,6 +350,8 @@ Add or update tests for:
 - vLLM joint model source mode, with mocked submodels if full vLLM construction is too heavy.
 - trainer label override:
   - `wdl_sft` and `wdl_sft_is` both receive raw reward labels in `advantages`.
+  - all-correct groups produce forward-SFT signal.
+  - all-incorrect groups produce reverse-SFT signal when `WDL_SFT_BETA=0.1`.
 - selector behavior:
   - when `joint_rollout_select=sub_model_1`, only model2 batch reaches actor update.
 
@@ -332,7 +364,7 @@ TOTAL_TRAINING_STEPS=1 \
 TRAIN_PROMPT_BSZ=2 \
 TRAIN_PROMPT_MINI_BSZ=1 \
 ROLLOUT_AGENT_NUM_WORKERS=1 \
-bash recipe/on_policy_wdl_sft/dual_submodel_rollout/run_3a_model2_rollout.sh
+bash recipe/on_policy_wdl_sft/dual_submodel_rollout/run_3a_model2_rollout_beta0.sh
 ```
 
 Validation criteria:
@@ -368,9 +400,7 @@ Before implementation, confirm:
    - Current recommendation: 8 per source, selected model2 gives 8 training samples per prompt, matching 1A data budget while adding model1 diagnostics cost.
 2. Should model1 rollout be generated in the first run if it is not selected?
    - Current recommendation: yes, because it gives direct evidence for the advisor question and future selector policies.
-3. Should `rollout_is_weights` be disabled by default in the selected model2 data path?
-   - Current recommendation: yes for loss multiplication, no for diagnostics if cheap.
-4. How should historical `wdl_sft_is` results be labeled after the reward-label fix?
+3. How should historical `wdl_sft_is` results be labeled after the reward-label fix?
    - Current recommendation: mark EXP-16/17/18 and related 2X runs as pre-fix/current-implementation results; use new experiment IDs for post-fix spec-correct reruns.
-5. Should the new algorithm get a new public name beyond "dual-submodel rollout WDL-SFT"?
+4. Should the new algorithm get a new public name beyond "dual-submodel rollout WDL-SFT"?
    - Current recommendation: keep the descriptive name until the boundary is stable.
