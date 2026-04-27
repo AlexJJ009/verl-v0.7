@@ -181,7 +181,235 @@ GPU/sample-efficiency config（`ACTOR_PPO_MAX_TOKEN_LEN`, `TRAIN_PROMPT_BSZ`, `T
 9. 🔄 1c 训练完成 + offline eval：预计 2026-04-22 下午
 10. 最迟 2026-04-25 给出 v2 三联对照的完整结论
 
-## 9. 相关代码引用
+## 9. Known Implementation/Spec Mismatch — `wdl_sft_is` Reward Labels
+
+Status: **CONFIRMED BUG / HANDOFF NEEDED**
+
+Discovered: 2026-04-27
+
+Owner: next implementation agent
+
+### 9.1 What The Spec Intended
+
+`wdl_sft_is` was designed as WDL-SFT v2: keep the v1 C/I partition from raw reward labels, then add IS ratio binary masks and optional rollout IS weights.
+
+The intended label semantics are:
+
+```python
+reward_labels = token_level_scores.sum(dim=-1)  # +1 for correct, -1 for incorrect
+correct_mask = reward_labels > 0
+incorrect_mask = reward_labels < 0
+```
+
+So the loss should partition responses by raw reward:
+
+$$
+C=\{i:r_i=+1\},\quad I=\{i:r_i=-1\}
+$$
+
+Then:
+
+$$
+L^+ = -\frac{1}{|C|}\sum_{i\in C}\sum_t m_{i,t}\log \pi_\theta(y^i_t)
+$$
+
+$$
+L^- = \frac{1}{|I|}\sum_{i\in I}\sum_t m_{i,t}\log \pi_\theta(y^i_t)
+$$
+
+where $m_{i,t}$ includes `response_mask` and v2 ratio masks.
+
+### 9.2 What The Current Implementation Actually Does
+
+The loss implementation reads labels from `advantages[:, 0]`:
+
+```python
+# verl/trainer/ppo/core_algos.py
+reward_labels = advantages[:, 0]
+```
+
+But the trainer only overwrites `advantages` with raw reward labels for `loss_mode == "wdl_sft"`:
+
+```python
+# verl/trainer/ppo/ray_trainer.py
+if wdl_sft_loss_mode == "wdl_sft":
+    reward_labels = batch.batch["token_level_scores"].sum(dim=-1)
+    batch.batch["advantages"] = reward_labels.unsqueeze(-1).expand_as(
+        batch.batch["response_mask"]
+    ).clone()
+```
+
+For `loss_mode == "wdl_sft_is"`, `advantages` remain the GRPO-centered group advantages produced by `compute_advantage(...)`.
+
+Therefore current `wdl_sft_is` is not the written spec. It is effectively:
+
+```text
+WDL-SFT-IS loss structure
++ C/I sign inferred from GRPO-centered advantages
++ standard GRPO group-normalization failure modes
+```
+
+This is an accidental third algorithm, not the intended v2.
+
+### 9.3 Concrete Calculation Examples
+
+Assume one prompt has 4 rollouts and the sequence log-probs are:
+
+```text
+seq_log_probs = [-10, -12, -9, -11]
+```
+
+#### Case A: All Four Responses Correct
+
+Raw rewards:
+
+```text
+[+1, +1, +1, +1]
+```
+
+Spec-intended behavior:
+
+```text
+C = 4, I = 0
+L+ = -mean([-10, -12, -9, -11]) = 10.5
+L- = 0
+total = 10.5
+```
+
+Meaning: all-correct prompt still gives forward-SFT signal.
+
+Current implementation:
+
+```text
+GRPO group mean = +1
+advantages = [0, 0, 0, 0]
+reward_labels inferred by wdl_sft_is = [0, 0, 0, 0]
+C = 0, I = 0
+total = 0
+```
+
+Meaning: all-correct prompt is skipped. This loses positive SFT signal.
+
+#### Case B: One Correct, Three Incorrect
+
+Raw rewards:
+
+```text
+[+1, -1, -1, -1]
+```
+
+Spec-intended partition:
+
+```text
+C = {response 1}
+I = {responses 2, 3, 4}
+```
+
+Current GRPO-centered values:
+
+```text
+mean = (1 - 1 - 1 - 1) / 4 = -0.5
+advantages = [1.5, -0.5, -0.5, -0.5]
+```
+
+Current inferred partition:
+
+```text
+C = {response 1}
+I = {responses 2, 3, 4}
+```
+
+Meaning: mixed groups often still partition correctly because the sign is preserved. This is why the bug is not total failure.
+
+#### Case C: All Four Responses Incorrect, `β=0.1`
+
+Raw rewards:
+
+```text
+[-1, -1, -1, -1]
+```
+
+Spec-intended behavior:
+
+```text
+C = 0, I = 4
+L+ = 0
+L- = mean([-10, -12, -9, -11]) = -10.5
+total = 0.1 * (-10.5) = -1.05
+```
+
+Meaning: all-incorrect prompt should give reverse-SFT signal when `β > 0`.
+
+Current implementation:
+
+```text
+GRPO group mean = -1
+advantages = [0, 0, 0, 0]
+reward_labels inferred by wdl_sft_is = [0, 0, 0, 0]
+C = 0, I = 0
+total = 0
+```
+
+Meaning: all-incorrect prompt is skipped. This loses reverse-SFT signal when `β > 0`.
+
+### 9.4 Impact Assessment
+
+Confirmed impact:
+
+- `wdl_sft_is` mixed groups usually keep the correct C/I sign partition.
+- all-correct groups lose the positive SFT update.
+- all-incorrect groups lose the reverse-SFT update when `β > 0`.
+- Current `wdl_sft_is` results are not a clean implementation of the written v2 spec.
+
+Unknown impact:
+
+- How many training prompt groups were all-correct or all-incorrect in EXP-16/17/18 and 2X runs.
+- Whether the accidental GRPO-centered gating helped or hurt online/offline metrics.
+- Whether fixing this will improve, reduce, or destabilize the previous v2 trajectory.
+
+Do **not** silently rewrite old experiment conclusions as if they used the intended label semantics. Existing results should be described as "current implementation of `wdl_sft_is` before reward-label fix" until rerun or audited.
+
+### 9.5 Minimal Fix
+
+In `verl/trainer/ppo/ray_trainer.py`, change the WDL-style reward-label override from:
+
+```python
+if wdl_sft_loss_mode == "wdl_sft":
+```
+
+to:
+
+```python
+if wdl_sft_loss_mode in {"wdl_sft", "wdl_sft_is"}:
+```
+
+Expected effect: both WDL losses receive raw reward labels in `advantages`, matching the contract expected by their loss wrappers.
+
+### 9.6 Required Tests For The Fix
+
+Add regression tests that fail before the fix and pass after it:
+
+1. `wdl_sft_is` all-correct group:
+   - raw reward labels should be all `+1`;
+   - resulting loss should have nonzero positive component.
+2. `wdl_sft_is` all-incorrect group with `β > 0`:
+   - raw reward labels should be all `-1`;
+   - resulting loss should have nonzero negative component.
+3. mixed group:
+   - C/I partition should match raw reward labels, not GRPO-centered values.
+4. trainer-level test:
+   - after `compute_advantage(...)`, `loss_mode in {"wdl_sft", "wdl_sft_is"}` overwrites `advantages` with raw reward labels before actor update.
+
+### 9.7 Handoff Notes For Next Agent
+
+- Fix this before launching the dual-submodel rollout algorithm.
+- After the fix, treat the first rerun as a new variant, not a continuation of EXP-16/17/18.
+- Update `EXPERIMENT_INDEX.md` terminology to distinguish:
+  - pre-fix `wdl_sft_is` implementation,
+  - post-fix spec-correct `wdl_sft_is`.
+- Re-run at least a 1-step Docker smoke test and the WDL-SFT-IS unit tests.
+
+## 10. 相关代码引用
 
 - v1 loss 实现：`verl/trainer/ppo/core_algos.py:1861` (wrapper), `:1920` (core)
 - MiniRL 参考实现：`verl/trainer/ppo/core_algos.py:1782`

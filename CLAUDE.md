@@ -154,6 +154,7 @@ Documentation in `docs/joint_training/` was created during the parent branch's j
 | `specs/` | Technical specs for joint model / logit fusion | ARCHIVAL — infrastructure reference |
 | `constraints/` | Development rules and boundaries | Still applicable |
 | `plans/active/wdl_sft_is.md` | **WDL-SFT v2 (IS-corrected) — current focus** | ACTIVE |
+| `plans/active/dual_submodel_rollout_wdl_sft.md` | **Dual-submodel rollout WDL-SFT — planned algorithm revision: rollout per submodel, train on selected model2 data with fused-logit backward** | ACTIVE PLAN |
 | `plans/active/ablation_single_model.md` | **Single-model ablation (2A/B/C + 2Z baseline)** | ACTIVE |
 | `plans/active/on_policy_wdl_sft.md` | v1 plan (original) | STILL OPEN, v1 sections archival |
 | `specs/wdl_sft_is.md` | v1 vs v2 loss comparison | ACTIVE |
@@ -189,6 +190,7 @@ Before launching any training, monitoring, checkpoint transfer, or large file op
 ## Quick Links
 
 - **Current focus**: `docs/joint_training/plans/active/wdl_sft_is.md` (v2 plan, 1a/1b/1c)
+- Dual-submodel rollout revision plan: `docs/joint_training/plans/active/dual_submodel_rollout_wdl_sft.md`
 - Single-model ablation plan: `docs/joint_training/plans/active/ablation_single_model.md`
 - Single-model ablation scripts: `recipe/on_policy_wdl_sft/ablation_single_model/`
 - **Meituan platform playbook** (how to add experiments that run on both local + AFO): `docs/joint_training/guides/meituan_platform.md`
