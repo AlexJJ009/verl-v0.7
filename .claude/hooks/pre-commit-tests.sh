@@ -12,13 +12,27 @@ fi
 
 echo "Pre-commit: running joint-training tests..." >&2
 
-# Activate conda and run tests
-eval "$(conda shell.bash hook 2>/dev/null)"
-conda activate verl07 2>/dev/null
-
 cd /data-1/verl07/verl
-TEST_OUTPUT=$(pytest tests/joint_training/ -q --tb=short 2>&1)
-TEST_EXIT=$?
+
+# This project keeps its Python environment inside the `verl-harness` Docker
+# image. Do not run pytest with the host Python environment.
+if ! docker image inspect verl-harness >/dev/null 2>&1; then
+  echo "Docker image verl-harness not found; run: bash /data-1/verl07/build.sh" >&2
+  TEST_EXIT=127
+  TEST_OUTPUT=""
+else
+  TEST_OUTPUT=$(
+    docker run --rm \
+      --gpus "${GPUS:-all}" \
+      --ipc=host \
+      -v /data-1/verl07/verl:/workspace/verl \
+      -v /data-1:/data-1 \
+      verl-harness \
+      bash -lc 'cd /workspace/verl && pytest tests/joint_training/ -q --tb=short' \
+      2>&1
+  )
+  TEST_EXIT=$?
+fi
 
 if [ $TEST_EXIT -ne 0 ]; then
   echo "$TEST_OUTPUT" >&2

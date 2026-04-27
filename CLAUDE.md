@@ -205,3 +205,16 @@ Before launching any training, monitoring, checkpoint transfer, or large file op
 - Joint config: `verl/models/joint_model/configuration_joint_qwen3.py`
 - Weight utils: `verl/models/joint_model/weight_utils.py`
 - Enable joint training: `+actor_rollout_ref.model.joint_training=True`
+
+<!-- BEGIN CODEX PROJECT MEMORY -->
+## Codex Project Memory
+
+Codex: this project keeps project-scoped memory in `.codex/project-memory/MEMORY.md`.
+For tasks that depend on prior project history, recurring workflows,
+experiments, or user/project preferences, read that index first, then open only
+the referenced topic files that match the task. Treat dated status as possibly
+stale and verify live state before acting.
+
+Do not store secrets in project memory. Prefer durable workflow lessons and
+known pitfalls over transient status.
+<!-- END CODEX PROJECT MEMORY -->

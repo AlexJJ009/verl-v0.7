@@ -1,0 +1,8 @@
+- [User profile](user_profile.md) — ML researcher running on-policy WDL-SFT experiments on GPU cluster
+- [Tmux for long ops](feedback_tmux.md) — All training, monitoring, and file transfers must run in tmux
+- [Subagent model](feedback_subagent_model.md) — Use Haiku for subagents, not expensive models
+- [Reverse SFT — v2 online stable](project_reverse_sft.md) — 1B (β=0.1 v2) online matches 1A; v1 "必崩" refuted at training level, offline model1 eval decisive
+- [Training status](project_training_status.md) — v2 1A/1B complete (online peaks ~71%, break v1 ceiling); 1C running; offline eval pending for all three
+- [Response language](feedback_language.md) — Use Chinese (or English for technical terms), never Korean
+- [HF Hub upload workflow](feedback_hf_upload.md) — `hf` CLI + unset proxies + exclude DS training state + tmux; commit lands only after all blobs upload
+- [n=1 vs n=3 不可混比](feedback_n1_vs_n3.md) — L-term 拆解只能 online mean@1 vs online mean@1，或 offline mean@3 vs offline mean@3，禁止跨噪声水平相减
