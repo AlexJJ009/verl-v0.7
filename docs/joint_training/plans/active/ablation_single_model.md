@@ -119,5 +119,45 @@ Offline eval (model2 mean@3 on MATH-500) on each run's best online step is the d
 
 ## 8. Open Questions
 
-- Should 2Z use `minirl` or `vanilla` as the baseline loss? Currently `minirl` — shares the IS + binary-mask machinery with v2, so the loss-delta is cleaner ("forward/reverse SFT vs clipped PG" rather than "with vs without IS stability"). Revisit if results look off.
-- If 2A-base completely stalls (no C-set signal for many steps), consider a warmup phase with minirl loss before switching to wdl_sft_is. Not implemented yet.
+- Should 2Z use `minirl` or `vanilla` as the baseline loss? Currently `minirl` — shares the IS + binary-mask machinery with v2, so the loss-delta is cleaner ("forward/reverse SFT vs clipped PG" rather than "with vs without IS stability"). **Resolved 2026-04-23**: both are now run side-by-side as ABL-MINIRL-03 (2Z-BASE, minirl) and ABL-MINIRL-04 (2G-BASE, vanilla/GRPO). Keeping both, since the online reading already shows they separate (2Z drifts, 2G is stable-but-lower — see §9).
+- If 2A-base completely stalls (no C-set signal for many steps), consider a warmup phase with minirl loss before switching to wdl_sft_is. **Resolved 2026-04-23**: 2A-BASE did NOT stall — it ramped from 30.65% (step 0) to 72.58% (step 25) in the first validation window, without a minirl warmup. The C-set signal bootstraps fine on Base init. No warmup needed.
+
+## 9. Results — 2X-BASE batch (Meituan AFO, online only, 2026-04-23)
+
+The SFT-init side ran locally (ABL-MINIRL-01/02, already written up in `EXPERIMENT_INDEX.md`). The Base-init side ran on Meituan AFO on 2026-04-23 — five runs, all 300 steps, all stable enough to finish. Full per-run entries live in `recipe/on_policy_wdl_sft/EXPERIMENT_INDEX.md` (ABL-MINIRL-03 through 07). Offline eval (n=3, 7 benchmarks) is **pending** on all five — checkpoints still on dolphinfs, wandb not yet synced. Everything below is online MATH-500 mean@1 only.
+
+### 9.1 Matrix — Base vs SFT init, online MATH-500 (mean@1)
+
+| Run | Loss | β | lr | Init | Peak MATH (step) | Step-300 | Drift? |
+|---|---|---|---|---|---|---|---|
+| ABL-MINIRL-01 (2Z-SFT) | minirl | — | 5e-7 | SFT | 70.56% (275) | 70.16% | no |
+| ABL-MINIRL-02 (2A-SFT) | wdl_sft_is | 0 | 5e-7 | SFT | 70.4% (300) | 70.4% | no |
+| ABL-MINIRL-03 (2Z-BASE) | minirl | — | 5e-7 | Base | **76.21%** (100) | 69.35% | **yes, −11.7 pp to step 225, recovers to −6.9 pp end** |
+| ABL-MINIRL-04 (2G-BASE) | vanilla/GRPO | — | 5e-7 | Base | 71.17% (275) | 70.16% | no |
+| ABL-MINIRL-05 (2A-BASE) | wdl_sft_is | 0 | 5e-7 | Base | **76.21%** (225) | **74.80%** | no |
+| ABL-MINIRL-06 (2C-BASE) | wdl_sft_is | 0 | 1e-6 | Base | 74.19% (100) | 72.18% | mild |
+| ABL-MINIRL-07 (2B-BASE) | wdl_sft_is | 0.1 | 5e-7 | Base | 73.19% (75) | 67.74% | **yes, early peak then sustained** |
+
+### 9.2 Online-only L-term reading (pending offline confirmation)
+
+- **L_loss on Base init ≠ L_loss on SFT init**. At matched step 300 online: 2A-BASE − 2Z-BASE = **+5.45 pp** (74.80 − 69.35); 2A-SFT − 2Z-SFT ≈ **+0.24 pp** online (70.4 − 70.16) and **−0.6 pp** on offline mean@3 (ABL-MINIRL-02 already confirmed L_loss ≈ 0 offline on SFT init). Pattern: `wdl_sft_is` adds clear online value over MiniRL on Base init, ~zero over MiniRL on SFT init. Hypothesis: SFT init already encodes the format/anchor compliance that `wdl_sft_is` adds via its positive-set forward SFT; Base init has the headroom.
+- **L_init (online direction is reversed from §2's H3)**. H3 predicted 2X-BASE ≪ 2X-SFT. Online readings say the opposite on mean@1 at matched step: 2A-BASE peak 76.21% > 2A-SFT peak 70.4%; 2Z-BASE peak 76.21% > 2Z-SFT peak 70.56%. **Caveat**: online mean@1 has previously diverged sharply from offline mean@3 (1B: online 70.97% m2 vs offline 82.9%; EXP-15: online 68.2% vs offline 79.6%). Do NOT redraw §2/§5 conclusions until offline n=3 on 2X-BASE ckpts is done.
+- **β>0 damage is visible online on Base but not on joint**. 2B-BASE step 300 − 2A-BASE step 300 = **−7.06 pp online** (67.74 − 74.80). On joint (1B − 1A), the same β term was invisible online (within 0.5 pp at every val point) and only surfaced at offline m1 (ext_fail 37–49%). Reading: the joint's fused-logit rollout absorbs the reverse-SFT gradient through model1 while model2 benefits from the correct-set fusion — remove the joint scaffold and the damage lands on the val-visible trajectory. Reinforces the "β=0 is the default" recommendation.
+- **lr=5e-7 > lr=1e-6 on Base single-model too** (matches 1C vs 1A). 2A-BASE − 2C-BASE at step 300 = +2.62 pp online (74.80 − 72.18). Same sign as 1A vs 1C. Higher lr reaches the plateau slightly earlier (2C peak at step 100 vs 2A peak at step 225) at a lower steady-state.
+- **GRPO vs MiniRL on Base**: 2G-BASE is the most stable Base-init run (no drift) but has the lowest Base-init online ceiling. 2Z-BASE peaks 5 pp higher but drifts. IS + asymmetric-clip machinery gives more online headroom at the cost of late-training stability when starting from Base.
+
+### 9.3 Decision-criterion update (§7)
+
+Criteria §7.1–§7.2 were written against the SFT-init arm and have been resolved by ABL-MINIRL-01/02 offline (see `EXPERIMENT_INDEX.md` cross-experiment block): 2A-SFT online ≥ 1A − 1 pp ✓ but offline mean@3 says L_loss ≈ 0 and L_fusion ≈ +3 pp — H1 only partially supported, and the joint MATH-500 lift is now attributed to architecture, not loss.
+
+**Added for the Base-init arm (2026-04-23, pending offline)**:
+
+5. If **2A-BASE offline mean@3 ≥ 2A-SFT offline mean@3**: confirms the online L_init-reversal finding — Base init is a viable starting point for `wdl_sft_is` single-model RL, possibly preferable to SFT init if compute/curriculum allows.
+6. If **2A-BASE offline mean@3 < 2A-SFT offline mean@3 despite 2A-BASE online > 2A-SFT online**: another case of online/offline divergence (add to the list that includes 1B, EXP-15). Treat online mean@1 on Base init with heavier skepticism going forward.
+7. If **2B-BASE offline m1-style format collapse is comparable to 1B m1 (ext_fail 30–50%)**: β>0 anchor damage is an invariant of the reverse-SFT mechanism across arch/init, not a joint-specific artifact. Shut the β>0 thread definitively.
+
+### 9.4 Artifacts (Meituan-resident, pending transfer)
+
+- Training logs + metrics jsonl + validation jsonls: `recipe/on_policy_wdl_sft/ablation_single_model/{*.log, metrics/, validation/}` — **local as of 2026-04-23** (unzipped from `/data-1/verl-exp/logs.zip`, five runs).
+- Checkpoints: **all on Meituan AFO dolphinfs** under `/mnt/dolphinfs/ssd_pool/docker/user/hadoop-ai-search/yangfengkai02/lgx/verl-exp/checkpoints/<run_id>/global_step_{25,50,…,300}/`. Not yet transferred to local `/data-1`. Candidate promotion steps per run listed in `EXPERIMENT_INDEX.md` Extracted/Checkpoint Inventory block.
+- wandb: **offline runs on Meituan**, not yet synced to the public project.
