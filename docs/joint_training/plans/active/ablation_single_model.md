@@ -65,6 +65,11 @@ The main-line experiments (1A/1B/1C) combine three novel ingredients:
 | **2Z-base** | Qwen3-4B-Base | minirl | — | 5e-7 | reference floor |
 | **2Z-sft** | Qwen3-4B-Base-SFT-stage-1 | minirl | — | 5e-7 | reference floor |
 
+Post-2026-04-27 reruns of the `wdl_sft_is` rows use script default
+`RUN_PREFIX` values ending in `-LABELFIX`. This isolates spec-correct reruns
+from the pre-fix checkpoints/results produced before the reward-label handoff
+bug was fixed. The `minirl` / `vanilla` baseline rows are not affected.
+
 ## 4. Control Rigor — What We Control, What We Don't
 
 | Dimension | Controlled? | Reason |
@@ -123,6 +128,12 @@ Offline eval (model2 mean@3 on MATH-500) on each run's best online step is the d
 - If 2A-base completely stalls (no C-set signal for many steps), consider a warmup phase with minirl loss before switching to wdl_sft_is. **Resolved 2026-04-23**: 2A-BASE did NOT stall — it ramped from 30.65% (step 0) to 72.58% (step 25) in the first validation window, without a minirl warmup. The C-set signal bootstraps fine on Base init. No warmup needed.
 
 ## 9. Results — 2X-BASE batch (Meituan AFO, online only, 2026-04-23)
+
+Status note (2026-04-27): all `wdl_sft_is` results in this section are
+pre-fix results from before the raw reward-label override was applied to
+`loss_mode=wdl_sft_is`. They are useful historical readings but should not be
+treated as spec-correct WDL-SFT-IS until rerun under the `-LABELFIX` script
+prefixes. The `minirl` (`2Z`) and `vanilla` (`2G`) baseline rows are unaffected.
 
 The SFT-init side ran locally (ABL-MINIRL-01/02, already written up in `EXPERIMENT_INDEX.md`). The Base-init side ran on Meituan AFO on 2026-04-23 — five runs, all 300 steps, all stable enough to finish. Full per-run entries live in `recipe/on_policy_wdl_sft/EXPERIMENT_INDEX.md` (ABL-MINIRL-03 through 07). Offline eval (n=3, 7 benchmarks) is **pending** on all five — checkpoints still on dolphinfs, wandb not yet synced. Everything below is online MATH-500 mean@1 only.
 

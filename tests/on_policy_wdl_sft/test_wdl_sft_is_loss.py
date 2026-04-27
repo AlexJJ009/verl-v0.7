@@ -24,14 +24,18 @@ Relevant code: verl/trainer/ppo/core_algos.py
   - v2:  compute_wdl_sft_is_loss, compute_policy_loss_wdl_sft_is
 """
 
+import numpy as np
 import pytest
 import torch
 
+from verl import DataProto
 from verl.trainer.ppo.core_algos import (
+    AdvantageEstimator,
     compute_wdl_sft_is_loss,
     compute_wdl_sft_loss,
     get_policy_loss_fn,
 )
+from verl.trainer.ppo.ray_trainer import apply_wdl_sft_reward_label_advantages, compute_advantage
 from verl.workers.config.actor import ActorConfig
 
 
@@ -54,6 +58,36 @@ def _make_config(
 def _broadcast_labels(reward_labels: torch.Tensor, T: int) -> torch.Tensor:
     """Mimic the training-loop convention: advantages = reward_labels broadcast to (N, T)."""
     return reward_labels[:, None].expand(-1, T).contiguous()
+
+
+def _make_reward_batch(reward_labels: torch.Tensor, T: int = 4) -> DataProto:
+    token_level_scores = torch.zeros(reward_labels.numel(), T)
+    token_level_scores[:, -1] = reward_labels
+    return DataProto.from_single_dict(
+        {
+            "token_level_scores": token_level_scores,
+            "token_level_rewards": token_level_scores.clone(),
+            "response_mask": torch.ones(reward_labels.numel(), T),
+            "uid": np.array(["prompt-0"] * reward_labels.numel(), dtype=object),
+        }
+    )
+
+
+def _compute_grpo_then_apply_wdl_override(
+    reward_labels: torch.Tensor,
+    loss_mode: str = "wdl_sft_is",
+    T: int = 4,
+) -> tuple[DataProto, torch.Tensor, dict]:
+    batch = _make_reward_batch(reward_labels, T=T)
+    batch = compute_advantage(
+        batch,
+        adv_estimator=AdvantageEstimator.GRPO,
+        num_repeat=reward_labels.numel(),
+    )
+    grpo_advantages = batch.batch["advantages"].clone()
+    metrics = {}
+    batch = apply_wdl_sft_reward_label_advantages(batch, loss_mode, metrics)
+    return batch, grpo_advantages, metrics
 
 
 # ---------- Backward compatibility with v1 ----------
@@ -302,6 +336,94 @@ class TestEdgeCases:
         # N-k=0 → L- = 0
         assert torch.isclose(out["loss_negative"], torch.tensor(0.0), atol=1e-6)
         assert torch.isclose(out["total_loss"], out["loss_positive"], atol=1e-6)
+
+
+# ---------- Trainer reward-label handoff ----------
+
+
+class TestTrainerRewardLabelOverride:
+    """Regression coverage for the trainer-level wdl_sft_is label handoff."""
+
+    @pytest.mark.parametrize("loss_mode", ["wdl_sft", "wdl_sft_is"])
+    def test_wdl_modes_overwrite_grpo_advantages_with_raw_reward_labels(self, loss_mode):
+        T = 4
+        reward_labels = torch.tensor([1.0, 1.0, 1.0, -1.0])
+
+        batch, grpo_advantages, metrics = _compute_grpo_then_apply_wdl_override(
+            reward_labels, loss_mode=loss_mode, T=T
+        )
+
+        assert not torch.allclose(grpo_advantages[:, 0], reward_labels)
+        assert torch.allclose(batch.batch["advantages"], _broadcast_labels(reward_labels, T))
+        assert metrics["wdl_sft/n_correct"] == 3
+        assert metrics["wdl_sft/n_incorrect"] == 1
+        assert metrics["wdl_sft/correct_ratio"] == 0.75
+
+    def test_non_wdl_mode_leaves_grpo_advantages_unchanged(self):
+        reward_labels = torch.tensor([1.0, 1.0, 1.0, -1.0])
+        batch = _make_reward_batch(reward_labels)
+        batch = compute_advantage(
+            batch,
+            adv_estimator=AdvantageEstimator.GRPO,
+            num_repeat=reward_labels.numel(),
+        )
+        before = batch.batch["advantages"].clone()
+        metrics = {}
+
+        batch = apply_wdl_sft_reward_label_advantages(batch, "vanilla", metrics)
+
+        assert torch.allclose(batch.batch["advantages"], before)
+        assert metrics == {}
+
+    def test_wdl_sft_is_all_correct_keeps_positive_signal_after_grpo(self):
+        T = 4
+        reward_labels = torch.ones(4)
+
+        batch, grpo_advantages, metrics = _compute_grpo_then_apply_wdl_override(
+            reward_labels, loss_mode="wdl_sft_is", T=T
+        )
+        assert torch.allclose(grpo_advantages[:, 0], torch.zeros_like(reward_labels))
+        assert torch.allclose(batch.batch["advantages"], _broadcast_labels(reward_labels, T))
+        assert metrics["wdl_sft/n_correct"] == 4
+        assert metrics["wdl_sft/n_incorrect"] == 0
+
+        log_prob = torch.full((reward_labels.numel(), T), -1.0, requires_grad=True)
+        loss, loss_metrics = get_policy_loss_fn("wdl_sft_is")(
+            old_log_prob=log_prob.detach().clone(),
+            log_prob=log_prob,
+            advantages=batch.batch["advantages"],
+            response_mask=batch.batch["response_mask"],
+            config=_make_config(beta=0.0),
+        )
+
+        assert loss.requires_grad
+        assert loss_metrics["actor/wdl_sft_loss_positive"] > 0
+        assert loss_metrics["actor/wdl_sft_loss_total"] > 0
+
+    def test_wdl_sft_is_all_incorrect_keeps_reverse_signal_after_grpo(self):
+        T = 4
+        reward_labels = -torch.ones(4)
+
+        batch, grpo_advantages, metrics = _compute_grpo_then_apply_wdl_override(
+            reward_labels, loss_mode="wdl_sft_is", T=T
+        )
+        assert torch.allclose(grpo_advantages[:, 0], torch.zeros_like(reward_labels))
+        assert torch.allclose(batch.batch["advantages"], _broadcast_labels(reward_labels, T))
+        assert metrics["wdl_sft/n_correct"] == 0
+        assert metrics["wdl_sft/n_incorrect"] == 4
+
+        log_prob = torch.full((reward_labels.numel(), T), -1.0, requires_grad=True)
+        loss, loss_metrics = get_policy_loss_fn("wdl_sft_is")(
+            old_log_prob=log_prob.detach().clone(),
+            log_prob=log_prob,
+            advantages=batch.batch["advantages"],
+            response_mask=batch.batch["response_mask"],
+            config=_make_config(beta=0.1),
+        )
+
+        assert loss.requires_grad
+        assert loss_metrics["actor/wdl_sft_loss_negative"] < 0
+        assert loss_metrics["actor/wdl_sft_loss_total"] < 0
 
 
 # ---------- End-to-end wrapper registration ----------

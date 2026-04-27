@@ -41,6 +41,19 @@ If a request matches one of these descriptions, read `.codex/skills/<name>/SKILL
 - `webapp-testing`: Toolkit for interacting with and testing local web applications using Playwright. Supports verifying frontend functionality, debugging UI behavior, capturing browser screenshots, and viewing browser logs.
 - `xlsx`: Use this skill any time a spreadsheet file is the primary input or output. This means any task where the user wants to: open, read, edit, or fix an existing .xlsx, .xlsm, .csv, or .tsv file (e.g., adding columns, computing formulas, formatting, charting, cleaning messy data); create a new spreadsheet from scratch or from other data sources; or convert between tabular file formats. Trigger especially when the user references a spreadsheet file by name or path — even casually (like "the xlsx in my downloads") — and wants something done to it or produced from it. Also trigger for cleaning or restructuring messy tabular data files (malformed rows, misplaced headers, junk data) into proper spreadsheets. The deliverable must be a spreadsheet file. Do NOT trigger when the primary deliverable is a Word document, HTML report, standalone Python script, database pipeline, or Google Sheets API integration, even if tabular data is involved.
 
+<!-- BEGIN CODEX PROJECT MEMORY -->
+## Codex Project Memory
+
+Codex: this project keeps project-scoped memory in `.codex/project-memory/MEMORY.md`.
+For tasks that depend on prior project history, recurring workflows,
+experiments, or user/project preferences, read that index first, then open only
+the referenced topic files that match the task. Treat dated status as possibly
+stale and verify live state before acting.
+
+Do not store secrets in project memory. Prefer durable workflow lessons and
+known pitfalls over transient status.
+<!-- END CODEX PROJECT MEMORY -->
+
 ## Mirrored CLAUDE.md
 
 The section below is copied verbatim from `CLAUDE.md`.
@@ -252,16 +265,3 @@ Before launching any training, monitoring, checkpoint transfer, or large file op
 - Joint config: `verl/models/joint_model/configuration_joint_qwen3.py`
 - Weight utils: `verl/models/joint_model/weight_utils.py`
 - Enable joint training: `+actor_rollout_ref.model.joint_training=True`
-
-<!-- BEGIN CODEX PROJECT MEMORY -->
-## Codex Project Memory
-
-Codex: this project keeps project-scoped memory in `.codex/project-memory/MEMORY.md`.
-For tasks that depend on prior project history, recurring workflows,
-experiments, or user/project preferences, read that index first, then open only
-the referenced topic files that match the task. Treat dated status as possibly
-stale and verify live state before acting.
-
-Do not store secrets in project memory. Prefer durable workflow lessons and
-known pitfalls over transient status.
-<!-- END CODEX PROJECT MEMORY -->

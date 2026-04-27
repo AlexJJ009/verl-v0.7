@@ -1,0 +1,41 @@
+[base]
+afo.app.name = verl-wdl-REPLACE_ME
+type = ml-easy-job
+
+[resource]
+usergroup = hadoop-ai-search
+queue = root.shxs_training_cluster.hadoop-fridayagi.friday_h20_train
+
+[roles]
+workers = 1
+worker.memory = 1920000
+worker.vcore = 128
+worker.gcoresh20-141g = 8
+
+worker.script = bash jupyter.sh
+
+[user_args]
+
+[am]
+afo.app.am.resource.mb = 4096
+
+[tensorboard]
+with.tensor.board = false
+
+[docker]
+afo.docker.image.name = REPLACE_WITH_YOUR_V2_IMAGE_URL
+
+[data]
+afo.data.prefetch = false
+
+[failover]
+afo.app.support.engine.failover = true
+
+[others]
+client.git.revision.publish=false
+afo.app.env.YARN_CONTAINER_RUNTIME_DOCKER_SHM_SIZE_BYTES = 549755813888
+with_requirements = false
+afo.dolphinfs.otherusers = hadoop-mtsearch-assistant
+afo.role.worker.task.attempt.max.retry = 1
+
+afo.app.env.EXPERIMENT = REPLACE_ME

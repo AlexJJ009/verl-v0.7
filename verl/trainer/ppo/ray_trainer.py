@@ -86,6 +86,8 @@ TEST_STEP_LOG_PREFIXES = (
     "val-aux/",
 )
 
+WDL_SFT_REWARD_LABEL_LOSS_MODES = {"wdl_sft", "wdl_sft_is"}
+
 
 def _metric_value_to_python_scalar(value: Any) -> Any | None:
     if isinstance(value, Number | np.generic):
@@ -116,6 +118,29 @@ def extract_test_step_metrics_for_logging(
         ordered_metrics[key] = scalar_metrics[key]
 
     return ordered_metrics
+
+
+def apply_wdl_sft_reward_label_advantages(
+    batch: DataProto,
+    loss_mode: str,
+    metrics: Optional[dict[str, Any]] = None,
+) -> DataProto:
+    """Use raw reward labels as advantages for WDL-style SFT losses."""
+    if loss_mode not in WDL_SFT_REWARD_LABEL_LOSS_MODES:
+        return batch
+
+    reward_labels = batch.batch["token_level_scores"].sum(dim=-1)  # (N,) +1.0/-1.0
+
+    if metrics is not None:
+        n_correct = (reward_labels > 0).sum().item()
+        n_incorrect = (reward_labels < 0).sum().item()
+        n_total = reward_labels.numel()
+        metrics["wdl_sft/n_correct"] = n_correct
+        metrics["wdl_sft/n_incorrect"] = n_incorrect
+        metrics["wdl_sft/correct_ratio"] = n_correct / max(n_total, 1)
+
+    batch.batch["advantages"] = reward_labels.unsqueeze(-1).expand_as(batch.batch["response_mask"]).clone()
+    return batch
 
 
 def _normalize_validation_generation_value(value: Any) -> Any:
@@ -1787,23 +1812,11 @@ class RayPPOTrainer:
                         )
 
                         # WDL-SFT: override advantages with raw per-response reward labels
-                        # The WDL-SFT loss needs binary reward labels (+1.0/-1.0), not
+                        # WDL-style SFT losses need binary reward labels (+1.0/-1.0), not
                         # GRPO-normalized advantages. We use the advantages tensor to carry
                         # reward labels through the existing training pipeline.
                         wdl_sft_loss_mode = self.config.actor_rollout_ref.actor.policy_loss.get("loss_mode", "vanilla")
-                        if wdl_sft_loss_mode == "wdl_sft":
-                            reward_labels = batch.batch["token_level_scores"].sum(dim=-1)  # (N,) +1.0/-1.0
-                            # Log WDL-SFT reward statistics
-                            n_correct = (reward_labels > 0).sum().item()
-                            n_incorrect = (reward_labels < 0).sum().item()
-                            n_total = reward_labels.numel()
-                            metrics["wdl_sft/n_correct"] = n_correct
-                            metrics["wdl_sft/n_incorrect"] = n_incorrect
-                            metrics["wdl_sft/correct_ratio"] = n_correct / max(n_total, 1)
-                            # Broadcast to token-level shape: (N, T) so it fits in advantages
-                            batch.batch["advantages"] = reward_labels.unsqueeze(-1).expand_as(
-                                batch.batch["response_mask"]
-                            ).clone()
+                        batch = apply_wdl_sft_reward_label_advantages(batch, wdl_sft_loss_mode, metrics)
 
                     # update critic
                     if self.use_critic:

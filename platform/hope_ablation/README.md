@@ -37,6 +37,10 @@ afo.app.env.SMOKE = 1
 | 2z-base | Qwen3-4B-Base | minirl | — | 5e-7 |
 | 2z-sft  | Qwen3-4B-Base-SFT-stage-1 | minirl | — | 5e-7 |
 
+The `wdl_sft_is` entries (`2a`, `2b`, `2c`) now write to `RUN_PREFIX` values
+ending in `-LABELFIX`, so post-2026-04-27 jobs do not auto-resume pre-fix
+checkpoints. The Meituan `EXPERIMENT` names stay the same.
+
 -sft experiments need `$LGX/huggingface.co/Qwen/Qwen3-4B-Base-SFT-stage-1/`
 uploaded; -base experiments only need the already-present Qwen3-4B-Base dir.
 

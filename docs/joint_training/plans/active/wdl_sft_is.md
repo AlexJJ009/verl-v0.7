@@ -183,11 +183,13 @@ GPU/sample-efficiency config（`ACTOR_PPO_MAX_TOKEN_LEN`, `TRAIN_PROMPT_BSZ`, `T
 
 ## 9. Known Implementation/Spec Mismatch — `wdl_sft_is` Reward Labels
 
-Status: **CONFIRMED BUG / HANDOFF NEEDED**
+Status: **FIXED 2026-04-27**
 
 Discovered: 2026-04-27
 
-Owner: next implementation agent
+Resolved: 2026-04-27 in `verl/trainer/ppo/ray_trainer.py` by applying the raw reward-label override to both `wdl_sft` and `wdl_sft_is`.
+
+Regression tests: `tests/on_policy_wdl_sft/test_wdl_sft_is_loss.py`
 
 ### 9.1 What The Spec Intended
 
@@ -219,7 +221,7 @@ $$
 
 where $m_{i,t}$ includes `response_mask` and v2 ratio masks.
 
-### 9.2 What The Current Implementation Actually Does
+### 9.2 What The Pre-Fix Implementation Actually Did
 
 The loss implementation reads labels from `advantages[:, 0]`:
 
@@ -228,7 +230,7 @@ The loss implementation reads labels from `advantages[:, 0]`:
 reward_labels = advantages[:, 0]
 ```
 
-But the trainer only overwrites `advantages` with raw reward labels for `loss_mode == "wdl_sft"`:
+Before the 2026-04-27 fix, the trainer only overwrote `advantages` with raw reward labels for `loss_mode == "wdl_sft"`:
 
 ```python
 # verl/trainer/ppo/ray_trainer.py
@@ -239,9 +241,9 @@ if wdl_sft_loss_mode == "wdl_sft":
     ).clone()
 ```
 
-For `loss_mode == "wdl_sft_is"`, `advantages` remain the GRPO-centered group advantages produced by `compute_advantage(...)`.
+For `loss_mode == "wdl_sft_is"`, `advantages` remained the GRPO-centered group advantages produced by `compute_advantage(...)`.
 
-Therefore current `wdl_sft_is` is not the written spec. It is effectively:
+Therefore pre-fix `wdl_sft_is` was not the written spec. It was effectively:
 
 ```text
 WDL-SFT-IS loss structure
@@ -249,7 +251,7 @@ WDL-SFT-IS loss structure
 + standard GRPO group-normalization failure modes
 ```
 
-This is an accidental third algorithm, not the intended v2.
+This was an accidental third algorithm, not the intended v2.
 
 ### 9.3 Concrete Calculation Examples
 
@@ -278,7 +280,7 @@ total = 10.5
 
 Meaning: all-correct prompt still gives forward-SFT signal.
 
-Current implementation:
+Pre-fix implementation:
 
 ```text
 GRPO group mean = +1
@@ -305,14 +307,14 @@ C = {response 1}
 I = {responses 2, 3, 4}
 ```
 
-Current GRPO-centered values:
+Pre-fix GRPO-centered values:
 
 ```text
 mean = (1 - 1 - 1 - 1) / 4 = -0.5
 advantages = [1.5, -0.5, -0.5, -0.5]
 ```
 
-Current inferred partition:
+Pre-fix inferred partition:
 
 ```text
 C = {response 1}
@@ -340,7 +342,7 @@ total = 0.1 * (-10.5) = -1.05
 
 Meaning: all-incorrect prompt should give reverse-SFT signal when `β > 0`.
 
-Current implementation:
+Pre-fix implementation:
 
 ```text
 GRPO group mean = -1
@@ -359,7 +361,7 @@ Confirmed impact:
 - `wdl_sft_is` mixed groups usually keep the correct C/I sign partition.
 - all-correct groups lose the positive SFT update.
 - all-incorrect groups lose the reverse-SFT update when `β > 0`.
-- Current `wdl_sft_is` results are not a clean implementation of the written v2 spec.
+- Pre-fix `wdl_sft_is` results are not a clean implementation of the written v2 spec.
 
 Unknown impact:
 
@@ -367,7 +369,7 @@ Unknown impact:
 - Whether the accidental GRPO-centered gating helped or hurt online/offline metrics.
 - Whether fixing this will improve, reduce, or destabilize the previous v2 trajectory.
 
-Do **not** silently rewrite old experiment conclusions as if they used the intended label semantics. Existing results should be described as "current implementation of `wdl_sft_is` before reward-label fix" until rerun or audited.
+Do **not** silently rewrite old experiment conclusions as if they used the intended label semantics. Existing results should be described as "pre-fix implementation of `wdl_sft_is` before reward-label fix" until rerun or audited.
 
 ### 9.5 Minimal Fix
 
@@ -385,7 +387,15 @@ if wdl_sft_loss_mode in {"wdl_sft", "wdl_sft_is"}:
 
 Expected effect: both WDL losses receive raw reward labels in `advantages`, matching the contract expected by their loss wrappers.
 
+Implementation note (2026-04-27): the fix is implemented via `apply_wdl_sft_reward_label_advantages(...)`, which applies the override for `loss_mode in {"wdl_sft", "wdl_sft_is"}` and leaves non-WDL losses unchanged.
+
+Script isolation note (2026-04-27): the affected `wdl_sft_is` launchers now
+default to `RUN_PREFIX` values ending in `-LABELFIX`, so post-fix reruns do not
+auto-resume or overwrite pre-fix `1A/1B/1C` and `2A/2B/2C` outputs.
+
 ### 9.6 Required Tests For The Fix
+
+Implemented in `tests/on_policy_wdl_sft/test_wdl_sft_is_loss.py` on 2026-04-27.
 
 Add regression tests that fail before the fix and pass after it:
 
@@ -402,12 +412,33 @@ Add regression tests that fail before the fix and pass after it:
 
 ### 9.7 Handoff Notes For Next Agent
 
-- Fix this before launching the dual-submodel rollout algorithm.
+- This was fixed before launching the dual-submodel rollout algorithm.
 - After the fix, treat the first rerun as a new variant, not a continuation of EXP-16/17/18.
 - Update `EXPERIMENT_INDEX.md` terminology to distinguish:
   - pre-fix `wdl_sft_is` implementation,
   - post-fix spec-correct `wdl_sft_is`.
-- Re-run at least a 1-step Docker smoke test and the WDL-SFT-IS unit tests.
+- Before using the fixed variant for new long runs, run at least a 1-step Docker smoke test plus the WDL-SFT-IS unit tests.
+
+### 9.8 Meituan Rerun Matrix
+
+Use `platform/hope_on_policy_wdl_sft/` for both joint 1X and single-model 2X
+reruns. The only per-job field that should change is
+`afo.app.env.EXPERIMENT`.
+
+| EXPERIMENT | Family | Init / model | Loss | β | lr | Rerun reason |
+|---|---|---|---|---|---|---|
+| `1a` | joint | Base + SFT-stage-1 | `wdl_sft_is` | 0.0 | 5e-7 | pre-fix labels + Meituan/local joint gap |
+| `1b` | joint | Base + SFT-stage-1 | `wdl_sft_is` | 0.1 | 5e-7 | pre-fix labels + Meituan/local joint gap |
+| `1c` | joint | Base + SFT-stage-1 | `wdl_sft_is` | 0.0 | 1e-6 | pre-fix labels + Meituan/local joint gap |
+| `2a-base` | single | Qwen3-4B-Base | `wdl_sft_is` | 0.0 | 5e-7 | pre-fix labels |
+| `2a-sft` | single | Qwen3-4B-Base-SFT-stage-1 | `wdl_sft_is` | 0.0 | 5e-7 | pre-fix labels |
+| `2b-base` | single | Qwen3-4B-Base | `wdl_sft_is` | 0.1 | 5e-7 | pre-fix labels |
+| `2b-sft` | single | Qwen3-4B-Base-SFT-stage-1 | `wdl_sft_is` | 0.1 | 5e-7 | pre-fix labels |
+| `2c-base` | single | Qwen3-4B-Base | `wdl_sft_is` | 0.0 | 1e-6 | pre-fix labels |
+| `2c-sft` | single | Qwen3-4B-Base-SFT-stage-1 | `wdl_sft_is` | 0.0 | 1e-6 | pre-fix labels |
+
+Optional unaffected baselines in the same unified entrypoint:
+`2z-base`, `2z-sft`, `2g-base`, `2g-sft`.
 
 ## 10. 相关代码引用
 

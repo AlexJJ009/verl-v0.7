@@ -171,9 +171,9 @@ Metrics to log:
 
 ### 4.5 Reward Labels for `wdl_sft_is`
 
-Status: **confirmed implementation/spec mismatch; must be fixed before dual-rollout launch.** See the full handoff report in `docs/joint_training/plans/active/wdl_sft_is.md` §9.
+Status: **fixed 2026-04-27 before dual-rollout launch.** See the full handoff report in `docs/joint_training/plans/active/wdl_sft_is.md` §9.
 
-The trainer currently overrides `advantages` with raw reward labels only when:
+Before the fix, the trainer overrode `advantages` with raw reward labels only when:
 
 ```python
 loss_mode == "wdl_sft"
@@ -185,7 +185,7 @@ But `compute_policy_loss_wdl_sft_is()` also reads:
 reward_labels = advantages[:, 0]
 ```
 
-So the trainer should treat both `wdl_sft` and `wdl_sft_is` as WDL-style losses:
+The trainer now treats both `wdl_sft` and `wdl_sft_is` as WDL-style losses:
 
 ```python
 if loss_mode in {"wdl_sft", "wdl_sft_is"}:
@@ -193,7 +193,8 @@ if loss_mode in {"wdl_sft", "wdl_sft_is"}:
     batch.batch["advantages"] = reward_labels.unsqueeze(-1).expand_as(response_mask).clone()
 ```
 
-This is a correctness cleanup for label semantics. It should be fixed before or together with the dual-rollout implementation.
+This is a correctness cleanup for label semantics and is already in place via
+`apply_wdl_sft_reward_label_advantages(...)`.
 
 Historical `wdl_sft_is` results should be labeled as pre-fix/current-implementation results until rerun or audited. Do not silently treat EXP-16/17/18 as spec-correct `wdl_sft_is` runs.
 
@@ -385,7 +386,7 @@ Validation criteria:
 - [ ] Add HF joint source switching.
 - [ ] Add vLLM joint source switching and RPC.
 - [ ] Add trainer dual-rollout generation and selected-batch training.
-- [ ] Fix `wdl_sft_is` reward-label override.
+- [x] Fix `wdl_sft_is` reward-label override.
 - [ ] Add recipe folder and wrapper.
 - [ ] Add tests.
 - [ ] Run targeted CPU tests.
