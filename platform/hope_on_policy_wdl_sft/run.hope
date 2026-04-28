@@ -38,4 +38,17 @@ with_requirements = false
 afo.dolphinfs.otherusers = hadoop-mtsearch-assistant
 afo.role.worker.task.attempt.max.retry = 1
 
+# DolphinFS root. Change this one line when running under a different user/path.
+afo.app.env.LGX = /mnt/dolphinfs/ssd_pool/docker/user/hadoop-ai-search/yangfengkai02/lgx
+
+# Repo path relative to LGX.
+afo.app.env.REPO_SUBPATH = verl08/verl-v0.7-feature-on-policy-wdl-sft
+
+# Storage budget: keep latest full checkpoint plus best model-only checkpoint.
+afo.app.env.MAX_ACTOR_CKPTS_TO_KEEP = 1
+afo.app.env.KEEP_BEST_CKPT = True
+afo.app.env.BEST_CKPT_METRIC_KEY = val-core/HuggingFaceH4/MATH-500/acc/mean@1
+afo.app.env.BEST_CKPT_METRIC_MODE = max
+afo.app.env.BEST_CKPT_STRIP_OPTIMIZER = True
+
 afo.app.env.EXPERIMENT = REPLACE_ME

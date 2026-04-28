@@ -20,6 +20,7 @@ This trainer supports model-agonistic model initialization with huggingface
 
 import json
 import os
+import shutil
 import uuid
 from collections import defaultdict
 from copy import deepcopy
@@ -88,6 +89,8 @@ TEST_STEP_LOG_PREFIXES = (
 
 WDL_SFT_REWARD_LABEL_LOSS_MODES = {"wdl_sft", "wdl_sft_is"}
 
+BEST_CHECKPOINT_TRACKER = "best_checkpoint.json"
+
 
 def _metric_value_to_python_scalar(value: Any) -> Any | None:
     if isinstance(value, Number | np.generic):
@@ -118,6 +121,17 @@ def extract_test_step_metrics_for_logging(
         ordered_metrics[key] = scalar_metrics[key]
 
     return ordered_metrics
+
+
+def _checkpoint_step_from_path(path: str) -> int | None:
+    name = os.path.basename(os.path.normpath(path))
+    prefix = "global_step_"
+    if not name.startswith(prefix):
+        return None
+    try:
+        return int(name[len(prefix) :])
+    except ValueError:
+        return None
 
 
 def apply_wdl_sft_reward_label_advantages(
@@ -456,6 +470,8 @@ class RayPPOTrainer:
 
         self.use_prefix_grouper = self.config.actor_rollout_ref.actor.get("use_prefix_grouper", False)
         self.use_legacy_worker_impl = config.trainer.get("use_legacy_worker_impl", "auto")
+        self.best_ckpt_step: int | None = None
+        self.best_ckpt_metric_value: float | None = None
 
         self._create_dataloader(train_dataset, val_dataset, collate_fn, train_sampler)
 
@@ -1163,6 +1179,13 @@ class RayPPOTrainer:
     def _save_checkpoint(self):
         from verl.utils.fs import local_mkdir_safe
 
+        keep_best_ckpt = bool(self.config.trainer.get("keep_best_ckpt", False))
+        if keep_best_ckpt:
+            # Free the previous latest checkpoint before writing the next one.
+            # The protected best checkpoint remains, and is slimmed to model-only
+            # unless it is also the latest checkpoint.
+            self._cleanup_best_latest_checkpoints(latest_step=None)
+
         # path: given_path + `/global_step_{global_steps}` + `/actor`
         local_global_step_folder = os.path.join(
             self.config.trainer.default_local_dir, f"global_step_{self.global_steps}"
@@ -1189,6 +1212,13 @@ class RayPPOTrainer:
         max_critic_ckpt_to_keep = (
             self.config.trainer.get("max_critic_ckpt_to_keep", None) if not remove_previous_ckpt_in_save else 1
         )
+        if keep_best_ckpt:
+            # Let the trainer-level best/latest retention remove whole
+            # global_step_* directories. Worker-level latest-N retention only
+            # knows about role subdirectories and would delete a protected best
+            # actor checkpoint.
+            max_actor_ckpt_to_keep = None
+            max_critic_ckpt_to_keep = None
 
         self.actor_rollout_wg.save_checkpoint(
             actor_local_path, actor_remote_path, self.global_steps, max_ckpt_to_keep=max_actor_ckpt_to_keep
@@ -1228,6 +1258,152 @@ class RayPPOTrainer:
         )
         with open(local_latest_checkpointed_iteration, "w") as f:
             f.write(str(self.global_steps))
+        if keep_best_ckpt:
+            self._cleanup_best_latest_checkpoints(latest_step=self.global_steps)
+
+    def _best_checkpoint_tracker_path(self) -> str:
+        return os.path.join(self.config.trainer.default_local_dir, BEST_CHECKPOINT_TRACKER)
+
+    def _checkpoint_dir_for_step(self, step: int | None) -> str | None:
+        if step is None:
+            return None
+        return os.path.join(self.config.trainer.default_local_dir, f"global_step_{step}")
+
+    def _iter_checkpoint_step_dirs(self) -> list[tuple[int, str]]:
+        root = self.config.trainer.default_local_dir
+        if not os.path.isdir(root):
+            return []
+        step_dirs = []
+        for name in os.listdir(root):
+            path = os.path.join(root, name)
+            if not os.path.isdir(path):
+                continue
+            step = _checkpoint_step_from_path(path)
+            if step is not None:
+                step_dirs.append((step, path))
+        return sorted(step_dirs)
+
+    def _load_best_checkpoint_tracker(self):
+        tracker_path = self._best_checkpoint_tracker_path()
+        if not os.path.exists(tracker_path):
+            return
+        try:
+            with open(tracker_path, "r") as f:
+                data = json.load(f)
+        except Exception as exc:
+            print(f"[checkpoint-retention] Could not read {tracker_path}: {exc}")
+            return
+
+        step = data.get("step")
+        metric_value = data.get("metric_value")
+        if not isinstance(step, int):
+            return
+        best_dir = self._checkpoint_dir_for_step(step)
+        if best_dir is None or not os.path.isdir(best_dir):
+            print(f"[checkpoint-retention] Ignoring missing tracked best checkpoint: {best_dir}")
+            return
+        self.best_ckpt_step = step
+        self.best_ckpt_metric_value = float(metric_value) if metric_value is not None else None
+        print(
+            "[checkpoint-retention] Loaded best checkpoint tracker: "
+            f"step={self.best_ckpt_step}, metric={self.best_ckpt_metric_value}"
+        )
+
+    def _write_best_checkpoint_tracker(self, metric_key: str):
+        os.makedirs(self.config.trainer.default_local_dir, exist_ok=True)
+        tracker_path = self._best_checkpoint_tracker_path()
+        payload = {
+            "step": self.best_ckpt_step,
+            "metric_key": metric_key,
+            "metric_value": self.best_ckpt_metric_value,
+            "mode": self.config.trainer.get("best_ckpt_metric_mode", "max"),
+            "checkpoint_dir": self._checkpoint_dir_for_step(self.best_ckpt_step),
+        }
+        tmp_path = f"{tracker_path}.tmp"
+        with open(tmp_path, "w") as f:
+            json.dump(payload, f, indent=2, sort_keys=True)
+        os.replace(tmp_path, tracker_path)
+
+    def _maybe_update_best_checkpoint(self, val_metrics: dict[str, Any]):
+        if not self.config.trainer.get("keep_best_ckpt", False):
+            return
+        metric_key = self.config.trainer.get("best_ckpt_metric_key", None)
+        if not metric_key:
+            return
+        current_ckpt_dir = self._checkpoint_dir_for_step(self.global_steps)
+        if current_ckpt_dir is None or not os.path.isdir(current_ckpt_dir):
+            print(
+                "[checkpoint-retention] Skip best checkpoint update because no checkpoint exists "
+                f"for step {self.global_steps}: {current_ckpt_dir}"
+            )
+            return
+        metric_value = _metric_value_to_python_scalar(val_metrics.get(metric_key))
+        if metric_value is None:
+            print(f"[checkpoint-retention] Metric '{metric_key}' not found; best checkpoint unchanged.")
+            return
+        metric_value = float(metric_value)
+        mode = self.config.trainer.get("best_ckpt_metric_mode", "max")
+        if mode not in {"max", "min"}:
+            raise ValueError(f"trainer.best_ckpt_metric_mode must be 'max' or 'min', got {mode!r}")
+
+        is_better = self.best_ckpt_metric_value is None
+        if not is_better and mode == "max":
+            is_better = metric_value > self.best_ckpt_metric_value
+        if not is_better and mode == "min":
+            is_better = metric_value < self.best_ckpt_metric_value
+
+        if not is_better:
+            return
+
+        previous_best = self.best_ckpt_step
+        self.best_ckpt_step = self.global_steps
+        self.best_ckpt_metric_value = metric_value
+        self._write_best_checkpoint_tracker(metric_key)
+        print(
+            "[checkpoint-retention] New best checkpoint: "
+            f"step={self.best_ckpt_step}, {metric_key}={metric_value} "
+            f"(previous_best_step={previous_best})"
+        )
+
+    def _strip_optimizer_from_checkpoint(self, checkpoint_dir: str):
+        actor_dir = os.path.join(checkpoint_dir, "actor")
+        if not os.path.isdir(actor_dir):
+            return
+        removed = 0
+        for name in os.listdir(actor_dir):
+            if name.startswith("optim_world_size_") and name.endswith(".pt"):
+                path = os.path.join(actor_dir, name)
+                try:
+                    os.remove(path)
+                    removed += 1
+                except FileNotFoundError:
+                    pass
+        if removed:
+            marker_path = os.path.join(checkpoint_dir, "model_only_best_checkpoint.txt")
+            with open(marker_path, "w") as f:
+                f.write(
+                    "Optimizer shards were removed from this best checkpoint to keep Meituan storage under budget.\n"
+                )
+            print(f"[checkpoint-retention] Removed {removed} optimizer shard(s) from best checkpoint {checkpoint_dir}")
+
+    def _cleanup_best_latest_checkpoints(self, latest_step: int | None):
+        if not self.config.trainer.get("keep_best_ckpt", False):
+            return
+        keep_steps = {step for step in (latest_step, self.best_ckpt_step) if step is not None}
+        for step, path in self._iter_checkpoint_step_dirs():
+            if step in keep_steps:
+                continue
+            print(f"[checkpoint-retention] Removing checkpoint not in best/latest set: {path}")
+            shutil.rmtree(path, ignore_errors=True)
+
+        if (
+            self.config.trainer.get("best_ckpt_strip_optimizer", False)
+            and self.best_ckpt_step is not None
+            and self.best_ckpt_step != latest_step
+        ):
+            best_dir = self._checkpoint_dir_for_step(self.best_ckpt_step)
+            if best_dir is not None and os.path.isdir(best_dir):
+                self._strip_optimizer_from_checkpoint(best_dir)
 
     def _load_checkpoint(self):
         if self.config.trainer.resume_mode == "disable":
@@ -1565,6 +1741,7 @@ class RayPPOTrainer:
 
         # load checkpoint and update weights before doing anything
         self._load_checkpoint()
+        self._load_best_checkpoint_tracker()
         self.checkpoint_manager.update_weights()
 
         current_epoch = self.global_steps // len(self.train_dataloader)
@@ -1912,6 +2089,8 @@ class RayPPOTrainer:
                 # Note: mismatch metrics (KL, PPL, etc.) are collected at line 1179 after advantage computation
 
                 if did_validate:
+                    self._maybe_update_best_checkpoint(val_metrics)
+                    self._cleanup_best_latest_checkpoints(latest_step=self.global_steps)
                     print(f"Validation and training metrics at step {self.global_steps}:", flush=True)
                     pprint(extract_test_step_metrics_for_logging(metrics))
 

@@ -19,9 +19,14 @@ if [ "${SMOKE:-0}" = "1" ]; then
     export TEST_FREQ=5
     echo "[hope_on_policy_wdl_sft] SMOKE mode: TOTAL_TRAINING_STEPS=10 SAVE_FREQ=5 TEST_FREQ=5"
 else
-    export MAX_ACTOR_CKPTS_TO_KEEP=${MAX_ACTOR_CKPTS_TO_KEEP:-13}
-    echo "[hope_on_policy_wdl_sft] FULL run: keeping up to $MAX_ACTOR_CKPTS_TO_KEEP actor checkpoints"
+    export MAX_ACTOR_CKPTS_TO_KEEP=${MAX_ACTOR_CKPTS_TO_KEEP:-1}
+    echo "[hope_on_policy_wdl_sft] FULL run: keeping latest checkpoint plus best model-only checkpoint"
 fi
+
+export KEEP_BEST_CKPT=${KEEP_BEST_CKPT:-True}
+export BEST_CKPT_METRIC_KEY=${BEST_CKPT_METRIC_KEY:-val-core/HuggingFaceH4/MATH-500/acc/mean@1}
+export BEST_CKPT_METRIC_MODE=${BEST_CKPT_METRIC_MODE:-max}
+export BEST_CKPT_STRIP_OPTIMIZER=${BEST_CKPT_STRIP_OPTIMIZER:-True}
 
 echo "[hope_on_policy_wdl_sft] REPO       = $REPO"
 echo "[hope_on_policy_wdl_sft] EXPERIMENT = $EXPERIMENT_LC"

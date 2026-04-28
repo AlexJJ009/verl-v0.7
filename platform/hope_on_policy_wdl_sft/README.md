@@ -10,6 +10,7 @@ cp -r /data-1/verl07/verl/platform/hope_on_policy_wdl_sft ~/hope_2a_base
 # edit ~/hope_2a_base/run.hope:
 #   afo.app.name           = verl-2a-base
 #   afo.docker.image.name  = <your verl v2 image URL>
+#   afo.app.env.LGX        = <your dolphinfs lgx root>
 #   afo.app.env.EXPERIMENT = 2a-base
 cd ~/hope_2a_base && hope submit run.hope
 ```
@@ -42,15 +43,18 @@ afo.app.env.SMOKE = 1
 
 ## Path Assumptions
 
-Default repo path:
+Default DolphinFS root and repo path:
 
 ```text
-$LGX/verl08/verl-v0.7-feature-on-policy-wdl-sft
+LGX=/mnt/dolphinfs/ssd_pool/docker/user/hadoop-ai-search/yangfengkai02/lgx
+REPO=$LGX/verl08/verl-v0.7-feature-on-policy-wdl-sft
 ```
 
-Override with:
+Change `afo.app.env.LGX` when the account/path changes. If only the checkout
+subpath under LGX changes, override `REPO_SUBPATH`:
 
 ```ini
+afo.app.env.LGX = /mnt/dolphinfs/ssd_pool/docker/user/hadoop-ai-search/<user>/lgx
 afo.app.env.REPO_SUBPATH = some/other/repo/path
 ```
 
