@@ -425,17 +425,21 @@ Use `platform/hope_on_policy_wdl_sft/` for both joint 1X and single-model 2X
 reruns. The only per-job field that should change is
 `afo.app.env.EXPERIMENT`.
 
-| EXPERIMENT | Family | Init / model | Loss | β | lr | Rerun reason |
-|---|---|---|---|---|---|---|
-| `1a` | joint | Base + SFT-stage-1 | `wdl_sft_is` | 0.0 | 5e-7 | pre-fix labels + Meituan/local joint gap |
-| `1b` | joint | Base + SFT-stage-1 | `wdl_sft_is` | 0.1 | 5e-7 | pre-fix labels + Meituan/local joint gap |
-| `1c` | joint | Base + SFT-stage-1 | `wdl_sft_is` | 0.0 | 1e-6 | pre-fix labels + Meituan/local joint gap |
-| `2a-base` | single | Qwen3-4B-Base | `wdl_sft_is` | 0.0 | 5e-7 | pre-fix labels |
-| `2a-sft` | single | Qwen3-4B-Base-SFT-stage-1 | `wdl_sft_is` | 0.0 | 5e-7 | pre-fix labels |
-| `2b-base` | single | Qwen3-4B-Base | `wdl_sft_is` | 0.1 | 5e-7 | pre-fix labels |
-| `2b-sft` | single | Qwen3-4B-Base-SFT-stage-1 | `wdl_sft_is` | 0.1 | 5e-7 | pre-fix labels |
-| `2c-base` | single | Qwen3-4B-Base | `wdl_sft_is` | 0.0 | 1e-6 | pre-fix labels |
-| `2c-sft` | single | Qwen3-4B-Base-SFT-stage-1 | `wdl_sft_is` | 0.0 | 1e-6 | pre-fix labels |
+Status update (2026-04-27 local time): Meituan is temporarily unavailable, so
+the first post-fix rerun is running locally. All other rows remain not rerun
+under the `-LABELFIX` prefixes.
+
+| EXPERIMENT | Family | Init / model | Loss | β | lr | Rerun status | Rerun reason |
+|---|---|---|---|---|---|---|---|
+| `1a` | joint | Base + SFT-stage-1 | `wdl_sft_is` | 0.0 | 5e-7 | not started post-fix | pre-fix labels + Meituan/local joint gap |
+| `1b` | joint | Base + SFT-stage-1 | `wdl_sft_is` | 0.1 | 5e-7 | not started post-fix | pre-fix labels + Meituan/local joint gap |
+| `1c` | joint | Base + SFT-stage-1 | `wdl_sft_is` | 0.0 | 1e-6 | not started post-fix | pre-fix labels + Meituan/local joint gap |
+| `2a-base` | single | Qwen3-4B-Base | `wdl_sft_is` | 0.0 | 5e-7 | **running locally** as `WDL-SFT-Qwen3-4B-MATH-2A-BASE-LABELFIX_1777346990` | pre-fix labels |
+| `2a-sft` | single | Qwen3-4B-Base-SFT-stage-1 | `wdl_sft_is` | 0.0 | 5e-7 | not started post-fix | pre-fix labels |
+| `2b-base` | single | Qwen3-4B-Base | `wdl_sft_is` | 0.1 | 5e-7 | not started post-fix | pre-fix labels |
+| `2b-sft` | single | Qwen3-4B-Base-SFT-stage-1 | `wdl_sft_is` | 0.1 | 5e-7 | not started post-fix | pre-fix labels |
+| `2c-base` | single | Qwen3-4B-Base | `wdl_sft_is` | 0.0 | 1e-6 | not started post-fix | pre-fix labels |
+| `2c-sft` | single | Qwen3-4B-Base-SFT-stage-1 | `wdl_sft_is` | 0.0 | 1e-6 | not started post-fix | pre-fix labels |
 
 Optional unaffected baselines in the same unified entrypoint:
 `2z-base`, `2z-sft`, `2g-base`, `2g-sft`.

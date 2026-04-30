@@ -11,7 +11,7 @@ For progressive disclosure, do not bulk-read every linked document; read the spe
 To refresh the bridge after editing either side, run:
 
 ```bash
-python /data-1/agent-tools/sync_agent_context.py sync . --direction bidirectional
+python3 /data-1/agent-tools/sync_agent_context.py sync . --direction bidirectional
 ```
 
 ## Project Skill Index

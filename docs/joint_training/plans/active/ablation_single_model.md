@@ -70,6 +70,22 @@ Post-2026-04-27 reruns of the `wdl_sft_is` rows use script default
 from the pre-fix checkpoints/results produced before the reward-label handoff
 bug was fixed. The `minirl` / `vanilla` baseline rows are not affected.
 
+### 3.4 Post-Fix Rerun Status
+
+Status update (2026-04-27 local time): Meituan is temporarily unavailable. The
+first spec-correct label-fix rerun is running on the local `/data-1` machine;
+all other affected 2X rows have not yet been rerun under their `-LABELFIX`
+prefixes.
+
+| Run | Post-fix status | Run ID / notes |
+|---|---|---|
+| **2A-base** | **running locally** | `WDL-SFT-Qwen3-4B-MATH-2A-BASE-LABELFIX_1777346990`; tmux `wdl_2a_base_labelfix`; reached step 10 during the 20-minute health check |
+| **2A-sft** | not started post-fix | Still needs rerun under `WDL-SFT-Qwen3-4B-MATH-2A-SFT-LABELFIX_*` |
+| **2B-base** | not started post-fix | Still needs rerun under `WDL-SFT-Qwen3-4B-MATH-2B-BASE-LABELFIX_*` |
+| **2B-sft** | not started post-fix | Still needs rerun under `WDL-SFT-Qwen3-4B-MATH-2B-SFT-LABELFIX_*` |
+| **2C-base** | not started post-fix | Still needs rerun under `WDL-SFT-Qwen3-4B-MATH-2C-BASE-LABELFIX_*` |
+| **2C-sft** | not started post-fix | Still needs rerun under `WDL-SFT-Qwen3-4B-MATH-2C-SFT-LABELFIX_*` |
+
 ## 4. Control Rigor — What We Control, What We Don't
 
 | Dimension | Controlled? | Reason |
