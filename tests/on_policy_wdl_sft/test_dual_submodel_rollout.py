@@ -253,8 +253,16 @@ def test_dual_rollout_recipe_scripts_are_portable_and_opt_in():
     assert "joint_rollout_sources=\"[sub_model_0,sub_model_1]\"" in common_text
     assert "joint_rollout_select=sub_model_1" in common_text
     assert "joint_rollout_train_on_selected_only=true" in common_text
+    assert 'REPO_ROOT="${REPO_ROOT:-$(cd "${RECIPE_ROOT}/../.." && pwd)}"' in common_text
+    assert "DATA_ROOT=${DATA_ROOT:-/data-1/dataset}" in common_text
+    assert "TRAIN_FILE=${TRAIN_FILE:-\"${DATA_ROOT}/EnsembleLLM-data-processed/train_rl_format.parquet\"}" in common_text
     assert "VLLM_ATTENTION_BACKEND=${VLLM_ATTENTION_BACKEND:-FLASHINFER}" in common_text
     assert "override_config.attn_implementation=flash_attention_2" in common_text
+    assert "MIN_FREE_GB_FOR_CKPT=${MIN_FREE_GB_FOR_CKPT:-160}" in common_text
+    assert "MAX_ACTOR_CKPTS_TO_KEEP=${MAX_ACTOR_CKPTS_TO_KEEP:-1}" in common_text
+    assert "MAX_CRITIC_CKPTS_TO_KEEP=${MAX_CRITIC_CKPTS_TO_KEEP:-1}" in common_text
+    assert "KEEP_BEST_CKPT=${KEEP_BEST_CKPT:-True}" in common_text
+    assert "BEST_CKPT_METRIC_KEY=${BEST_CKPT_METRIC_KEY:-\"val-core/HuggingFaceH4/MATH-500/acc/mean@1\"}" in common_text
     assert "VAL_BEFORE_TRAIN" in common_text
     assert "/mnt/dolphinfs" not in common_text
 
