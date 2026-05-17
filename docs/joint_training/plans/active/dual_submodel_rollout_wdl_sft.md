@@ -389,8 +389,8 @@ Validation criteria:
 - [x] Add recipe folder and wrapper.
 - [x] Add tests.
 - [x] Run targeted CPU tests.
-- [ ] Run Docker smoke test.
-- [ ] Update this plan with implementation notes and any changed decisions.
+- [x] Run Docker smoke test.
+- [x] Update this plan with implementation notes and any changed decisions.
 
 ## 10. Implementation Notes
 

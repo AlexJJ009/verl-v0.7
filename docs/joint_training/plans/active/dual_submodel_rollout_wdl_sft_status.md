@@ -9,7 +9,8 @@ Last updated: 2026-05-17 16:27 CST
 - Latest implementation commit: `7675d8b1` (`Implement dual-submodel rollout WDL-SFT`)
 - Latest status/docs commit before smoke: `83eac12a` (`Update dual rollout implementation status`)
 - Latest smoke/status docs commit: `8dc71fd2` (`Update dual rollout smoke status`)
-- Final live-state update: this status file records the post-smoke `/dev/shm` cleanup check; see current branch `HEAD` for the containing commit after this file is committed.
+- Final status cleanup commit: `0161e73b` (`Update dual rollout final status`)
+- Final plan/status checklist cleanup: see current branch `HEAD` for the containing commit after this file is committed.
 - Recipe submodule base commit: `3895e74`
 - Recipe implementation commit: `13c540f` (`Add dual-submodel rollout WDL-SFT recipe`)
 
@@ -119,7 +120,7 @@ These must not be staged or committed unless they become intentional task files.
 - 10.7 Unit tests and backward-compatibility tests: initial FAIL because trainer flow/no-config path were only helper-tested; fixed by adding mocked `_generate_training_rollouts(...)` tests. Follow-up reviewer verdict: PASS.
 - 10.8 3A GPU smoke: PASS. Reviewer caveats: same-architecture model2 override due missing default path; checkpoint/temp dirs under `/dev/shm` because `/data-1` was full; ignored W&B/torchdata atexit exceptions after successful completion.
 - 10.9 3B GPU smoke: PASS. Reviewer caveats: same environment deviations as 3A; reviewer could not live-inspect `/dev/shm` after the fact, but accepted captured checkpoint evidence plus log/metric save timing.
-- 10.10 Final documentation/status update: PASS. Reviewer caveat: final docs were still uncommitted at review time; remaining action is a scoped commit containing only intended doc updates.
+- 10.10 Final documentation/status update: PASS. Reviewer caveat was that final docs were still uncommitted at review time; main-agent follow-up committed the final status update and aligned the source-plan checklist with the recorded smoke evidence.
 
 ## Open Blockers / Decisions
 
