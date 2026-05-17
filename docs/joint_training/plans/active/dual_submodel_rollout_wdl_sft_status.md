@@ -1,6 +1,6 @@
 # Dual-Submodel Rollout WDL-SFT Implementation Status
 
-Last updated: 2026-05-17 16:25 CST
+Last updated: 2026-05-17 16:27 CST
 
 ## Branch / Commit
 
@@ -8,13 +8,15 @@ Last updated: 2026-05-17 16:25 CST
 - Base commit at branch creation: `162bd36d`
 - Latest implementation commit: `7675d8b1` (`Implement dual-submodel rollout WDL-SFT`)
 - Latest status/docs commit before smoke: `83eac12a` (`Update dual rollout implementation status`)
+- Latest smoke/status docs commit: `8dc71fd2` (`Update dual rollout smoke status`)
+- Final live-state update: this status file records the post-smoke `/dev/shm` cleanup check; see current branch `HEAD` for the containing commit after this file is committed.
 - Recipe submodule base commit: `3895e74`
 - Recipe implementation commit: `13c540f` (`Add dual-submodel rollout WDL-SFT recipe`)
 
 ## Current Milestone
 
-- Implementation, targeted tests, 3A/3B real GPU smoke, and final reviewer gates are complete.
-- Next: commit this final documentation/status update.
+- Implementation, targeted tests, 3A/3B real GPU smoke, final reviewer gates, final documentation update, and temporary smoke-checkpoint cleanup check are complete.
+- Next: final completion report to the user.
 
 ## Completed Milestones
 
@@ -122,8 +124,8 @@ These must not be staged or committed unless they become intentional task files.
 ## Open Blockers / Decisions
 
 - Do not stage pre-existing dirty files: `.codex/config.toml`, `docs/joint_training/plans/active/ablation_single_model.md`, `docs/joint_training/plans/active/wdl_sft_is.md`, `.claude/skills/experiment-registry`, `docs/joint_training/plans/active/dual_submodel_rollout_wdl_sft_goal.md`, or `recipe/on_policy_wdl_sft/EXPERIMENT_INDEX.md`.
-- Temporary smoke checkpoints under `/dev/shm/dual_rollout_smoke_checkpoints` should be deleted after final evidence is recorded if no further inspection is needed.
+- Temporary smoke checkpoints under `/dev/shm/dual_rollout_smoke_checkpoints` are already absent as of the final live check.
 
 ## Next Concrete Action
 
-- Commit final documentation/status update.
+- Report final completion to the user.
