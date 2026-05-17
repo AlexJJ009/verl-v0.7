@@ -52,6 +52,14 @@ class HFRollout(BaseRollout):
     async def release(self):
         pass  # Nothing to release
 
+    def set_joint_rollout_source(self, source: str):
+        unwrapped = getattr(self.module, "_fsdp_wrapped_module", self.module)
+        setter = getattr(unwrapped, "set_joint_rollout_source", None)
+        if callable(setter):
+            setter(source)
+        elif hasattr(unwrapped, "_joint_rollout_source"):
+            unwrapped._joint_rollout_source = source
+
     def generate_sequences(self, prompts: DataProto) -> DataProto:
         batch_size = prompts.batch.batch_size[0]
         micro_batch_size = self.config.get("micro_batch_size", batch_size)

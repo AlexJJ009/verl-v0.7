@@ -706,6 +706,11 @@ class vLLMHttpServer:
         if self.node_rank == 0:
             await self.engine.reset_prefix_cache()
 
+    async def set_joint_rollout_source(self, source: str):
+        if self.node_rank == 0:
+            await self.engine.collective_rpc("set_joint_rollout_source", kwargs={"source": source})
+            await self.engine.reset_prefix_cache()
+
     async def wait_for_requests_to_drain(self):
         wait_for_requests_to_drain = getattr(self.engine, "wait_for_requests_to_drain", None)
         if callable(wait_for_requests_to_drain):

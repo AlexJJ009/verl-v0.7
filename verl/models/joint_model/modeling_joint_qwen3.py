@@ -26,6 +26,7 @@ class QwenJointForCausalLM(PreTrainedModel, GenerationMixin):
     _supports_flex_attn = True
     _supports_attention_backend = True
     _no_split_modules = ["Qwen3DecoderLayer"]
+    VALID_ROLLOUT_SOURCES = {"fused", "sub_model_0", "sub_model_1"}
 
     def __init__(self, config: QwenJointConfig):
         super().__init__(config)
@@ -34,12 +35,21 @@ class QwenJointForCausalLM(PreTrainedModel, GenerationMixin):
         )
         self.fusion_lambda = config.fusion_lambda
         self.last_logit_disagreement: float | None = None
+        self._joint_rollout_source = "fused"
 
         if config.freeze_model1:
             for param in self.sub_models[0].parameters():
                 param.requires_grad = False
 
         self.post_init()
+
+    def set_joint_rollout_source(self, source: str) -> None:
+        if source not in self.VALID_ROLLOUT_SOURCES:
+            raise ValueError(
+                f"Invalid joint rollout source {source!r}; expected one of "
+                f"{sorted(self.VALID_ROLLOUT_SOURCES)}."
+            )
+        self._joint_rollout_source = source
 
     def forward(
         self,
@@ -58,8 +68,16 @@ class QwenJointForCausalLM(PreTrainedModel, GenerationMixin):
         # Support eval_only via model attribute (for HF generate() which can't pass custom kwargs)
         eval_only = eval_only or getattr(self, '_eval_only_mode', False)
 
-        if eval_only:
-            return self.sub_models[1](
+        rollout_source = kwargs.pop("joint_rollout_source", None) or getattr(self, "_joint_rollout_source", "fused")
+        if rollout_source not in self.VALID_ROLLOUT_SOURCES:
+            raise ValueError(
+                f"Invalid joint rollout source {rollout_source!r}; expected one of "
+                f"{sorted(self.VALID_ROLLOUT_SOURCES)}."
+            )
+
+        if eval_only or rollout_source in {"sub_model_0", "sub_model_1"}:
+            sub_model_index = 1 if eval_only or rollout_source == "sub_model_1" else 0
+            return self.sub_models[sub_model_index](
                 input_ids=input_ids,
                 attention_mask=attention_mask,
                 position_ids=position_ids,

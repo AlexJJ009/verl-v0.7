@@ -1,6 +1,6 @@
 # Dual-Submodel Rollout WDL-SFT — Plan and Open Decisions
 
-- Status: **ACTIVE PLAN — design discussion before implementation**
+- Status: **IMPLEMENTATION IN PROGRESS — pre-smoke code and targeted tests complete**
 - Created: 2026-04-27
 - Base branch: `feature/on-policy-wdl-sft`
 - Planned working branch: `feature/on-policy-wdl-sft-dual-rollout`
@@ -380,18 +380,77 @@ Validation criteria:
 ## 8. Progress Checklist
 
 - [x] Plan drafted into docs.
-- [ ] Commit or otherwise checkpoint current dirty worktree.
-- [ ] Create implementation branch.
-- [ ] Add config surface.
-- [ ] Add HF joint source switching.
-- [ ] Add vLLM joint source switching and RPC.
-- [ ] Add trainer dual-rollout generation and selected-batch training.
+- [x] Create implementation branch.
+- [x] Add config surface.
+- [x] Add HF joint source switching.
+- [x] Add vLLM joint source switching and RPC.
+- [x] Add trainer dual-rollout generation and selected-batch training.
 - [x] Fix `wdl_sft_is` reward-label override.
-- [ ] Add recipe folder and wrapper.
-- [ ] Add tests.
-- [ ] Run targeted CPU tests.
+- [x] Add recipe folder and wrapper.
+- [x] Add tests.
+- [x] Run targeted CPU tests.
 - [ ] Run Docker smoke test.
 - [ ] Update this plan with implementation notes and any changed decisions.
+
+## 10. Implementation Notes
+
+Status as of 2026-05-17 15:50 CST:
+
+- Branch: `feature/on-policy-wdl-sft-dual-rollout`.
+- Config surface uses the planned custom keys:
+
+```yaml
+actor_rollout_ref:
+  rollout:
+    custom:
+      joint_rollout_sources: ["sub_model_0", "sub_model_1"]
+      joint_rollout_select: "sub_model_1"
+      joint_rollout_train_on_selected_only: true
+```
+
+- Base behavior remains fused rollout when no dual-rollout custom config is
+  present.
+- HF and vLLM joint models now support explicit rollout sources:
+  `fused`, `sub_model_0`, `sub_model_1`.
+- vLLM source switching is propagated through the rollout server
+  `collective_rpc` worker extension, then the server clears prefix cache after
+  a source switch.
+- Trainer generation is prompt-aligned: the same `gen_batch` is repeated once
+  per configured source. Non-selected sources are scored only for diagnostics.
+- Selected-only training is enforced by selecting `sub_model_1` output before
+  the normal prompt union, reward extraction, old-log-prob recompute,
+  advantage override, and actor update path.
+- After dual rollout generation, the rollout source is restored to `fused`
+  before old-log-prob recompute and actor update.
+- Dual rollout rejects `algorithm.rollout_correction.bypass_mode=true` because
+  it would skip the required fused-policy old-log-prob recompute.
+- Dual rollout removes `rollout_is_weights` before actor update if rollout
+  correction diagnostics create them, so the default loss path does not
+  multiply WDL-SFT-IS by rollout IS weights.
+- Required metrics added:
+  `dual_rollout/model1_correct_ratio`,
+  `dual_rollout/model2_correct_ratio`,
+  `dual_rollout/model1_response_len_mean`,
+  `dual_rollout/model2_response_len_mean`,
+  `dual_rollout/selected_source`, plus source counts and prompt batch size.
+- Recipe scripts live under
+  `recipe/on_policy_wdl_sft/dual_submodel_rollout/`; `run_3a...` sets
+  `WDL_SFT_BETA=0.0`, `run_3b...` sets `WDL_SFT_BETA=0.1`, and both source
+  `_common_dual_rollout.sh`.
+- `_common_dual_rollout.sh` defaults `VLLM_ATTENTION_BACKEND=FLASHINFER` and
+  keeps FSDP training on `attn_implementation=flash_attention_2`.
+
+Targeted Docker test command:
+
+```bash
+docker run --rm --gpus all --ipc=host \
+  -v /data-1/verl07/verl:/workspace/verl \
+  -v /data-1:/data-1 \
+  verl-harness \
+  bash -lc 'cd /workspace/verl && pytest tests/on_policy_wdl_sft/test_dual_submodel_rollout.py tests/joint_training/feat/test_joint_model.py tests/joint_training/feat/test_vllm_joint_rollout.py tests/on_policy_wdl_sft/test_wdl_sft_is_loss.py -q --tb=short'
+```
+
+Result: `74 passed, 4 skipped, 7 warnings in 48.62s`.
 
 ## 9. Confirmed Decisions and Remaining Naming Question
 

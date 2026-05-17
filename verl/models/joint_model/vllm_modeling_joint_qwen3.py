@@ -23,6 +23,7 @@ class QwenJointForCausalLM(nn.Module):
         "qkv_proj": ["q_proj", "k_proj", "v_proj"],
         "gate_up_proj": ["gate_proj", "up_proj"],
     }
+    VALID_ROLLOUT_SOURCES = {"fused", "sub_model_0", "sub_model_1"}
 
     def __init__(self, *, vllm_config, prefix: str = ""):
         super().__init__()
@@ -34,6 +35,7 @@ class QwenJointForCausalLM(nn.Module):
         self.fusion_lambda = getattr(config, "fusion_lambda", 0.5)
         self.hidden_size = config.hidden_size
         self._use_model2_only = False
+        self._joint_rollout_source = "fused"
 
         self.sub_models = nn.ModuleList(
             [
@@ -51,6 +53,16 @@ class QwenJointForCausalLM(nn.Module):
             ],
             config.hidden_size,
         )
+
+    def set_joint_rollout_source(self, source: str) -> None:
+        if source not in self.VALID_ROLLOUT_SOURCES:
+            raise ValueError(
+                f"Invalid joint rollout source {source!r}; expected one of "
+                f"{sorted(self.VALID_ROLLOUT_SOURCES)}."
+            )
+        if self._use_model2_only and source == "sub_model_0":
+            raise ValueError("Cannot select sub_model_0 after model2-only weights have been loaded.")
+        self._joint_rollout_source = source
 
     def embed_input_ids(self, input_ids: torch.Tensor) -> torch.Tensor:
         """Delegate to the first sub-model's embedding layer."""
@@ -149,11 +161,19 @@ class QwenJointForCausalLM(nn.Module):
         intermediate_tensors: Optional[object] = None,
         inputs_embeds: Optional[torch.Tensor] = None,
     ) -> Union[torch.Tensor, object]:
-        if self._use_model2_only:
-            return self.sub_models[1](
+        source = getattr(self, "_joint_rollout_source", "fused")
+        if source not in self.VALID_ROLLOUT_SOURCES:
+            raise ValueError(
+                f"Invalid joint rollout source {source!r}; expected one of "
+                f"{sorted(self.VALID_ROLLOUT_SOURCES)}."
+            )
+
+        if self._use_model2_only or source in {"sub_model_0", "sub_model_1"}:
+            index = 1 if self._use_model2_only or source == "sub_model_1" else 0
+            return self.sub_models[index](
                 input_ids=input_ids,
                 positions=positions,
-                intermediate_tensors=self._extract_intermediate_tensors(intermediate_tensors, 1),
+                intermediate_tensors=self._extract_intermediate_tensors(intermediate_tensors, index),
                 inputs_embeds=inputs_embeds,
             )
 
@@ -178,9 +198,17 @@ class QwenJointForCausalLM(nn.Module):
 
         return self._pack_hidden_states(output0, output1)
 
-    def compute_logits(self, hidden_states) -> Optional[torch.Tensor]:
-        if self._use_model2_only:
+    def compute_logits(self, hidden_states, sampling_metadata=None) -> Optional[torch.Tensor]:
+        source = getattr(self, "_joint_rollout_source", "fused")
+        if self._use_model2_only or source == "sub_model_1":
             return self.sub_models[1].compute_logits(hidden_states)
+        if source == "sub_model_0":
+            return self.sub_models[0].compute_logits(hidden_states)
+        if source != "fused":
+            raise ValueError(
+                f"Invalid joint rollout source {source!r}; expected one of "
+                f"{sorted(self.VALID_ROLLOUT_SOURCES)}."
+            )
 
         hidden_states0, hidden_states1 = self._unpack_hidden_states(hidden_states)
         logits0 = self.sub_models[0].compute_logits(hidden_states0)
@@ -203,6 +231,7 @@ class QwenJointForCausalLM(nn.Module):
 
         if is_joint:
             self._use_model2_only = False
+            self._joint_rollout_source = "fused"
             loaded_params = set()
             if model0_weights:
                 loaded_params.update(
@@ -215,4 +244,5 @@ class QwenJointForCausalLM(nn.Module):
             return loaded_params
 
         self._use_model2_only = True
+        self._joint_rollout_source = "sub_model_1"
         return self.sub_models[1].load_weights(model2_only_weights)

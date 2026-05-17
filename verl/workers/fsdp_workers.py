@@ -1856,6 +1856,15 @@ class CriticWorker(Worker, DistProfilerExtension):
         return output
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
+    def set_joint_rollout_source(self, source: str):
+        """Switch source policy for in-process HF rollout joint models."""
+        if not self._is_rollout or not hasattr(self, "rollout"):
+            return
+        setter = getattr(self.rollout, "set_joint_rollout_source", None)
+        if callable(setter):
+            setter(source)
+
+    @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def save_checkpoint(self, local_path, hdfs_path=None, global_step=0, max_ckpt_to_keep=None):
         import torch
 

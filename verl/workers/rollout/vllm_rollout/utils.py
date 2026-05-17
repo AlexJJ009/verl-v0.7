@@ -275,6 +275,16 @@ class vLLMColocateWorkerExtension:
         # patch weight loader to support MoE model
         patch_vllm_moe_model_weight_loader(self.model_runner.model)
 
+    def set_joint_rollout_source(self, source: str):
+        model = self.model_runner.model
+        setter = getattr(model, "set_joint_rollout_source", None)
+        if callable(setter):
+            setter(source)
+        elif hasattr(model, "_joint_rollout_source"):
+            model._joint_rollout_source = source
+        else:
+            logger.info("Ignoring joint rollout source %s for non-joint vLLM model %s", source, type(model).__name__)
+
     def update_weights_from_ipc(self, peft_config: dict = None, base_sync_done=False, use_shm: bool = False):
         """Update the weights of the rollout model."""
         from vllm.platforms import current_platform

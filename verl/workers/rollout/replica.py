@@ -247,6 +247,10 @@ class RolloutReplica(ABC):
         """reset kv cache in each rollout server."""
         await asyncio.gather(*[server.clear_kv_cache.remote() for server in self.servers])
 
+    async def set_joint_rollout_source(self, source: str):
+        """Switch rollout source on every server in this replica."""
+        await asyncio.gather(*[server.set_joint_rollout_source.remote(source) for server in self.servers])
+
     async def start_profile(self, **kwargs):
         """Start profiling on the replica."""
         await asyncio.gather(*[server.start_profile.remote(**kwargs) for server in self.servers])

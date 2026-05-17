@@ -88,8 +88,97 @@ TEST_STEP_LOG_PREFIXES = (
 )
 
 WDL_SFT_REWARD_LABEL_LOSS_MODES = {"wdl_sft", "wdl_sft_is"}
+VALID_JOINT_ROLLOUT_SOURCES = ("fused", "sub_model_0", "sub_model_1")
+JOINT_ROLLOUT_SOURCE_TO_METRIC_ALIAS = {
+    "fused": "fused",
+    "sub_model_0": "model1",
+    "sub_model_1": "model2",
+}
+JOINT_ROLLOUT_SOURCE_TO_ID = {
+    "fused": -1,
+    "sub_model_0": 0,
+    "sub_model_1": 1,
+}
 
 BEST_CHECKPOINT_TRACKER = "best_checkpoint.json"
+
+
+def build_joint_rollout_config(config) -> dict[str, Any]:
+    """Validate optional dual-rollout config and return normalized values."""
+    custom = OmegaConf.select(config, "actor_rollout_ref.rollout.custom")
+    if custom is None:
+        return {
+            "enabled": False,
+            "sources": ["fused"],
+            "select": "fused",
+            "train_on_selected_only": True,
+        }
+
+    raw_sources = custom.get("joint_rollout_sources", None)
+    raw_select = custom.get("joint_rollout_select", None)
+    raw_train_on_selected_only = custom.get("joint_rollout_train_on_selected_only", None)
+
+    if raw_sources is None and raw_select is None and raw_train_on_selected_only is None:
+        return {
+            "enabled": False,
+            "sources": ["fused"],
+            "select": "fused",
+            "train_on_selected_only": True,
+        }
+
+    if raw_sources is None:
+        raise ValueError("actor_rollout_ref.rollout.custom.joint_rollout_sources must be set for dual rollout.")
+    sources = list(raw_sources)
+    if not sources:
+        raise ValueError("actor_rollout_ref.rollout.custom.joint_rollout_sources must be non-empty.")
+
+    invalid_sources = [source for source in sources if source not in VALID_JOINT_ROLLOUT_SOURCES]
+    if invalid_sources:
+        raise ValueError(
+            "Invalid joint rollout source(s) "
+            f"{invalid_sources}; expected only {list(VALID_JOINT_ROLLOUT_SOURCES)}."
+        )
+
+    if raw_select is None:
+        raise ValueError("actor_rollout_ref.rollout.custom.joint_rollout_select must be set for dual rollout.")
+    select = str(raw_select)
+    if select not in sources:
+        raise ValueError(
+            "actor_rollout_ref.rollout.custom.joint_rollout_select must be one of "
+            f"joint_rollout_sources; got select={select!r}, sources={sources!r}."
+        )
+
+    train_on_selected_only = True if raw_train_on_selected_only is None else bool(raw_train_on_selected_only)
+    if not train_on_selected_only:
+        raise ValueError(
+            "actor_rollout_ref.rollout.custom.joint_rollout_train_on_selected_only=false "
+            "is unsupported in the first dual-rollout implementation."
+        )
+    if OmegaConf.select(config, "algorithm.rollout_correction.bypass_mode", default=False):
+        raise ValueError(
+            "Dual rollout requires recomputing old_log_probs under the fused training policy; "
+            "algorithm.rollout_correction.bypass_mode=true is unsupported."
+        )
+
+    return {
+        "enabled": True,
+        "sources": sources,
+        "select": select,
+        "train_on_selected_only": train_on_selected_only,
+    }
+
+
+def select_joint_rollout_output(
+    outputs_by_source: dict[str, DataProto],
+    joint_rollout_config: dict[str, Any],
+) -> tuple[str, DataProto]:
+    selected_source = joint_rollout_config["select"]
+    if selected_source not in outputs_by_source:
+        raise ValueError(
+            f"Selected joint rollout source {selected_source!r} was not generated; "
+            f"available sources={sorted(outputs_by_source)}."
+        )
+    return selected_source, outputs_by_source[selected_source]
 
 
 def _metric_value_to_python_scalar(value: Any) -> Any | None:
@@ -378,6 +467,11 @@ class HFSyncRolloutManager:
     def generate_sequences(self, prompts: DataProto) -> DataProto:
         return self.worker_group.generate_sequences(prompts)
 
+    def set_joint_rollout_source(self, source: str):
+        setter = getattr(self.worker_group, "set_joint_rollout_source", None)
+        if callable(setter):
+            setter(source)
+
     def start_profile(self, **kwargs):
         pass
 
@@ -437,6 +531,7 @@ class RayPPOTrainer:
 
         # Detect joint training mode from config
         self._is_joint_training = config.actor_rollout_ref.model.get("joint_training", False)
+        self._joint_rollout_config = build_joint_rollout_config(config)
 
         if self.hybrid_engine:
             assert Role.ActorRollout in role_worker_mapping or Role.ActorRolloutRef in role_worker_mapping, (
@@ -1652,6 +1747,86 @@ class RayPPOTrainer:
             old_log_prob_mfu = 0
         return old_log_prob, old_log_prob_mfu
 
+    def _set_joint_rollout_source(self, source: str):
+        if source not in VALID_JOINT_ROLLOUT_SOURCES:
+            raise ValueError(f"Invalid joint rollout source {source!r}.")
+        setter = getattr(self.async_rollout_manager, "set_joint_rollout_source", None)
+        if callable(setter):
+            setter(source)
+
+    @staticmethod
+    def _add_dual_rollout_source_metrics(
+        metrics: dict[str, Any],
+        source: str,
+        batch: DataProto,
+        reward_tensor: torch.Tensor,
+    ):
+        alias = JOINT_ROLLOUT_SOURCE_TO_METRIC_ALIAS[source]
+        reward_labels = reward_tensor.sum(dim=-1)
+        response_mask = batch.batch["response_mask"]
+        metrics[f"dual_rollout/{alias}_correct_ratio"] = (reward_labels > 0).float().mean().item()
+        metrics[f"dual_rollout/{alias}_response_len_mean"] = response_mask.sum(dim=-1).float().mean().item()
+        metrics[f"dual_rollout/{alias}_response_count"] = int(response_mask.shape[0])
+
+    def _score_dual_rollout_diagnostic_source(
+        self,
+        prompt_batch: DataProto,
+        gen_batch_output: DataProto,
+        source: str,
+        metrics: dict[str, Any],
+    ):
+        diagnostic_batch = prompt_batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True)
+        diagnostic_batch = diagnostic_batch.union(gen_batch_output)
+        if "response_mask" not in diagnostic_batch.batch.keys():
+            diagnostic_batch.batch["response_mask"] = compute_response_mask(diagnostic_batch)
+        if "rm_scores" not in diagnostic_batch.batch.keys():
+            diagnostic_reward = self._compute_reward_colocate(diagnostic_batch)
+            diagnostic_batch = diagnostic_batch.union(diagnostic_reward)
+        reward_tensor, _ = extract_reward(diagnostic_batch)
+        self._add_dual_rollout_source_metrics(metrics, source, diagnostic_batch, reward_tensor)
+
+    def _generate_training_rollouts(
+        self,
+        gen_batch: DataProto,
+        prompt_batch_size: int,
+        metrics: dict[str, Any],
+    ) -> tuple[str, DataProto, dict[str, DataProto]]:
+        if self._joint_rollout_config["enabled"]:
+            gen_batch_outputs_by_source = {}
+            try:
+                for rollout_source in self._joint_rollout_config["sources"]:
+                    print(
+                        f"[dual_rollout] step={self.global_steps} source={rollout_source} "
+                        f"prompt_batch={prompt_batch_size} rollout_n={self.config.actor_rollout_ref.rollout.n}",
+                        flush=True,
+                    )
+                    self._set_joint_rollout_source(rollout_source)
+                    source_gen_batch = gen_batch.repeat(
+                        repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True
+                    )
+                    source_output = self.async_rollout_manager.generate_sequences(source_gen_batch)
+                    self.checkpoint_manager.sleep_replicas()
+                    gen_batch_outputs_by_source[rollout_source] = source_output
+            finally:
+                self._set_joint_rollout_source("fused")
+
+            selected_source, gen_batch_output = select_joint_rollout_output(
+                gen_batch_outputs_by_source, self._joint_rollout_config
+            )
+            metrics["dual_rollout/selected_source"] = JOINT_ROLLOUT_SOURCE_TO_ID[selected_source]
+            metrics["dual_rollout/source_count"] = len(self._joint_rollout_config["sources"])
+            metrics["dual_rollout/prompt_batch_size"] = prompt_batch_size
+            print(
+                f"[dual_rollout] selected_source={selected_source} restored_source=fused",
+                flush=True,
+            )
+            return selected_source, gen_batch_output, gen_batch_outputs_by_source
+
+        gen_batch_output = gen_batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True)
+        gen_batch_output = self.async_rollout_manager.generate_sequences(gen_batch_output)
+        self.checkpoint_manager.sleep_replicas()
+        return "fused", gen_batch_output, {"fused": gen_batch_output}
+
     def _update_actor(self, batch: DataProto) -> DataProto:
         rollout_config = self.config.actor_rollout_ref.rollout
         batch.meta_info["multi_turn"] = rollout_config.multi_turn.enable
@@ -1797,14 +1972,12 @@ class RayPPOTrainer:
                 batch.non_tensor_batch["uid"] = np.array(
                     [str(uuid.uuid4()) for _ in range(len(batch.batch))], dtype=object
                 )
+                prompt_batch_size = len(batch.non_tensor_batch["uid"])
 
                 gen_batch = self._get_gen_batch(batch)
 
                 # pass global_steps to trace
                 gen_batch.meta_info["global_steps"] = self.global_steps
-                gen_batch_output = gen_batch.repeat(
-                    repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True
-                )
 
                 is_last_step = self.global_steps >= self.total_training_steps
                 with marked_timer("step", timing_raw):
@@ -1812,8 +1985,15 @@ class RayPPOTrainer:
                     with marked_timer("gen", timing_raw, color="red"):
                         if curr_step_profile:
                             self.async_rollout_manager.start_profile()
-                        gen_batch_output = self.async_rollout_manager.generate_sequences(gen_batch_output)
-                        self.checkpoint_manager.sleep_replicas()
+                        selected_source, gen_batch_output, gen_batch_outputs_by_source = (
+                            self._generate_training_rollouts(gen_batch, prompt_batch_size, metrics)
+                        )
+                        if self._joint_rollout_config["enabled"]:
+                            for rollout_source, source_output in gen_batch_outputs_by_source.items():
+                                if rollout_source != selected_source:
+                                    self._score_dual_rollout_diagnostic_source(
+                                        batch, source_output, rollout_source, metrics
+                                    )
                         if curr_step_profile:
                             self.async_rollout_manager.stop_profile()
 
@@ -1878,6 +2058,9 @@ class RayPPOTrainer:
 
                         # extract reward_tensor and reward_extra_infos_dict for training
                         reward_tensor, reward_extra_infos_dict = extract_reward(batch)
+                        if self._joint_rollout_config["enabled"]:
+                            selected_source = self._joint_rollout_config["select"]
+                            self._add_dual_rollout_source_metrics(metrics, selected_source, batch, reward_tensor)
 
                     # Operating Mode Selection:
                     # - Bypass mode: Sets old_log_probs = rollout_log_probs (2 policies: π_rollout, π_θ)
@@ -1972,6 +2155,9 @@ class RayPPOTrainer:
                             batch, is_metrics = compute_rollout_correction_and_add_to_batch(batch, rollout_corr_config)
                             # IS and off-policy metrics already have rollout_corr/ prefix
                             metrics.update(is_metrics)
+                            if self._joint_rollout_config["enabled"] and "rollout_is_weights" in batch.batch:
+                                batch.batch.pop("rollout_is_weights")
+                                metrics["dual_rollout/rollout_is_loss_weight_applied"] = 0
 
                         # compute advantages, executed on the driver process
                         norm_adv_by_std_in_grpo = self.config.algorithm.get(

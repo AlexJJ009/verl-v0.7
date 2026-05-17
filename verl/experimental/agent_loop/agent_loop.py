@@ -1000,6 +1000,10 @@ class AgentLoopManager:
         """Clear all rollout kv cache, but don`t sleep."""
         self._run_all([replica.clear_kv_cache() for replica in self.rollout_replicas])
 
+    def set_joint_rollout_source(self, source: str):
+        """Switch source policy for joint-model rollout generation."""
+        self._run_all([replica.set_joint_rollout_source(source) for replica in self.rollout_replicas])
+
     def start_profile(self, **kwargs):
         """Start profiling on all rollout replicas."""
         self._run_all([replica.start_profile(**kwargs) for replica in self.rollout_replicas])

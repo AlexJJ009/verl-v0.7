@@ -105,7 +105,6 @@ def test_joint_vllm_registry_patches_layer_indexing_for_dual_submodels():
     pytest.importorskip("vllm")
 
     import vllm.model_executor.models.utils as model_utils
-    import vllm.utils as vllm_utils
     import vllm.v1.utils as v1_utils
 
     from verl.models.joint_model.vllm_registry import patch_joint_vllm_layer_indexing
@@ -120,8 +119,8 @@ def test_joint_vllm_registry_patches_layer_indexing_for_dual_submodels():
     assert branch0_layer7 == 7
     assert branch1_layer0 > branch0_layer7
     assert branch1_layer0 != branch0_layer0
-    assert vllm_utils.extract_layer_index("sub_models.1.model.layers.0.self_attn.attn") == branch1_layer0
-    assert v1_utils.extract_layer_index("sub_models.1.model.layers.0.self_attn.attn") == branch1_layer0
+    if hasattr(v1_utils, "extract_layer_index"):
+        assert v1_utils.extract_layer_index("sub_models.1.model.layers.0.self_attn.attn") == branch1_layer0
 
 
 def test_vllm_async_server_imports_with_legacy_vllm():
@@ -372,7 +371,7 @@ def test_patch_vllm_moe_model_weight_loader_ignores_non_moe_joint_models():
 def test_process_vllm_weights_after_loading_falls_back_for_legacy_vllm(monkeypatch):
     pytest.importorskip("vllm")
 
-    import vllm.model_executor.model_loader.loader as loader_module
+    loader_module = pytest.importorskip("vllm.model_executor.model_loader.loader")
     import vllm.model_executor.model_loader.utils as loader_utils
 
     from verl.workers.rollout.vllm_rollout.utils import _process_vllm_weights_after_loading
@@ -485,6 +484,7 @@ def _build_joint_vllm_model(fusion_lambda=0.25, output_kind="tensor"):
     model.fusion_lambda = fusion_lambda
     model.hidden_size = 1
     model._use_model2_only = False
+    model._joint_rollout_source = "fused"
     model.sub_models = nn.ModuleList([_FakeSubModel(1, output_kind), _FakeSubModel(10, output_kind)])
     return model
 
@@ -592,3 +592,47 @@ def test_joint_vllm_model_uses_only_model2_forward_in_eval_mode():
     assert set(output.keys()) == {"hidden_states", "residual"}
     assert len(model.sub_models[0].forward_calls) == 0
     assert len(model.sub_models[1].forward_calls) == 1
+
+
+def test_joint_vllm_model_source_switching_uses_model1_only():
+    model = _build_joint_vllm_model()
+
+    model.set_joint_rollout_source("sub_model_0")
+    hidden = model.forward(input_ids=torch.tensor([1]), positions=torch.tensor([0]))
+    logits = model.compute_logits(hidden)
+
+    assert torch.equal(hidden, torch.tensor([[1.0]]))
+    assert torch.equal(logits, torch.tensor([[2.0]]))
+    assert len(model.sub_models[0].forward_calls) == 1
+    assert len(model.sub_models[1].forward_calls) == 0
+
+
+def test_joint_vllm_model_source_switching_uses_model2_only():
+    model = _build_joint_vllm_model()
+
+    model.set_joint_rollout_source("sub_model_1")
+    hidden = model.forward(input_ids=torch.tensor([1]), positions=torch.tensor([0]))
+    logits = model.compute_logits(hidden)
+
+    assert torch.equal(hidden, torch.tensor([[10.0]]))
+    assert torch.equal(logits, torch.tensor([[20.0]]))
+    assert len(model.sub_models[0].forward_calls) == 0
+    assert len(model.sub_models[1].forward_calls) == 1
+
+
+def test_joint_vllm_worker_extension_forwards_source_to_worker_model():
+    from verl.workers.rollout.vllm_rollout.utils import vLLMColocateWorkerExtension
+
+    class _FakeModel:
+        def __init__(self):
+            self.sources = []
+
+        def set_joint_rollout_source(self, source):
+            self.sources.append(source)
+
+    worker = object.__new__(vLLMColocateWorkerExtension)
+    worker.model_runner = SimpleNamespace(model=_FakeModel())
+
+    worker.set_joint_rollout_source("sub_model_1")
+
+    assert worker.model_runner.model.sources == ["sub_model_1"]

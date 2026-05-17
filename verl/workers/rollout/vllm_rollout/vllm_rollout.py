@@ -150,6 +150,10 @@ class ServerAdapter(BaseRollout):
         if self.config.free_cache_engine:
             await self._execute_method("sleep", kwargs={"level": self.sleep_level})
 
+    async def set_joint_rollout_source(self, source: str):
+        """Switch source policy for joint-model rollout generation."""
+        await self._execute_method("set_joint_rollout_source", kwargs={"source": source})
+
     @torch.no_grad()
     async def update_weights(self, weights: Generator[tuple[str, torch.Tensor], None, None], **kwargs):
         """Update model weights via CUDA IPC (fallback to shared memory if IPC not supported) to inference workers."""

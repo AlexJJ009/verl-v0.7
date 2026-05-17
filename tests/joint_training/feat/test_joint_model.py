@@ -161,6 +161,51 @@ class TestQwenJointForwardPass:
             expected = 0.7 * out0.logits + 0.3 * out1.logits
             torch.testing.assert_close(fused.logits, expected, rtol=1e-4, atol=1e-4)
 
+    def test_rollout_source_sub_model_0_uses_only_model1_logits(self):
+        """sub_model_0 rollout source should bypass model2 logits."""
+        model = _make_joint_model(fusion_lambda=0.3)
+        model.eval()
+        input_ids = torch.randint(0, 1000, (1, 4))
+        attention_mask = torch.ones(1, 4, dtype=torch.long)
+
+        with torch.no_grad():
+            out0 = model.sub_models[0](input_ids=input_ids, attention_mask=attention_mask)
+            model.set_joint_rollout_source("sub_model_0")
+            selected = model(input_ids=input_ids, attention_mask=attention_mask)
+
+        torch.testing.assert_close(selected.logits, out0.logits, rtol=1e-4, atol=1e-4)
+
+    def test_rollout_source_sub_model_1_uses_only_model2_logits(self):
+        """sub_model_1 rollout source should bypass model1 logits."""
+        model = _make_joint_model(fusion_lambda=0.3)
+        model.eval()
+        input_ids = torch.randint(0, 1000, (1, 4))
+        attention_mask = torch.ones(1, 4, dtype=torch.long)
+
+        with torch.no_grad():
+            out1 = model.sub_models[1](input_ids=input_ids, attention_mask=attention_mask)
+            model.set_joint_rollout_source("sub_model_1")
+            selected = model(input_ids=input_ids, attention_mask=attention_mask)
+
+        torch.testing.assert_close(selected.logits, out1.logits, rtol=1e-4, atol=1e-4)
+
+    def test_rollout_source_restores_fused_logits(self):
+        """Switching back to fused should restore weighted-fusion semantics."""
+        model = _make_joint_model(fusion_lambda=0.3)
+        model.eval()
+        input_ids = torch.randint(0, 1000, (1, 4))
+        attention_mask = torch.ones(1, 4, dtype=torch.long)
+
+        with torch.no_grad():
+            out0 = model.sub_models[0](input_ids=input_ids, attention_mask=attention_mask)
+            out1 = model.sub_models[1](input_ids=input_ids, attention_mask=attention_mask)
+            model.set_joint_rollout_source("sub_model_1")
+            model.set_joint_rollout_source("fused")
+            fused = model(input_ids=input_ids, attention_mask=attention_mask)
+
+        expected = 0.7 * out0.logits + 0.3 * out1.logits
+        torch.testing.assert_close(fused.logits, expected, rtol=1e-4, atol=1e-4)
+
     def test_forward_with_labels_returns_loss(self, model_and_inputs):
         """When labels are provided, forward should return a loss."""
         model, input_ids, attention_mask = model_and_inputs
