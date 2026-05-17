@@ -1,6 +1,6 @@
 # Dual-Submodel Rollout WDL-SFT — Plan and Open Decisions
 
-- Status: **IMPLEMENTATION IN PROGRESS — pre-smoke code and targeted tests complete**
+- Status: **IMPLEMENTED — targeted tests and 3A/3B GPU smoke complete**
 - Created: 2026-04-27
 - Base branch: `feature/on-policy-wdl-sft`
 - Planned working branch: `feature/on-policy-wdl-sft-dual-rollout`
@@ -451,6 +451,27 @@ docker run --rm --gpus all --ipc=host \
 ```
 
 Result: `74 passed, 4 skipped, 7 warnings in 48.62s`.
+
+GPU smoke result as of 2026-05-17 16:20 CST:
+
+- 3A PASS:
+  - tmux session: `dual3a_smoke2`.
+  - Script: `recipe/on_policy_wdl_sft/dual_submodel_rollout/run_3a_model2_rollout_beta0.sh`.
+  - Log: `recipe/on_policy_wdl_sft/dual_submodel_rollout/WDL-SFT-Qwen3-4B-MATH-3A-DUAL-M2-BETA0-SMOKE2_1779005075.log`.
+  - Metrics: `recipe/on_policy_wdl_sft/dual_submodel_rollout/metrics/OnPolicyWDLSFT/WDL-SFT-Qwen3-4B-MATH-3A-DUAL-M2-BETA0-SMOKE2_1779005075.jsonl`.
+  - Evidence: vLLM launched through the joint rollout worker extension, `sub_model_0` and `sub_model_1` both generated with `prompt_batch=2`, `selected_source=sub_model_1`, rollout source restored to `fused`, `Training Progress: 100% 1/1`.
+  - Metrics include `dual_rollout/source_count=2`, `dual_rollout/selected_source=1`, `model1_response_count=16`, `model2_response_count=16`, `timing_s/update_actor=3.2038`, `timing_s/save_checkpoint=14.9391`, `timing_s/update_weights=3.7873`, `training/global_step=1`, `actor/wdl_sft_beta=0.0`.
+- 3B PASS:
+  - tmux session: `dual3b_smoke2`.
+  - Script: `recipe/on_policy_wdl_sft/dual_submodel_rollout/run_3b_model2_rollout_beta01.sh`.
+  - Log: `recipe/on_policy_wdl_sft/dual_submodel_rollout/WDL-SFT-Qwen3-4B-MATH-3B-DUAL-M2-BETA01-SMOKE2_1779005566.log`.
+  - Metrics: `recipe/on_policy_wdl_sft/dual_submodel_rollout/metrics/OnPolicyWDLSFT/WDL-SFT-Qwen3-4B-MATH-3B-DUAL-M2-BETA01-SMOKE2_1779005566.jsonl`.
+  - Evidence: wrapper and Hydra command set `wdl_sft_beta=0.1`, config validation passed, vLLM launched through the joint rollout worker extension, both rollout sources generated, selected `sub_model_1`, `Training Progress: 100% 1/1`.
+  - Metrics include `actor/wdl_sft_beta=0.1`, `actor/pg_loss=-40.1905`, `actor/grad_norm=84.5590`, `timing_s/update_actor=3.1565`, `timing_s/save_checkpoint=14.6132`, `timing_s/update_weights=3.8364`, `training/global_step=1`.
+- Smoke environment deviations:
+  - The default strong model path `/data-1/.cache/Qwen3-4B-Base-SFT-stage-1` was missing on this host, so both smokes used same-architecture override `MODEL2_PATH=/data-1/.cache/Qwen3-4B-Base-Code-WDL-M1/checkpoint-39`.
+  - `/data-1/checkpoints` did not have enough free space for a full FSDP checkpoint. After a first 3A save failure due storage exhaustion, passing smokes used `/dev/shm` for checkpoint, Ray tmp, process tmp, vLLM config, and W&B offline dirs while keeping the real Docker/GPU/vLLM/FlashInfer path.
+  - Both passing logs ended with ignored W&B/torchdata atexit cleanup tracebacks after `Training Progress: 100%`; metrics and checkpoint trackers were already written. Reviewer accepted this as non-blocking cleanup noise.
 
 ## 9. Confirmed Decisions and Remaining Naming Question
 

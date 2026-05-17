@@ -1,19 +1,20 @@
 # Dual-Submodel Rollout WDL-SFT Implementation Status
 
-Last updated: 2026-05-17 15:50 CST
+Last updated: 2026-05-17 16:25 CST
 
 ## Branch / Commit
 
 - Branch: `feature/on-policy-wdl-sft-dual-rollout`
 - Base commit at branch creation: `162bd36d`
 - Latest implementation commit: `7675d8b1` (`Implement dual-submodel rollout WDL-SFT`)
+- Latest status/docs commit before smoke: `83eac12a` (`Update dual rollout implementation status`)
 - Recipe submodule base commit: `3895e74`
 - Recipe implementation commit: `13c540f` (`Add dual-submodel rollout WDL-SFT recipe`)
 
 ## Current Milestone
 
-- Pre-smoke implementation and unit/reviewer gates complete.
-- Next: create scoped commits, then run real GPU smoke for 3A and 3B inside Docker/tmux.
+- Implementation, targeted tests, 3A/3B real GPU smoke, and final reviewer gates are complete.
+- Next: commit this final documentation/status update.
 
 ## Completed Milestones
 
@@ -28,6 +29,7 @@ Last updated: 2026-05-17 15:50 CST
 - Committed recipe submodule changes as `13c540f`.
 - Committed parent implementation as `7675d8b1`.
 - Added targeted unit tests for config validation, source switching, trainer dual/no-dual generation behavior, recipe script checks, and existing WDL-SFT-IS label/beta regressions.
+- Ran 3A and 3B real GPU smoke in Docker/tmux with vLLM and FlashInfer.
 
 ## Intentionally Changed Files
 
@@ -80,8 +82,29 @@ These must not be staged or committed unless they become intentional task files.
 
 ## GPU Smoke
 
-- 3A: not run.
-- 3B: not run.
+- Shared smoke setup:
+  - Docker image: `verl-harness`.
+  - GPU path: `docker run --rm --gpus all --ipc=host -v /data-1/verl07/verl:/workspace/verl -v /data-1:/data-1 verl-harness ...`.
+  - Default strong model path `/data-1/.cache/Qwen3-4B-Base-SFT-stage-1` was absent on this host, so smoke used same-architecture override `MODEL2_PATH=/data-1/.cache/Qwen3-4B-Base-Code-WDL-M1/checkpoint-39`.
+  - First 3A attempt wrote to `/data-1/checkpoints` and failed at checkpoint save because `/data-1` reached 0 GiB free. The generated partial smoke checkpoint was deleted, and both passing smokes used `/dev/shm` for `BASE_CKPT_DIR`, `RAY_TMPDIR`, `TMPDIR`, `VLLM_CONFIG_ROOT`, and `WANDB_DIR`.
+  - `VAL_BEFORE_TRAIN=False`, `TEST_FREQ=-1`, `SAVE_FREQ=1`, `TOTAL_TRAINING_STEPS=1`, `TRAIN_PROMPT_BSZ=2`, `TRAIN_PROMPT_MINI_BSZ=1`, `ROLLOUT_AGENT_NUM_WORKERS=1`.
+- 3A: PASS.
+  - Session: `dual3a_smoke2`.
+  - Script: `recipe/on_policy_wdl_sft/dual_submodel_rollout/run_3a_model2_rollout_beta0.sh`.
+  - Log: `recipe/on_policy_wdl_sft/dual_submodel_rollout/WDL-SFT-Qwen3-4B-MATH-3A-DUAL-M2-BETA0-SMOKE2_1779005075.log`.
+  - Metrics: `recipe/on_policy_wdl_sft/dual_submodel_rollout/metrics/OnPolicyWDLSFT/WDL-SFT-Qwen3-4B-MATH-3A-DUAL-M2-BETA0-SMOKE2_1779005075.jsonl`.
+  - Evidence: `sub_model_0` and `sub_model_1` both generated with `prompt_batch=2`, selected `sub_model_1`, restored `fused`, reached `Training Progress: 100% 1/1`.
+  - Metrics evidence: `dual_rollout/source_count=2`, `dual_rollout/selected_source=1`, `model1_response_count=16`, `model2_response_count=16`, `timing_s/update_actor=3.2038`, `timing_s/save_checkpoint=14.9391`, `timing_s/update_weights=3.7873`, `training/global_step=1`, `actor/wdl_sft_beta=0.0`.
+  - Checkpoint evidence: `/dev/shm/.../latest_checkpointed_iteration.txt` contained `1`; `global_step_1/actor` had model/optimizer/extra-state files for ranks 0-7.
+- 3B: PASS.
+  - Session: `dual3b_smoke2`.
+  - Script: `recipe/on_policy_wdl_sft/dual_submodel_rollout/run_3b_model2_rollout_beta01.sh`.
+  - Log: `recipe/on_policy_wdl_sft/dual_submodel_rollout/WDL-SFT-Qwen3-4B-MATH-3B-DUAL-M2-BETA01-SMOKE2_1779005566.log`.
+  - Metrics: `recipe/on_policy_wdl_sft/dual_submodel_rollout/metrics/OnPolicyWDLSFT/WDL-SFT-Qwen3-4B-MATH-3B-DUAL-M2-BETA01-SMOKE2_1779005566.jsonl`.
+  - Evidence: wrapper and Hydra command set `WDL_SFT_BETA=0.1` / `wdl_sft_beta=0.1`; config validation passed; `sub_model_0` and `sub_model_1` both generated; selected `sub_model_1`; reached `Training Progress: 100% 1/1`.
+  - Metrics evidence: `actor/wdl_sft_beta=0.1`, `actor/pg_loss=-40.1905`, `actor/grad_norm=84.5590`, `jointTraining/model1_grad_norm=52.7146`, `jointTraining/model2_grad_norm=51.9937`, `timing_s/update_actor=3.1565`, `timing_s/save_checkpoint=14.6132`, `timing_s/update_weights=3.8364`, `training/global_step=1`.
+  - Checkpoint evidence: `/dev/shm/.../latest_checkpointed_iteration.txt` contained `1`; `global_step_1/actor` had model/optimizer/extra-state files for ranks 0-7.
+- Both smokes ended with ignored W&B/torchdata atexit cleanup tracebacks after `Training Progress: 100%`; reviewer accepted these as non-blocking cleanup noise because metrics and checkpoints were already written and there was no `Error executing job` / `RayTaskError` in the relevant failure path.
 
 ## Reviewer Gates
 
@@ -92,15 +115,15 @@ These must not be staged or committed unless they become intentional task files.
 - 10.5 Metrics and diagnostics: PASS.
 - 10.6 Recipe/scripts and portable launch behavior: PASS.
 - 10.7 Unit tests and backward-compatibility tests: initial FAIL because trainer flow/no-config path were only helper-tested; fixed by adding mocked `_generate_training_rollouts(...)` tests. Follow-up reviewer verdict: PASS.
-- 10.8 3A GPU smoke: pending.
-- 10.9 3B GPU smoke: pending.
-- 10.10 Final documentation/status update: pending.
+- 10.8 3A GPU smoke: PASS. Reviewer caveats: same-architecture model2 override due missing default path; checkpoint/temp dirs under `/dev/shm` because `/data-1` was full; ignored W&B/torchdata atexit exceptions after successful completion.
+- 10.9 3B GPU smoke: PASS. Reviewer caveats: same environment deviations as 3A; reviewer could not live-inspect `/dev/shm` after the fact, but accepted captured checkpoint evidence plus log/metric save timing.
+- 10.10 Final documentation/status update: PASS. Reviewer caveat: final docs were still uncommitted at review time; remaining action is a scoped commit containing only intended doc updates.
 
 ## Open Blockers / Decisions
 
-- Need create scoped commits in the recipe submodule and parent repo without staging pre-existing dirty files.
-- Need run 3A/3B real GPU smoke in Docker/tmux.
+- Do not stage pre-existing dirty files: `.codex/config.toml`, `docs/joint_training/plans/active/ablation_single_model.md`, `docs/joint_training/plans/active/wdl_sft_is.md`, `.claude/skills/experiment-registry`, `docs/joint_training/plans/active/dual_submodel_rollout_wdl_sft_goal.md`, or `recipe/on_policy_wdl_sft/EXPERIMENT_INDEX.md`.
+- Temporary smoke checkpoints under `/dev/shm/dual_rollout_smoke_checkpoints` should be deleted after final evidence is recorded if no further inspection is needed.
 
 ## Next Concrete Action
 
-- Commit pre-smoke implementation, then launch 3A GPU smoke.
+- Commit final documentation/status update.
