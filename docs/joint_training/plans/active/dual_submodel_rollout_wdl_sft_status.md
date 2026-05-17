@@ -10,9 +10,11 @@ Last updated: 2026-05-17 16:27 CST
 - Latest status/docs commit before smoke: `83eac12a` (`Update dual rollout implementation status`)
 - Latest smoke/status docs commit: `8dc71fd2` (`Update dual rollout smoke status`)
 - Final status cleanup commit: `0161e73b` (`Update dual rollout final status`)
-- Final plan/status checklist cleanup: see current branch `HEAD` for the containing commit after this file is committed.
+- Final plan/status checklist cleanup commit: `152a506f` (`Align dual rollout completion docs`)
+- Launch hardening commit: `6bba3f9f` (`Harden dual rollout launch checks`)
 - Recipe submodule base commit: `3895e74`
 - Recipe implementation commit: `13c540f` (`Add dual-submodel rollout WDL-SFT recipe`)
+- Recipe launch hardening commit: `4682b8c` (`Harden dual rollout launch defaults`)
 
 ## Current Milestone
 
@@ -31,6 +33,7 @@ Last updated: 2026-05-17 16:27 CST
 - Added recipe folder `recipe/on_policy_wdl_sft/dual_submodel_rollout/` with 3A/3B wrappers and shared launch script.
 - Committed recipe submodule changes as `13c540f`.
 - Committed parent implementation as `7675d8b1`.
+- Hardened 3A/3B launch defaults: `REPO_ROOT` and `DATA_ROOT` are externally overridable, checkpoint free-space fail-fast default is 160 GiB, and checkpoint retention defaults to latest plus best.
 - Added targeted unit tests for config validation, source switching, trainer dual/no-dual generation behavior, recipe script checks, and existing WDL-SFT-IS label/beta regressions.
 - Ran 3A and 3B real GPU smoke in Docker/tmux with vLLM and FlashInfer.
 
@@ -126,7 +129,8 @@ These must not be staged or committed unless they become intentional task files.
 
 - Do not stage pre-existing dirty files: `.codex/config.toml`, `docs/joint_training/plans/active/ablation_single_model.md`, `docs/joint_training/plans/active/wdl_sft_is.md`, `.claude/skills/experiment-registry`, `docs/joint_training/plans/active/dual_submodel_rollout_wdl_sft_goal.md`, or `recipe/on_policy_wdl_sft/EXPERIMENT_INDEX.md`.
 - Temporary smoke checkpoints under `/dev/shm/dual_rollout_smoke_checkpoints` are already absent as of the final live check.
+- `/data-1` currently has only about 46 GiB free, so the hardened 3A/3B launch scripts will fail fast for a real training run unless `BASE_CKPT_DIR` points to a mount with at least the configured `MIN_FREE_GB_FOR_CKPT` or space is freed.
 
 ## Next Concrete Action
 
-- Report final completion to the user.
+- Report current script/config/storage/database status to the user.
