@@ -6,7 +6,7 @@ Last updated: 2026-05-17 15:50 CST
 
 - Branch: `feature/on-policy-wdl-sft-dual-rollout`
 - Base commit at branch creation: `162bd36d`
-- Latest implementation commit: pending parent commit
+- Latest implementation commit: `7675d8b1` (`Implement dual-submodel rollout WDL-SFT`)
 - Recipe submodule base commit: `3895e74`
 - Recipe implementation commit: `13c540f` (`Add dual-submodel rollout WDL-SFT recipe`)
 
@@ -26,6 +26,7 @@ Last updated: 2026-05-17 15:50 CST
 - Added required dual rollout metrics and disabled `rollout_is_weights` loss multiplication by default for dual rollout.
 - Added recipe folder `recipe/on_policy_wdl_sft/dual_submodel_rollout/` with 3A/3B wrappers and shared launch script.
 - Committed recipe submodule changes as `13c540f`.
+- Committed parent implementation as `7675d8b1`.
 - Added targeted unit tests for config validation, source switching, trainer dual/no-dual generation behavior, recipe script checks, and existing WDL-SFT-IS label/beta regressions.
 
 ## Intentionally Changed Files
