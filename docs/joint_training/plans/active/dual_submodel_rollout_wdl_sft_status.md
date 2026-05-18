@@ -1,6 +1,6 @@
 # Dual-Submodel Rollout WDL-SFT Implementation Status
 
-Last updated: 2026-05-17 16:27 CST
+Last updated: 2026-05-18 20:20 CST
 
 ## Branch / Commit
 
@@ -19,7 +19,9 @@ Last updated: 2026-05-17 16:27 CST
 ## Current Milestone
 
 - Implementation, targeted tests, 3A/3B real GPU smoke, final reviewer gates, final documentation update, and temporary smoke-checkpoint cleanup check are complete.
-- Next: final completion report to the user.
+- A real 3A training run exposed a method-level failure: selected model2-only rollout trajectories are trained under fused joint logits, causing a large off-policy distribution gap, very large model2 gradients, output corruption, and MATH-500 validation collapse.
+- Detailed failure analysis is recorded in `docs/joint_training/plans/active/dual_submodel_rollout_wdl_sft_3a_failure_analysis.md`.
+- Decision: stop the current 3A run and treat this branch's algorithm as a negative result / off-policy ablation, not as the main on-policy WDL-SFT path.
 
 ## Completed Milestones
 
@@ -130,7 +132,13 @@ These must not be staged or committed unless they become intentional task files.
 - Do not stage pre-existing dirty files: `.codex/config.toml`, `docs/joint_training/plans/active/ablation_single_model.md`, `docs/joint_training/plans/active/wdl_sft_is.md`, `.claude/skills/experiment-registry`, `docs/joint_training/plans/active/dual_submodel_rollout_wdl_sft_goal.md`, or `recipe/on_policy_wdl_sft/EXPERIMENT_INDEX.md`.
 - Temporary smoke checkpoints under `/dev/shm/dual_rollout_smoke_checkpoints` are already absent as of the final live check.
 - `/data-1` currently has only about 46 GiB free, so the hardened 3A/3B launch scripts will fail fast for a real training run unless `BASE_CKPT_DIR` points to a mount with at least the configured `MIN_FREE_GB_FOR_CKPT` or space is freed.
+- 3A real run `WDL-SFT-Qwen3-4B-MATH-3A-DUAL-M2-BETA0_1779027403` should not be continued as a candidate checkpoint-producing run. Evidence:
+  - validation is model2-only, so collapse is not a fused-eval artifact;
+  - MATH-500 `acc/mean@3` moved from about `0.5968` at step 0 to `0.3448` at step 25 and `0.0390` at step 50;
+  - validation output `weird_frac` moved from `0.151` at step 0 to `0.997` at step 50;
+  - step 65 showed `jointTraining/model2_grad_norm=13288.8`, `actor/grad_norm=13339.8`, `model2_response_len_mean=3986.5`, and `response_length/clip_ratio=0.9180`.
+- Mainline recommendation after this negative result: return to the previous fused-rollout/fused-training method and tune label quality within that on-policy distribution.
 
 ## Next Concrete Action
 
-- Report current script/config/storage/database status to the user.
+- Stop the current 3A training process, preserve logs/metrics/validation dumps, and switch back to the previous branch for follow-up work.
