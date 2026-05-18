@@ -32,10 +32,10 @@ export HOPE_IMAGE='registry-offlinebiz.sankuai.com/.../verl-...:tag'
 export LGX='/mnt/dolphinfs/ssd_pool/docker/user/hadoop-ai-search/<you>/lgx'
 export REPO_SUBPATH='<subpath under $LGX where you cloned verl>'
 
-# 4) Submit the joint trio (1A, 1B, 1C) one at a time:
+# 4) Submit the joint A/B reruns one at a time:
 ./submit_batch.sh
 
-# Or submit every LABELFIX rerun (joint + ablation):
+# Or submit every prepared LABELFIX rerun (joint A/B + ablation):
 ./submit_batch.sh --all
 
 # Or just one:
@@ -53,13 +53,14 @@ SMOKE=1 ./submit_batch.sh 1a
 ```
 
 `SMOKE=1` makes `jupyter.sh` set `TOTAL_TRAINING_STEPS=10`, `SAVE_FREQ=5`,
-`TEST_FREQ=5`. Use this once on `1a` to confirm the dispatch chain, image,
-and dolphinfs paths are wired correctly before launching real runs.
+`TEST_FREQ=5`, and `VAL_N=1`. Use this once on `1a` to confirm the dispatch
+chain, image, and dolphinfs paths are wired correctly before launching real
+runs.
 
 ### Inspect without submitting
 
 ```bash
-./submit_batch.sh --dry-run 1a 1b 1c
+./submit_batch.sh --dry-run 1a 1b
 ```
 
 Prints the rendered `run.hope` for each experiment and exits — does not call
@@ -82,9 +83,9 @@ submit if any `REPLACE_ME` placeholder remains.
 
 | EXPERIMENT | Family | Init / model | Loss | β | lr | LABELFIX rerun? | Notes |
 |---|---|---|---|---|---|---|---|
-| `1a` | joint | Base + SFT-stage-1 | `wdl_sft_is` | 0.0 | 5e-7 | yes | Writes `WDL-SFT-Qwen3-4B-MATH-1A-LABELFIX_*` |
-| `1b` | joint | Base + SFT-stage-1 | `wdl_sft_is` | 0.1 | 5e-7 | yes | Writes `WDL-SFT-Qwen3-4B-MATH-1B-LABELFIX_*` |
-| `1c` | joint | Base + SFT-stage-1 | `wdl_sft_is` | 0.0 | 1e-6 | yes | Writes `WDL-SFT-Qwen3-4B-MATH-1C-LABELFIX_*` |
+| `1a` | joint | Base + SFT-stage-1 | `wdl_sft_is` | 0.0 | 5e-7 | yes | Writes `WDL-SFT-Qwen3-4B-MATH-1A-LABELFIX_*`; full run defaults to `VAL_N=3` |
+| `1b` | joint | Base + SFT-stage-1 | `wdl_sft_is` | 0.1 | 5e-7 | yes | Writes `WDL-SFT-Qwen3-4B-MATH-1B-LABELFIX_*`; full run defaults to `VAL_N=3` |
+| `1c` | joint | Base + SFT-stage-1 | `wdl_sft_is` | 0.0 | 1e-6 | no | Legacy script is still dispatchable explicitly; not included in prepared LABELFIX A/B reruns |
 | `2a-base` | single | Qwen3-4B-Base | `wdl_sft_is` | 0.0 | 5e-7 | yes | `WDL-SFT-Qwen3-4B-MATH-2A-BASE-LABELFIX_*` |
 | `2a-sft` | single | Qwen3-4B-Base-SFT-stage-1 | `wdl_sft_is` | 0.0 | 5e-7 | yes | `WDL-SFT-Qwen3-4B-MATH-2A-SFT-LABELFIX_*` |
 | `2b-base` | single | Qwen3-4B-Base | `wdl_sft_is` | 0.1 | 5e-7 | yes | `WDL-SFT-Qwen3-4B-MATH-2B-BASE-LABELFIX_*` |
@@ -119,7 +120,7 @@ The 1X joint run also auto-prepares the joint model under
 
 ## LABELFIX guarantee
 
-The 1A/1B/1C run scripts default `RUN_PREFIX=...-LABELFIX`. The auto-resume
+The prepared 1A/1B run scripts default `RUN_PREFIX=...-LABELFIX`. The auto-resume
 logic searches `$BASE_CKPT_DIR` for `${RUN_PREFIX}_*` — so even if old
 `WDL-SFT-Qwen3-4B-MATH-1A_*` checkpoints from the pre-fix runs are still on
 dolphinfs, they will not match and will not be resumed.

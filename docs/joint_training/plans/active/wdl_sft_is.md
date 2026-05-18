@@ -1,10 +1,10 @@
 # WDL-SFT-IS：给 On-Policy WDL-SFT 补齐稳定性机制
 
-- 状态：**ACTIVE — 1a/1b 训练完成，1c 运行中，offline eval 待跑**
+- 状态：**ACTIVE — post-fix rerun matrix still open; pre-fix 1A/1B/1C are historical and should not be treated as current live runs**
 - 分支：`feature/on-policy-wdl-sft`（不新开分支，本算法仍是 WDL-SFT 家族）
 - 创建日期：2026-04-19
 - 前置：
-  - `on_policy_wdl_sft.md`（原方案，本文档称为 **WDL-SFT v1**）
+  - `completed/on_policy_wdl_sft_v1.md`（原方案，本文档称为 **WDL-SFT v1**）
   - `lr_search.md`（已归档到 `completed/`，结论：LR 搜索不是解药）
 
 ---
@@ -425,16 +425,20 @@ Use `platform/hope_on_policy_wdl_sft/` for both joint 1X and single-model 2X
 reruns. The only per-job field that should change is
 `afo.app.env.EXPERIMENT`.
 
-Status update (2026-04-27 local time): Meituan is temporarily unavailable, so
-the first post-fix rerun is running locally. All other rows remain not rerun
-under the `-LABELFIX` prefixes.
+Status update (2026-05-03 local time): the first post-fix rerun (`2a-base`)
+finished on the retired A800 before the 2026-04-30 shutdown. On the current
+L40S host, the checkpoint run dir is present at
+`/data-1/checkpoints/WDL-SFT-Qwen3-4B-MATH-2A-BASE-LABELFIX_1777346990/`, but
+the canonical training log / validation jsonls / extracted model weights were
+not found during the migration audit. All other rows remain not rerun under
+the `-LABELFIX` prefixes.
 
 | EXPERIMENT | Family | Init / model | Loss | β | lr | Rerun status | Rerun reason |
 |---|---|---|---|---|---|---|---|
 | `1a` | joint | Base + SFT-stage-1 | `wdl_sft_is` | 0.0 | 5e-7 | not started post-fix | pre-fix labels + Meituan/local joint gap |
 | `1b` | joint | Base + SFT-stage-1 | `wdl_sft_is` | 0.1 | 5e-7 | not started post-fix | pre-fix labels + Meituan/local joint gap |
 | `1c` | joint | Base + SFT-stage-1 | `wdl_sft_is` | 0.0 | 1e-6 | not started post-fix | pre-fix labels + Meituan/local joint gap |
-| `2a-base` | single | Qwen3-4B-Base | `wdl_sft_is` | 0.0 | 5e-7 | **running locally** as `WDL-SFT-Qwen3-4B-MATH-2A-BASE-LABELFIX_1777346990` | pre-fix labels |
+| `2a-base` | single | Qwen3-4B-Base | `wdl_sft_is` | 0.0 | 5e-7 | **training complete; migration audit partial** — checkpoint verified at `/data-1/checkpoints/WDL-SFT-Qwen3-4B-MATH-2A-BASE-LABELFIX_1777346990/global_step_300`, canonical log / validation / `/data-1/model_weights/` not found on 2026-05-03 audit | pre-fix labels |
 | `2a-sft` | single | Qwen3-4B-Base-SFT-stage-1 | `wdl_sft_is` | 0.0 | 5e-7 | not started post-fix | pre-fix labels |
 | `2b-base` | single | Qwen3-4B-Base | `wdl_sft_is` | 0.1 | 5e-7 | not started post-fix | pre-fix labels |
 | `2b-sft` | single | Qwen3-4B-Base-SFT-stage-1 | `wdl_sft_is` | 0.1 | 5e-7 | not started post-fix | pre-fix labels |
@@ -443,6 +447,52 @@ under the `-LABELFIX` prefixes.
 
 Optional unaffected baselines in the same unified entrypoint:
 `2z-base`, `2z-sft`, `2g-base`, `2g-sft`.
+
+### 9.9 Joint 1A/1B Post-Fix Launch Readiness
+
+Status update (2026-05-18 local time): no local checkpoint, local wandb run,
+local training log, or extracted model weight was found for
+`WDL-SFT-Qwen3-4B-MATH-1A-LABELFIX_*` or
+`WDL-SFT-Qwen3-4B-MATH-1B-LABELFIX_*`. Treat the post-fix joint 1A/1B
+experiments as **not yet run** on this host.
+
+The launch code is now organized as:
+
+```text
+recipe/on_policy_wdl_sft/
+├── _common_wdl_sft_is_joint.sh
+├── meituan/
+│   ├── env.sh
+│   └── jupyter.sh
+├── run_on_policy_wdl_sft_qwen3_4b_math_1a.sh
+└── run_on_policy_wdl_sft_qwen3_4b_math_1b.sh
+```
+
+The two `run_*.sh` files are thin wrappers. Shared training behavior lives in
+`_common_wdl_sft_is_joint.sh`, following the default-local-overridable-everything
+style used for Meituan portability.
+
+Default post-fix A/B settings:
+
+| Run | Script | β | lr | validation n | Checkpoint retention |
+|---|---|---:|---:|---:|---|
+| 1A post-fix | `run_on_policy_wdl_sft_qwen3_4b_math_1a.sh` | 0.0 | 5e-7 | `VAL_N=3` | latest full checkpoint + best checkpoint |
+| 1B post-fix | `run_on_policy_wdl_sft_qwen3_4b_math_1b.sh` | 0.1 | 5e-7 | `VAL_N=3` | latest full checkpoint + best checkpoint |
+
+Important path overrides:
+
+- `DATA_ROOT` controls the local default parent for data/cache/checkpoints.
+- `REPO_ROOT` lets a caller launch from outside the repo path.
+- `BASE_MODEL_PATH`, `MODEL2_PATH`, and `MODEL_PATH` can be supplied directly.
+- `TRAIN_FILE`, `TEST_FILES`, `BASE_CKPT_DIR`, `WANDB_DIR`, `LOG_DIR`,
+  `RAY_TMPDIR`, `TMPDIR`, `VLLM_CONFIG_ROOT`, and `VERL_ZMQ_IPC_DIR` are all
+  externally overridable.
+- `VAL_N=1` can be used for a cheap smoke or for strict mean@1 comparability
+  with the original online curves; the full-run default is `VAL_N=3`.
+
+The Meituan entrypoint remains `platform/hope_on_policy_wdl_sft/`; its default
+batch now targets `1a 1b`, while `--all` expands to the prepared label-fix
+matrix (`1a 1b` plus the 2X ablation reruns, excluding legacy `1c`).
 
 ## 10. 相关代码引用
 

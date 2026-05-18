@@ -1,6 +1,7 @@
 # On-Policy Weak-Driven SFT（仅正向） — v1 原始方案
 
 - 状态：**SUPERSEDED（2026-04-19）by `wdl_sft_is.md`（v2）**
+- 归档状态：**ARCHIVED 2026-05-18**，从 `plans/active/` 移入 `plans/completed/`
 - 分支：`feature/on-policy-wdl-sft`
 - 创建日期：2026-04-06
 - 归入 v1：2026-04-19

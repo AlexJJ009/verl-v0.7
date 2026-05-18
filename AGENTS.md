@@ -213,10 +213,11 @@ Documentation in `docs/joint_training/` was created during the parent branch's j
 |---|---|---|
 | `specs/` | Technical specs for joint model / logit fusion | ARCHIVAL — infrastructure reference |
 | `constraints/` | Development rules and boundaries | Still applicable |
-| `plans/active/wdl_sft_is.md` | **WDL-SFT v2 (IS-corrected) — current focus** | ACTIVE |
-| `plans/active/dual_submodel_rollout_wdl_sft.md` | **Dual-submodel rollout WDL-SFT — planned algorithm revision: rollout per submodel, train on selected model2 data with fused-logit backward** | ACTIVE PLAN |
-| `plans/active/ablation_single_model.md` | **Single-model ablation (2A/B/C + 2Z baseline)** | ACTIVE |
-| `plans/active/on_policy_wdl_sft.md` | v1 plan (original) | STILL OPEN, v1 sections archival |
+| `plans/active/README.md` | Active plan index | ACTIVE |
+| `plans/active/wdl_sft_is.md` | **WDL-SFT v2 (IS-corrected)** — post-fix rerun matrix remains open; historical 1A/1B/1C are pre-fix | ACTIVE |
+| `plans/active/ablation_single_model.md` | **Single-model ablation (2A/B/C + 2Z baseline)** — partially complete; post-fix rows remain open | ACTIVE |
+| `plans/completed/dual_submodel_rollout_wdl_sft.md` | Dual-submodel rollout WDL-SFT — implemented and smoke-passed, but 3A real run failed as method-level negative result | ARCHIVAL |
+| `plans/completed/on_policy_wdl_sft_v1.md` | v1 plan (original) | ARCHIVAL — superseded by v2 |
 | `specs/wdl_sft_is.md` | v1 vs v2 loss comparison | ACTIVE |
 | `plans/completed/lr_search.md` | LR search — abandoned, see wdl_sft_is.md | ARCHIVAL |
 | `plans/completed/` | Archived plans from Stage 1 & 2 | ARCHIVAL |
@@ -249,8 +250,10 @@ Before launching any training, monitoring, checkpoint transfer, or large file op
 
 ## Quick Links
 
-- **Current focus**: `docs/joint_training/plans/active/wdl_sft_is.md` (v2 plan, 1a/1b/1c)
-- Dual-submodel rollout revision plan: `docs/joint_training/plans/active/dual_submodel_rollout_wdl_sft.md`
+- Active plan index: `docs/joint_training/plans/active/README.md`
+- **Current focus**: `docs/joint_training/plans/active/wdl_sft_is.md` (v2 plan; post-fix rerun matrix still open)
+- Archived dual-submodel rollout negative result: `docs/joint_training/plans/completed/dual_submodel_rollout_wdl_sft.md`
+- Dual-submodel 3A failure analysis: `docs/joint_training/plans/completed/dual_submodel_rollout_wdl_sft_3a_failure_analysis.md`
 - Single-model ablation plan: `docs/joint_training/plans/active/ablation_single_model.md`
 - Single-model ablation scripts: `recipe/on_policy_wdl_sft/ablation_single_model/`
 - **Meituan platform playbook** (how to add experiments that run on both local + AFO): `docs/joint_training/guides/meituan_platform.md`
@@ -259,7 +262,7 @@ Before launching any training, monitoring, checkpoint transfer, or large file op
 - v2 loss code (pending): same file, registered as `wdl_sft_is`
 - MiniRL reference (clip/IS implementation): `verl/trainer/ppo/core_algos.py:1782`
 - Rollout correction helper: `verl/trainer/ppo/rollout_corr_helper.py`
-- On-Policy WDL-SFT original plan (v1): `docs/joint_training/plans/active/on_policy_wdl_sft.md`
+- On-Policy WDL-SFT original plan (v1): `docs/joint_training/plans/completed/on_policy_wdl_sft_v1.md`
 - Archived LR search plan: `docs/joint_training/plans/completed/lr_search.md`
 - Joint model code: `verl/models/joint_model/modeling_joint_qwen3.py`
 - Joint config: `verl/models/joint_model/configuration_joint_qwen3.py`

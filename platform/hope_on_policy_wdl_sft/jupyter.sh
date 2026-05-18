@@ -17,14 +17,20 @@ if [ "${SMOKE:-0}" = "1" ]; then
     export TOTAL_TRAINING_STEPS=10
     export SAVE_FREQ=5
     export TEST_FREQ=5
+    export VAL_N=${VAL_N:-1}
     echo "[hope_on_policy_wdl_sft] SMOKE mode: TOTAL_TRAINING_STEPS=10 SAVE_FREQ=5 TEST_FREQ=5"
 else
     export MAX_ACTOR_CKPTS_TO_KEEP=${MAX_ACTOR_CKPTS_TO_KEEP:-1}
+    export VAL_N=${VAL_N:-3}
     echo "[hope_on_policy_wdl_sft] FULL run: keeping latest checkpoint plus best model-only checkpoint"
 fi
 
 export KEEP_BEST_CKPT=${KEEP_BEST_CKPT:-True}
-export BEST_CKPT_METRIC_KEY=${BEST_CKPT_METRIC_KEY:-val-core/HuggingFaceH4/MATH-500/acc/mean@1}
+if [ "${VAL_N}" = "1" ]; then
+    export BEST_CKPT_METRIC_KEY=${BEST_CKPT_METRIC_KEY:-val-core/HuggingFaceH4/MATH-500/acc/mean@1}
+else
+    export BEST_CKPT_METRIC_KEY=${BEST_CKPT_METRIC_KEY:-val-core/HuggingFaceH4/MATH-500/acc/mean@3}
+fi
 export BEST_CKPT_METRIC_MODE=${BEST_CKPT_METRIC_MODE:-max}
 export BEST_CKPT_STRIP_OPTIMIZER=${BEST_CKPT_STRIP_OPTIMIZER:-True}
 

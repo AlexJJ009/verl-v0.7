@@ -1,6 +1,6 @@
 # Ablation Plan: Single-Model WDL-SFT-IS (Series 2X)
 
-**Status**: Active (created 2026-04-22)
+**Status**: Active / partially completed (created 2026-04-22; post-fix reruns still open)
 **Owner**: Alex
 **Parent branch**: `feature/on-policy-wdl-sft`
 **Scripts**: `recipe/on_policy_wdl_sft/ablation_single_model/`
@@ -72,14 +72,16 @@ bug was fixed. The `minirl` / `vanilla` baseline rows are not affected.
 
 ### 3.4 Post-Fix Rerun Status
 
-Status update (2026-04-27 local time): Meituan is temporarily unavailable. The
-first spec-correct label-fix rerun is running on the local `/data-1` machine;
-all other affected 2X rows have not yet been rerun under their `-LABELFIX`
-prefixes.
+Status update (2026-05-03 local time): the first spec-correct label-fix rerun
+(`2A-base`) finished on the retired A800 before the 2026-04-30 shutdown. On
+the current L40S host, the checkpoint run dir is present, but the canonical
+training log / validation jsonls / extracted model weights were not found
+during the migration audit. All other affected 2X rows still have not been
+rerun under their `-LABELFIX` prefixes.
 
 | Run | Post-fix status | Run ID / notes |
 |---|---|---|
-| **2A-base** | **running locally** | `WDL-SFT-Qwen3-4B-MATH-2A-BASE-LABELFIX_1777346990`; tmux `wdl_2a_base_labelfix`; reached step 10 during the 20-minute health check |
+| **2A-base** | **training complete; migration audit partial** | `WDL-SFT-Qwen3-4B-MATH-2A-BASE-LABELFIX_1777346990`; checkpoint verified on L40S at `/data-1/checkpoints/WDL-SFT-Qwen3-4B-MATH-2A-BASE-LABELFIX_1777346990/global_step_300`; canonical log / validation / `/data-1/model_weights/` not found on 2026-05-03 audit |
 | **2A-sft** | not started post-fix | Still needs rerun under `WDL-SFT-Qwen3-4B-MATH-2A-SFT-LABELFIX_*` |
 | **2B-base** | not started post-fix | Still needs rerun under `WDL-SFT-Qwen3-4B-MATH-2B-BASE-LABELFIX_*` |
 | **2B-sft** | not started post-fix | Still needs rerun under `WDL-SFT-Qwen3-4B-MATH-2B-SFT-LABELFIX_*` |

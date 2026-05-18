@@ -7,7 +7,7 @@
 # via `hope run run.hope` from the temp dir. The source template is never
 # modified. Per-experiment stdout+stderr is captured to a log file.
 #
-# Default experiments: 1a 1b 1c. Override by positional args.
+# Default experiments: 1a 1b. Override by positional args.
 #
 # Required env (one-time per shell):
 #   HOPE_IMAGE        Docker image URL for [docker] afo.docker.image.name
@@ -28,11 +28,11 @@
 # Flags:
 #   --dry-run                Print substituted run.hope and exit (no hope call).
 #   --continue-on-error      Keep submitting after a failure.
-#   --all                    Use 1a 1b 1c 2a-base 2a-sft 2b-base 2b-sft 2c-base 2c-sft.
+#   --all                    Use 1a 1b 2a-base 2a-sft 2b-base 2b-sft 2c-base 2c-sft.
 #   -h | --help              Show this help.
 #
 # Examples:
-#   # Submit just the joint trio:
+#   # Submit just the joint A/B reruns:
 #   HOPE_IMAGE=<url> LGX=/mnt/.../lgx ./submit_batch.sh
 #
 #   # Submit every LABELFIX rerun:
@@ -51,8 +51,8 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TEMPLATE_DIR="$HERE"
 
 # --- Defaults ----------------------------------------------------------------
-DEFAULT_EXPERIMENTS=(1a 1b 1c)
-ALL_EXPERIMENTS=(1a 1b 1c 2a-base 2a-sft 2b-base 2b-sft 2c-base 2c-sft)
+DEFAULT_EXPERIMENTS=(1a 1b)
+ALL_EXPERIMENTS=(1a 1b 2a-base 2a-sft 2b-base 2b-sft 2c-base 2c-sft)
 KNOWN_EXPERIMENTS=(
     1a 1b 1c
     2a-base 2a-sft 2b-base 2b-sft 2c-base 2c-sft
