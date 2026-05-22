@@ -143,7 +143,7 @@ Key finding from v1: model2 ceiling ≈ 79-80% MATH-500 mean@3 regardless of lr/
 
 Key finding so far: **v2 breaks the v1 online ceiling** (+2.4 pp at step 300 vs M5.5). 1B matches 1A online despite β=0.1 — training-level evidence that v2 contains the reverse SFT instability. Preliminary offline eval on 1A step 225 model2: MATH-500 mean@3 = 83.07% (vs v1 EVAL-10 = 79.6%).
 
-**Current focus**: Monitor 1C — key milestone step 125 (v1's LR3 peak-and-crash). Run offline eval on 1A full trio (step 225 model1 + model2) and 1B full trio (model1 is the critical test — see "Status of reverse SFT abandoned" above). See `docs/joint_training/plans/active/wdl_sft_is.md` §4 for decision criteria.
+**Current focus**: Implement `docs/joint_training/plans/active/wdl_group_advantage_is_goal.md` as the active contract: group advantages + all-correct positive-SFT fallback + explicit mixed-policy old/current IS, with complete Meituan four-layer launch support.
 
 ## Documentation (Archival)
 
@@ -154,6 +154,7 @@ Documentation in `docs/joint_training/` was created during the parent branch's j
 | `specs/` | Technical specs for joint model / logit fusion | ARCHIVAL — infrastructure reference |
 | `constraints/` | Development rules and boundaries | Still applicable |
 | `plans/active/README.md` | Active plan index | ACTIVE |
+| `plans/active/wdl_group_advantage_is_goal.md` | **WDL group-advantage IS implementation contract** — new beta-free loss with group advantages, all-correct positive-SFT fallback, explicit mixed-policy old/current IS, `norm_adv_by_std_in_grpo=false`; excludes rollout IS weights, KL penalty, and length normalization; requires complete Meituan four-layer launch scripts | ACTIVE |
 | `plans/active/wdl_sft_is.md` | **WDL-SFT v2 (IS-corrected)** — post-fix rerun matrix remains open; historical 1A/1B/1C are pre-fix | ACTIVE |
 | `plans/active/ablation_single_model.md` | **Single-model ablation (2A/B/C + 2Z baseline)** — partially complete; post-fix rows remain open | ACTIVE |
 | `plans/completed/dual_submodel_rollout_wdl_sft.md` | Dual-submodel rollout WDL-SFT — implemented and smoke-passed, but 3A real run failed as method-level negative result | ARCHIVAL |
@@ -183,6 +184,8 @@ Before launching any training, monitoring, checkpoint transfer, or large file op
 
 4. **Meituan-bound experiments follow the layered playbook**: When an experiment is confirmed to run on the Meituan AFO platform, it MUST be authored according to `docs/joint_training/guides/meituan_platform.md` — four-layer launch path, default-local-overridable-everything paths in `run_*.sh`, dolphinfs overrides isolated to `recipe/.../meituan/env.sh`. Local-only experiments don't need layers 1–3, but must still write `run_*.sh` by the same portability rules so migration later is a one-file change. Every experiment must run on BOTH the local box and Meituan without per-host branches in the experiment script itself.
 
+5. **Training script index must stay current**: Whenever you create a training script or use a training script for a real run, update `docs/joint_training/guides/training_script_index.md` with the script purpose, creation time, last-used time, and current status. Keep the index as a directory, not an operations manual: do not put full launch commands, monitor commands, or run playbooks there. Put those details in the relevant on-demand guide/workflow instead.
+
 ## Agent Guidelines
 
 - **Subagents**: Use subagents (Agent tool) for exploratory/independent work to save main context. Subagents should use the **Haiku** model (`model: "haiku"`) for cost efficiency — do NOT use Opus for subagent work unless the task specifically requires strong reasoning.
@@ -191,11 +194,13 @@ Before launching any training, monitoring, checkpoint transfer, or large file op
 ## Quick Links
 
 - Active plan index: `docs/joint_training/plans/active/README.md`
-- **Current focus**: `docs/joint_training/plans/active/wdl_sft_is.md` (v2 plan; post-fix rerun matrix still open)
+- WDL group-advantage IS implementation contract: `docs/joint_training/plans/active/wdl_group_advantage_is_goal.md`
+- **Current focus**: `docs/joint_training/plans/active/wdl_group_advantage_is_goal.md` (implementation contract for group-advantage IS with all-correct positive-SFT fallback)
 - Archived dual-submodel rollout negative result: `docs/joint_training/plans/completed/dual_submodel_rollout_wdl_sft.md`
 - Dual-submodel 3A failure analysis: `docs/joint_training/plans/completed/dual_submodel_rollout_wdl_sft_3a_failure_analysis.md`
 - Single-model ablation plan: `docs/joint_training/plans/active/ablation_single_model.md`
 - Single-model ablation scripts: `recipe/on_policy_wdl_sft/ablation_single_model/`
+- Training script index: `docs/joint_training/guides/training_script_index.md`
 - **Meituan platform playbook** (how to add experiments that run on both local + AFO): `docs/joint_training/guides/meituan_platform.md`
 - v1 vs v2 loss spec: `docs/joint_training/specs/wdl_sft_is.md`
 - v1 loss code: `verl/trainer/ppo/core_algos.py:1861` (wdl_sft)

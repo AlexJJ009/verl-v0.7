@@ -2063,6 +2063,94 @@ def compute_policy_loss_wdl_sft_is(
     return pg_loss, pg_metrics
 
 
+@register_policy_loss("wdl_group_adv_is")
+def compute_policy_loss_wdl_group_adv_is(
+    old_log_prob: torch.Tensor,
+    log_prob: torch.Tensor,
+    advantages: torch.Tensor,
+    response_mask: torch.Tensor,
+    loss_agg_mode: str = "seq-mean-token-sum",
+    config: Optional[DictConfig | ActorConfig] = None,
+    rollout_is_weights: torch.Tensor | None = None,
+) -> tuple[torch.Tensor, dict[str, Any]]:
+    """WDL group-advantage policy-gradient loss with detached token IS.
+
+    ``advantages`` is expected to contain GRPO outcome advantages plus the
+    explicit all-correct positive-SFT fallback already computed in the trainer.
+    It must not contain raw +1/-1 WDL reward labels.
+    """
+    assert config is not None
+    if not isinstance(config, ActorConfig):
+        raise TypeError("wdl_group_adv_is requires ActorConfig")
+    if loss_agg_mode != "seq-mean-token-sum":
+        raise ValueError(
+            "wdl_group_adv_is requires loss_agg_mode='seq-mean-token-sum'; "
+            f"got {loss_agg_mode!r}"
+        )
+    if rollout_is_weights is not None:
+        raise ValueError("wdl_group_adv_is forbids rollout_is_weights; set algorithm.rollout_correction.rollout_is=null")
+
+    clip_ratio_low = config.clip_ratio_low if config.clip_ratio_low is not None else config.clip_ratio
+    clip_ratio_high = config.clip_ratio_high if config.clip_ratio_high is not None else config.clip_ratio
+
+    negative_approx_kl = torch.clamp(log_prob - old_log_prob, min=-20.0, max=20.0)
+    ratio = torch.exp(negative_approx_kl)
+    ratio_sg = ratio.detach()
+    coeff_sg = advantages.detach()
+
+    keep = torch.ones_like(ratio)
+    keep[(coeff_sg >= 0) & (ratio_sg > 1.0 + clip_ratio_high)] = 0
+    keep[(coeff_sg < 0) & (ratio_sg < 1.0 - clip_ratio_low)] = 0
+    keep = keep.detach()
+
+    pg_losses = -coeff_sg * ratio_sg * keep * log_prob
+    pg_loss = agg_loss(
+        loss_mat=pg_losses,
+        loss_mask=response_mask,
+        loss_agg_mode=loss_agg_mode,
+        **config.global_batch_info,
+    )
+
+    if not pg_loss.requires_grad:
+        pg_loss = (log_prob * response_mask).sum() * 0.0
+
+    pos_mask = (coeff_sg > 0).float() * response_mask
+    neg_mask = (coeff_sg < 0).float() * response_mask
+    zero_adv_response_fraction = verl_F.masked_mean((coeff_sg == 0).float(), response_mask)
+    ppo_kl = verl_F.masked_mean(-negative_approx_kl, response_mask)
+    ratio_mean = verl_F.masked_mean(ratio_sg, response_mask)
+    ratio_max = torch.max(torch.where(response_mask.bool(), ratio_sg, torch.zeros_like(ratio_sg)))
+
+    def _masked_mean_or_zero(values: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+        if mask.sum().item() == 0:
+            return torch.zeros((), dtype=values.dtype, device=values.device)
+        return verl_F.masked_mean(values, mask)
+
+    def _masked_max_or_zero(values: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+        if mask.sum().item() == 0:
+            return torch.zeros((), dtype=values.dtype, device=values.device)
+        return torch.max(torch.where(mask.bool(), values, torch.zeros_like(values)))
+
+    pos_clipped = ((coeff_sg >= 0) & (ratio_sg > 1.0 + clip_ratio_high)).float() * response_mask
+    neg_clipped = ((coeff_sg < 0) & (ratio_sg < 1.0 - clip_ratio_low)).float() * response_mask
+
+    pg_metrics = {
+        "actor/ppo_kl": ppo_kl.detach().item(),
+        "actor/pg_clipfrac": _masked_mean_or_zero(pos_clipped, pos_mask).detach().item(),
+        "actor/pg_clipfrac_lower": _masked_mean_or_zero(neg_clipped, neg_mask).detach().item(),
+        "wdl_group_adv_is/zero_adv_response_fraction": zero_adv_response_fraction.detach().item(),
+        "wdl_group_adv_is/ratio_mean": ratio_mean.detach().item(),
+        "wdl_group_adv_is/ratio_max": ratio_max.detach().item(),
+        "wdl_group_adv_is/ratio_mean_pos_adv": _masked_mean_or_zero(ratio_sg, pos_mask).detach().item(),
+        "wdl_group_adv_is/ratio_max_pos_adv": _masked_max_or_zero(ratio_sg, pos_mask).detach().item(),
+        "wdl_group_adv_is/ratio_mean_neg_adv": _masked_mean_or_zero(ratio_sg, neg_mask).detach().item(),
+        "wdl_group_adv_is/ratio_max_neg_adv": _masked_max_or_zero(ratio_sg, neg_mask).detach().item(),
+        "wdl_group_adv_is/clipfrac_positive": _masked_mean_or_zero(pos_clipped, pos_mask).detach().item(),
+        "wdl_group_adv_is/clipfrac_negative": _masked_mean_or_zero(neg_clipped, neg_mask).detach().item(),
+    }
+    return pg_loss, pg_metrics
+
+
 def compute_wdl_sft_is_loss(
     old_log_prob: torch.Tensor,
     log_prob: torch.Tensor,
