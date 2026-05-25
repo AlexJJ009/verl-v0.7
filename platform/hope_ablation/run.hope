@@ -38,4 +38,10 @@ with_requirements = false
 afo.dolphinfs.otherusers = hadoop-mtsearch-assistant
 afo.role.worker.task.attempt.max.retry = 1
 
+# Supported values:
+#   2a-base | 2b-base | 2c-base | 2z-base | 2g-base
+#   2a-sft  | 2b-sft  | 2c-sft  | 2z-sft  | 2g-sft
+#   2g-math-base | 2g-math-sft | 2h-math-base | 2h-math-sft
+# Use 2g-math-* for standard GRPO on MATH train.
+# Use 2h-math-* for single-model wdl_group_adv_is on MATH train.
 afo.app.env.EXPERIMENT = REPLACE_ME
