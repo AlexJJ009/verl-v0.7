@@ -1,6 +1,6 @@
-# On-Policy Weak-Driven SFT (WDL-SFT) — Agent Entry Point
+# Dual-Submodel Rollout WDL-SFT — Agent Entry Point
 
-This file is the table of contents for coding agents working on the **On-Policy WDL-SFT** experiment on branch `feature/on-policy-wdl-sft`. This experiment extends standard Weak-Driven SFT with on-policy rollout and **forward-only** SFT training on correct rollouts.
+This file is the table of contents for coding agents working on the **Dual-Submodel Rollout WDL-SFT** worktree on branch `feature/on-policy-wdl-sft-dual-rollout`. This branch explores separating rollout generation from fused-logit training, and keeps branch-local plans and script indexes separate from the parent On-Policy WDL-SFT branch.
 
 ## Experiment Overview
 
@@ -63,7 +63,7 @@ bash /data-1/verl07/run_train.sh
 
 - Repo: `https://github.com/AlexJJ009/verl-v0.7`
 - Upstream: `https://github.com/verl-project/verl`
-- Branch: `feature/on-policy-wdl-sft`
+- Branch: `feature/on-policy-wdl-sft-dual-rollout`
 - Parent branch: `feature/joint-training` (Stage 1 & 2 complete — provided the joint model and fused rollout infrastructure)
 - `recipe/` is a submodule → `https://github.com/AlexJJ009/verl-recipe.git`, branch `feature/on-policy-wdl-sft`
 
@@ -153,6 +153,8 @@ Documentation in `docs/joint_training/` was created during the parent branch's j
 |---|---|---|
 | `specs/` | Technical specs for joint model / logit fusion | ARCHIVAL — infrastructure reference |
 | `constraints/` | Development rules and boundaries | Still applicable |
+| `constraints/experiment_tracking/training_script_index_policy.md` | **Training script index policy** — shared rule that every branch keeps its own script index and updates it when runnable training/monitor scripts are created or used | ACTIVE |
+| `plans/active/README.md` | Active plan index for this dual-rollout branch | ACTIVE |
 | `plans/active/wdl_sft_is.md` | **WDL-SFT v2 (IS-corrected) — current focus** | ACTIVE |
 | `plans/active/dual_submodel_rollout_wdl_sft.md` | **Dual-submodel rollout WDL-SFT — planned algorithm revision: rollout per submodel, train on selected model2 data with fused-logit backward** | ACTIVE PLAN |
 | `plans/active/ablation_single_model.md` | **Single-model ablation (2A/B/C + 2Z baseline)** | ACTIVE |
@@ -182,6 +184,8 @@ Before launching any training, monitoring, checkpoint transfer, or large file op
 
 4. **Meituan-bound experiments follow the layered playbook**: When an experiment is confirmed to run on the Meituan AFO platform, it MUST be authored according to `docs/joint_training/guides/meituan_platform.md` — four-layer launch path, default-local-overridable-everything paths in `run_*.sh`, dolphinfs overrides isolated to `recipe/.../meituan/env.sh`. Local-only experiments don't need layers 1–3, but must still write `run_*.sh` by the same portability rules so migration later is a one-file change. Every experiment must run on BOTH the local box and Meituan without per-host branches in the experiment script itself.
 
+5. **Training script index must stay current**: Follow `docs/joint_training/constraints/experiment_tracking/training_script_index_policy.md`. Whenever you create a runnable training/monitor script or use one for a real run, update this branch's own `docs/joint_training/guides/training_script_index.md`. Keep the index branch-local and factual; put full launch commands, monitor commands, and run playbooks in the relevant guide/workflow instead.
+
 ## Agent Guidelines
 
 - **Subagents**: Use subagents (Agent tool) for exploratory/independent work to save main context. Subagents should use the **Haiku** model (`model: "haiku"`) for cost efficiency — do NOT use Opus for subagent work unless the task specifically requires strong reasoning.
@@ -189,10 +193,13 @@ Before launching any training, monitoring, checkpoint transfer, or large file op
 
 ## Quick Links
 
-- **Current focus**: `docs/joint_training/plans/active/wdl_sft_is.md` (v2 plan, 1a/1b/1c)
+- Active plan index: `docs/joint_training/plans/active/README.md`
+- **Current focus**: `docs/joint_training/plans/active/dual_submodel_rollout_wdl_sft.md` (dual-submodel rollout plan and method-level failure context)
 - Dual-submodel rollout revision plan: `docs/joint_training/plans/active/dual_submodel_rollout_wdl_sft.md`
 - Single-model ablation plan: `docs/joint_training/plans/active/ablation_single_model.md`
 - Single-model ablation scripts: `recipe/on_policy_wdl_sft/ablation_single_model/`
+- Training script index policy: `docs/joint_training/constraints/experiment_tracking/training_script_index_policy.md`
+- Training script index: `docs/joint_training/guides/training_script_index.md`
 - **Meituan platform playbook** (how to add experiments that run on both local + AFO): `docs/joint_training/guides/meituan_platform.md`
 - v1 vs v2 loss spec: `docs/joint_training/specs/wdl_sft_is.md`
 - v1 loss code: `verl/trainer/ppo/core_algos.py:1861` (wdl_sft)

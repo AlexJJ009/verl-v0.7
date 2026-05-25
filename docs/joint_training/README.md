@@ -1,12 +1,12 @@
 # Joint Training Documentation (ARCHIVAL)
 
-> **Note**: This documentation was created during the `feature/joint-training` branch development (Stages 1 & 2). The current experiment is **On-Policy WDL-SFT** on branch `feature/on-policy-wdl-sft`. The infrastructure docs here (joint model, logit fusion, FSDP workers) remain relevant as background, but the training algorithm and recipe have changed. See `CLAUDE.md` at the repo root for the current experiment context.
+> **Note**: This documentation was created during the `feature/joint-training` branch development (Stages 1 & 2). The current worktree is **Dual-Submodel Rollout WDL-SFT** on branch `feature/on-policy-wdl-sft-dual-rollout`. The infrastructure docs here (joint model, logit fusion, FSDP workers) remain relevant as background, but the training algorithm and recipe have changed. See `CLAUDE.md` at the repo root for the current experiment context.
 
 This directory is the knowledge base for joint-training infrastructure in verl. It is organized for both human engineers and coding agents.
 
 ## Current Focus
 
-**On-Policy Weak-Driven SFT** — combining logit fusion with on-policy rollout and forward/reverse SFT. See `plans/active/on_policy_wdl_sft.md` for the active plan.
+**Dual-Submodel Rollout WDL-SFT** — separating rollout generation from fused-logit training. See `plans/active/README.md` and `plans/active/dual_submodel_rollout_wdl_sft.md` for the branch-local active context.
 
 ## Directory Structure
 
@@ -20,7 +20,7 @@ docs/joint_training/
 │   ├── principles/               Core development principles
 │   ├── commit_rules/             Commit conventions and git workflow
 │   ├── boundaries/               What to modify, what not to touch
-│   └── experiment_tracking/      Experiment index maintenance spec
+│   └── experiment_tracking/      Experiment and training-script index policies
 ├── courses/                   ← Educational docs for human learners
 │   ├── joint_minirl_reinforce_logit_mixing_theory.md
 │   ├── minirl_vs_grpo_comparison.md
@@ -60,3 +60,4 @@ docs/joint_training/
 - **Plans** are living documents: update progress as work proceeds, move to completed when done.
 - **Code reviews** track resolution: when an issue is fixed, append the resolution to the review document.
 - **Experiment tracking** lives in `recipe/joint_training/`: `EXPERIMENT_INDEX.md` (scripts, logs, checkpoints, weights) and `INFERENCE_RESULTS.md` (offline eval results). Maintenance rules are in `constraints/experiment_tracking/`.
+- **Training script indexes** are branch-local. The shared policy is in `constraints/experiment_tracking/training_script_index_policy.md`; each branch maintains its own `guides/training_script_index.md`.
