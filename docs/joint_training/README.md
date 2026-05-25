@@ -20,7 +20,7 @@ docs/joint_training/
 │   ├── principles/               Core development principles
 │   ├── commit_rules/             Commit conventions and git workflow
 │   ├── boundaries/               What to modify, what not to touch
-│   └── experiment_tracking/      Experiment index maintenance spec
+│   └── experiment_tracking/      Experiment and training-script index policies
 ├── courses/                   ← Educational docs for human learners
 │   ├── joint_minirl_reinforce_logit_mixing_theory.md
 │   ├── minirl_vs_grpo_comparison.md
@@ -60,3 +60,4 @@ docs/joint_training/
 - **Plans** are living documents: update progress as work proceeds, move to completed when done.
 - **Code reviews** track resolution: when an issue is fixed, append the resolution to the review document.
 - **Experiment tracking** lives in `recipe/joint_training/`: `EXPERIMENT_INDEX.md` (scripts, logs, checkpoints, weights) and `INFERENCE_RESULTS.md` (offline eval results). Maintenance rules are in `constraints/experiment_tracking/`.
+- **Training script indexes** are branch-local. The shared policy is in `constraints/experiment_tracking/training_script_index_policy.md`; each branch maintains its own `guides/training_script_index.md`.

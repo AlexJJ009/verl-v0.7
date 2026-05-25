@@ -214,6 +214,7 @@ Documentation in `docs/joint_training/` was created during the parent branch's j
 |---|---|---|
 | `specs/` | Technical specs for joint model / logit fusion | ARCHIVAL — infrastructure reference |
 | `constraints/` | Development rules and boundaries | Still applicable |
+| `constraints/experiment_tracking/training_script_index_policy.md` | **Training script index policy** — shared rule that every branch keeps its own script index and updates it when runnable training/monitor scripts are created or used | ACTIVE |
 | `plans/active/README.md` | Active plan index | ACTIVE |
 | `plans/active/wdl_group_advantage_is_goal.md` | **WDL group-advantage IS implementation contract** — new beta-free loss with group advantages, all-correct positive-SFT fallback, explicit mixed-policy old/current IS, `norm_adv_by_std_in_grpo=false`; excludes rollout IS weights, KL penalty, and length normalization; requires complete Meituan four-layer launch scripts | ACTIVE |
 | `plans/active/wdl_sft_is.md` | **WDL-SFT v2 (IS-corrected)** — post-fix rerun matrix remains open; historical 1A/1B/1C are pre-fix | ACTIVE |
@@ -245,7 +246,7 @@ Before launching any training, monitoring, checkpoint transfer, or large file op
 
 4. **Meituan-bound experiments follow the layered playbook**: When an experiment is confirmed to run on the Meituan AFO platform, it MUST be authored according to `docs/joint_training/guides/meituan_platform.md` — four-layer launch path, default-local-overridable-everything paths in `run_*.sh`, dolphinfs overrides isolated to `recipe/.../meituan/env.sh`. Local-only experiments don't need layers 1–3, but must still write `run_*.sh` by the same portability rules so migration later is a one-file change. Every experiment must run on BOTH the local box and Meituan without per-host branches in the experiment script itself.
 
-5. **Training script index must stay current**: Whenever you create a training script or use a training script for a real run, update `docs/joint_training/guides/training_script_index.md` with the script purpose, creation time, last-used time, and current status. Keep the index as a directory, not an operations manual: do not put full launch commands, monitor commands, or run playbooks there. Put those details in the relevant on-demand guide/workflow instead.
+5. **Training script index must stay current**: Follow `docs/joint_training/constraints/experiment_tracking/training_script_index_policy.md`. Whenever you create a runnable training/monitor script or use one for a real run, update this branch's own `docs/joint_training/guides/training_script_index.md`. Keep the index branch-local and factual; put full launch commands, monitor commands, and run playbooks in the relevant guide/workflow instead.
 
 ## Agent Guidelines
 
@@ -261,6 +262,7 @@ Before launching any training, monitoring, checkpoint transfer, or large file op
 - Dual-submodel 3A failure analysis: `docs/joint_training/plans/completed/dual_submodel_rollout_wdl_sft_3a_failure_analysis.md`
 - Single-model ablation plan: `docs/joint_training/plans/active/ablation_single_model.md`
 - Single-model ablation scripts: `recipe/on_policy_wdl_sft/ablation_single_model/`
+- Training script index policy: `docs/joint_training/constraints/experiment_tracking/training_script_index_policy.md`
 - Training script index: `docs/joint_training/guides/training_script_index.md`
 - **Meituan platform playbook** (how to add experiments that run on both local + AFO): `docs/joint_training/guides/meituan_platform.md`
 - v1 vs v2 loss spec: `docs/joint_training/specs/wdl_sft_is.md`
