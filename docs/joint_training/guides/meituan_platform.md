@@ -1,11 +1,11 @@
 # Meituan Platform Playbook — Layered Launch & Cross-Host Compatibility
 
 How experiments run on the Meituan AFO / Codelab platform, and how to add a new
-one without breaking local-box reproducibility. **When an experiment is
-confirmed to run on Meituan, follow this playbook. When an experiment only runs
-locally, none of the Meituan layers need to exist — but if you write the
-`run_*.sh` by the rules here from day one, migration later is a one-file
-change.**
+one without breaking local-box reproducibility. **Every new runnable training
+script in this project must be compatible with the Meituan launch path before it
+is considered complete.** Even when the first launch is local, write the
+`run_*.sh` by the rules here from day one and add or extend the relevant
+Meituan adapter in the same change.
 
 ## The two-hostile-environments problem
 
@@ -177,6 +177,10 @@ Meituan later becomes zero-cost.
    reads them from env, not as arguments.
 5. **Wrapper stays thin.** Anything reusable across experiments belongs in
    `_common_*.sh`. `run_*.sh` should be only: `export` lines + `source`.
+6. **Wire the Meituan entry now.** If the family already has
+   `recipe/.../meituan/{env.sh,jupyter.sh}`, update it and the platform
+   dispatcher in the same change. If the family is new, create the layer-3
+   adapter and a platform route before marking the training script complete.
 
 ## Rules for writing a family's `meituan/env.sh`
 
@@ -307,10 +311,14 @@ one shot per iteration cycle. Two consequences:
 
 - `platform/hope_ablation/` — layer 1 template (hope_dir + shim + README)
 - `platform/hope_ablation/jupyter.sh` — layer 2 shim
+- `platform/hope_on_policy_wdl_sft/jupyter.sh` — unified layer 2 dispatcher for
+  the on-policy WDL-SFT project families, including 4A/4B/4C
 - `recipe/on_policy_wdl_sft/ablation_single_model/meituan/jupyter.sh` —
   layer 3 example
 - `recipe/on_policy_wdl_sft/ablation_single_model/meituan/env.sh` —
   layer 3 env example (dolphinfs overrides)
+- `recipe/on_policy_wdl_sft/dual_submodel_rollout/meituan/jupyter.sh` —
+  layer 3 example for the dual-rollout family
 - `recipe/on_policy_wdl_sft/ablation_single_model/run_2z_base.sh` —
   layer 4 example (15-line portable wrapper)
 - `recipe/on_policy_wdl_sft/ablation_single_model/_common_ablation.sh` —

@@ -89,6 +89,12 @@ class PolicyLossConfig(BaseConfig):
     ppo_kl_coef: float = 0.1
     # WDL-SFT: reverse SFT weight β (only used when loss_mode="wdl_sft")
     wdl_sft_beta: float = 0.1
+    # Single-model WDL group-advantage IS: preserve positive SFT on all-correct groups.
+    all_correct_sft_fallback: bool = True
+    pos_sft_fallback_coef: float = 1.0
+    # Dual model2 rollout group-advantage IS.
+    gamma_pos_sft: float = 1.0
+    tis_threshold: float = 5.0
 
 
 @dataclass

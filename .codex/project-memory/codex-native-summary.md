@@ -36,6 +36,21 @@ evidence stay in the user-level Codex home.
   stale. Re-check tmux, logs, checkpoint directories, and active plan docs before
   acting on dated status.
 
+## Meituan Compatibility and Queue Monitoring
+
+- Every new runnable training script must be compatible with the Meituan AFO
+  launch path before it is considered complete. Keep `run_*.sh` wrappers
+  default-local and overridable-everything; update or add the matching
+  `recipe/.../meituan/{env.sh,jupyter.sh}` adapter and platform dispatcher in
+  the same change.
+- Meituan adapters must override all local paths used by the wrapper/common
+  launcher, including family-specific variables such as `MATH_TRAIN_FILE`, and
+  must fail fast when init models or train data are missing.
+- Sequential local training queues should use the project-level generic monitor
+  `scripts/training_queue_monitor.sh`. Family-specific monitor scripts should
+  only define `RUN_PREFIXES`, `RUN_SCRIPTS`, `TMUX_NAMES`, and local gate
+  defaults, then call `training_queue_monitor_main`.
+
 ## How To Use
 
 Read this file only for history-dependent work in this repo. For current

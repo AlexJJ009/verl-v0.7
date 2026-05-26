@@ -22,7 +22,7 @@ __all__ = ["register_adv_est", "get_adv_estimator_fn", "AdvantageEstimator"]
 
 from collections import defaultdict
 from enum import Enum
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, Protocol
 
 import numpy as np
 import torch
@@ -34,18 +34,18 @@ from verl.utils import as_torch_index, group_mean_std
 from verl.utils.import_utils import deprecated
 from verl.workers.config import ActorConfig
 
-PolicyLossFn = Callable[
-    [
-        torch.Tensor,  # old_log_prob
-        torch.Tensor,  # log_prob
-        torch.Tensor,  # advantages
-        torch.Tensor,  # response_mask
-        str,  # loss_agg_mode
-        Optional[DictConfig | ActorConfig],  # config
-        torch.Tensor | None,  # rollout_log_probs
-    ],
-    tuple[torch.Tensor, dict[str, Any]],
-]
+class PolicyLossFn(Protocol):
+    def __call__(
+        self,
+        old_log_prob: torch.Tensor,
+        log_prob: torch.Tensor,
+        advantages: torch.Tensor,
+        response_mask: torch.Tensor,
+        loss_agg_mode: str = ...,
+        config: Optional[DictConfig | ActorConfig] = ...,
+        rollout_is_weights: torch.Tensor | None = ...,
+        **kwargs: Any,
+    ) -> tuple[torch.Tensor, dict[str, Any]]: ...
 
 POLICY_LOSS_REGISTRY: dict[str, PolicyLossFn] = {}
 
@@ -1837,6 +1837,204 @@ def compute_policy_loss_minirl(
         "actor/pg_clipfrac": pg_clipfrac.detach().item(),
         "actor/ppo_kl": ppo_kl.detach().item(),
         "actor/pg_clipfrac_lower": pg_clipfrac_lower.detach().item(),
+    }
+    return pg_loss, pg_metrics
+
+
+@register_policy_loss("dual_model2_group_adv_is")
+def compute_policy_loss_dual_model2_group_adv_is(
+    old_log_prob: torch.Tensor,
+    log_prob: torch.Tensor,
+    advantages: torch.Tensor,
+    response_mask: torch.Tensor,
+    loss_agg_mode: str = "seq-mean-token-sum",
+    config: Optional[DictConfig | ActorConfig] = None,
+    rollout_is_weights: torch.Tensor | None = None,
+    log_pi_model2_rollout: torch.Tensor | None = None,
+) -> tuple[torch.Tensor, dict[str, Any]]:
+    """MiniRL-style group-advantage IS loss for model2 rollout -> fused training.
+
+    The only gradient path is through ``log_prob``. Group coefficients, the
+    TIS-capped model2-to-fused IS weight, and the old/current binary staleness
+    mask are detached scalar gates.
+    """
+    assert config is not None
+    if not isinstance(config, ActorConfig):
+        raise TypeError("dual_model2_group_adv_is requires ActorConfig")
+    if loss_agg_mode != "seq-mean-token-sum":
+        raise ValueError(
+            "dual_model2_group_adv_is requires loss_agg_mode='seq-mean-token-sum'; "
+            f"got {loss_agg_mode!r}"
+        )
+    if rollout_is_weights is not None:
+        raise ValueError(
+            "dual_model2_group_adv_is forbids external rollout_is_weights; "
+            "set algorithm.rollout_correction.rollout_is=null"
+        )
+    if log_pi_model2_rollout is None:
+        raise ValueError(
+            "dual_model2_group_adv_is requires log_pi_model2_rollout from the actual model2 rollout policy"
+        )
+    if log_pi_model2_rollout.shape != log_prob.shape:
+        raise ValueError(
+            "log_pi_model2_rollout shape must match log_prob shape; "
+            f"got {tuple(log_pi_model2_rollout.shape)} vs {tuple(log_prob.shape)}"
+        )
+
+    clip_ratio_low = config.clip_ratio_low if config.clip_ratio_low is not None else config.clip_ratio
+    clip_ratio_high = config.clip_ratio_high if config.clip_ratio_high is not None else config.clip_ratio
+    tis_threshold = float(config.policy_loss.get("tis_threshold", 5.0))
+    if tis_threshold <= 0:
+        raise ValueError(f"dual_model2_group_adv_is requires tis_threshold > 0; got {tis_threshold}")
+
+    train_delta = torch.clamp(log_prob - old_log_prob, min=-20.0, max=20.0)
+    train_ratio = torch.exp(train_delta)
+    train_ratio_sg = train_ratio.detach()
+
+    is_delta = torch.clamp(log_prob - log_pi_model2_rollout, min=-20.0, max=20.0)
+    is_weight = torch.exp(is_delta)
+    tis_weight = torch.clamp(is_weight, max=tis_threshold)
+    tis_weight_sg = tis_weight.detach()
+
+    coeff_sg = advantages.detach()
+    keep = torch.ones_like(train_ratio)
+    keep[(coeff_sg > 0) & (train_ratio_sg > 1.0 + clip_ratio_high)] = 0
+    keep[(coeff_sg < 0) & (train_ratio_sg < 1.0 - clip_ratio_low)] = 0
+    keep = keep.detach()
+
+    pg_losses = -coeff_sg * tis_weight_sg * keep * log_prob
+    pg_loss = agg_loss(
+        loss_mat=pg_losses,
+        loss_mask=response_mask,
+        loss_agg_mode=loss_agg_mode,
+        **config.global_batch_info,
+    )
+    if not pg_loss.requires_grad:
+        pg_loss = (log_prob * response_mask).sum() * 0.0
+
+    def _masked_mean_or_zero(values: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+        if mask.sum().item() == 0:
+            return torch.zeros((), dtype=values.dtype, device=values.device)
+        return verl_F.masked_mean(values, mask)
+
+    def _masked_max_or_zero(values: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+        if mask.sum().item() == 0:
+            return torch.zeros((), dtype=values.dtype, device=values.device)
+        return torch.max(torch.where(mask.bool(), values, torch.zeros_like(values)))
+
+    pos_mask = (coeff_sg > 0).float() * response_mask
+    neg_mask = (coeff_sg < 0).float() * response_mask
+    pos_clipped = ((coeff_sg > 0) & (train_ratio_sg > 1.0 + clip_ratio_high)).float() * response_mask
+    neg_clipped = ((coeff_sg < 0) & (train_ratio_sg < 1.0 - clip_ratio_low)).float() * response_mask
+    tis_clipped = (is_weight > tis_threshold).float() * response_mask
+
+    ppo_kl = verl_F.masked_mean(-train_delta, response_mask)
+    pg_metrics = {
+        "actor/ppo_kl": ppo_kl.detach().item(),
+        "actor/pg_clipfrac": _masked_mean_or_zero(pos_clipped, pos_mask).detach().item(),
+        "actor/pg_clipfrac_lower": _masked_mean_or_zero(neg_clipped, neg_mask).detach().item(),
+        "dual_model2_group_adv_is/tis_mean": verl_F.masked_mean(tis_weight_sg, response_mask).detach().item(),
+        "dual_model2_group_adv_is/tis_max": _masked_max_or_zero(tis_weight_sg, response_mask).detach().item(),
+        "dual_model2_group_adv_is/tis_clip_fraction": verl_F.masked_mean(
+            tis_clipped, response_mask
+        ).detach().item(),
+        "dual_model2_group_adv_is/train_ratio_mean": verl_F.masked_mean(
+            train_ratio_sg, response_mask
+        ).detach().item(),
+        "dual_model2_group_adv_is/train_ratio_max": _masked_max_or_zero(
+            train_ratio_sg, response_mask
+        ).detach().item(),
+        "dual_model2_group_adv_is/clipfrac_positive": _masked_mean_or_zero(
+            pos_clipped, pos_mask
+        ).detach().item(),
+        "dual_model2_group_adv_is/clipfrac_negative": _masked_mean_or_zero(
+            neg_clipped, neg_mask
+        ).detach().item(),
+    }
+    return pg_loss, pg_metrics
+
+
+@register_policy_loss("wdl_group_adv_is")
+def compute_policy_loss_wdl_group_adv_is(
+    old_log_prob: torch.Tensor,
+    log_prob: torch.Tensor,
+    advantages: torch.Tensor,
+    response_mask: torch.Tensor,
+    loss_agg_mode: str = "seq-mean-token-sum",
+    config: Optional[DictConfig | ActorConfig] = None,
+    rollout_is_weights: torch.Tensor | None = None,
+) -> tuple[torch.Tensor, dict[str, Any]]:
+    """Single-model WDL group-advantage policy loss with detached token IS.
+
+    ``advantages`` must contain GRPO outcome advantages plus the optional
+    all-correct positive-SFT fallback computed in the trainer.
+    """
+    assert config is not None
+    if not isinstance(config, ActorConfig):
+        raise TypeError("wdl_group_adv_is requires ActorConfig")
+    if loss_agg_mode != "seq-mean-token-sum":
+        raise ValueError(
+            "wdl_group_adv_is requires loss_agg_mode='seq-mean-token-sum'; "
+            f"got {loss_agg_mode!r}"
+        )
+    if rollout_is_weights is not None:
+        raise ValueError("wdl_group_adv_is forbids rollout_is_weights; set algorithm.rollout_correction.rollout_is=null")
+
+    clip_ratio_low = config.clip_ratio_low if config.clip_ratio_low is not None else config.clip_ratio
+    clip_ratio_high = config.clip_ratio_high if config.clip_ratio_high is not None else config.clip_ratio
+
+    negative_approx_kl = torch.clamp(log_prob - old_log_prob, min=-20.0, max=20.0)
+    ratio = torch.exp(negative_approx_kl)
+    ratio_sg = ratio.detach()
+    coeff_sg = advantages.detach()
+
+    keep = torch.ones_like(ratio)
+    keep[(coeff_sg >= 0) & (ratio_sg > 1.0 + clip_ratio_high)] = 0
+    keep[(coeff_sg < 0) & (ratio_sg < 1.0 - clip_ratio_low)] = 0
+    keep = keep.detach()
+
+    pg_losses = -coeff_sg * ratio_sg * keep * log_prob
+    pg_loss = agg_loss(
+        loss_mat=pg_losses,
+        loss_mask=response_mask,
+        loss_agg_mode=loss_agg_mode,
+        **config.global_batch_info,
+    )
+    if not pg_loss.requires_grad:
+        pg_loss = (log_prob * response_mask).sum() * 0.0
+
+    def _masked_mean_or_zero(values: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+        if mask.sum().item() == 0:
+            return torch.zeros((), dtype=values.dtype, device=values.device)
+        return verl_F.masked_mean(values, mask)
+
+    def _masked_max_or_zero(values: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+        if mask.sum().item() == 0:
+            return torch.zeros((), dtype=values.dtype, device=values.device)
+        return torch.max(torch.where(mask.bool(), values, torch.zeros_like(values)))
+
+    pos_mask = (coeff_sg > 0).float() * response_mask
+    neg_mask = (coeff_sg < 0).float() * response_mask
+    zero_adv_response_fraction = verl_F.masked_mean((coeff_sg == 0).float(), response_mask)
+    ppo_kl = verl_F.masked_mean(-negative_approx_kl, response_mask)
+    ratio_mean = verl_F.masked_mean(ratio_sg, response_mask)
+    ratio_max = _masked_max_or_zero(ratio_sg, response_mask)
+    pos_clipped = ((coeff_sg >= 0) & (ratio_sg > 1.0 + clip_ratio_high)).float() * response_mask
+    neg_clipped = ((coeff_sg < 0) & (ratio_sg < 1.0 - clip_ratio_low)).float() * response_mask
+
+    pg_metrics = {
+        "actor/ppo_kl": ppo_kl.detach().item(),
+        "actor/pg_clipfrac": _masked_mean_or_zero(pos_clipped, pos_mask).detach().item(),
+        "actor/pg_clipfrac_lower": _masked_mean_or_zero(neg_clipped, neg_mask).detach().item(),
+        "wdl_group_adv_is/zero_adv_response_fraction": zero_adv_response_fraction.detach().item(),
+        "wdl_group_adv_is/ratio_mean": ratio_mean.detach().item(),
+        "wdl_group_adv_is/ratio_max": ratio_max.detach().item(),
+        "wdl_group_adv_is/ratio_mean_pos_adv": _masked_mean_or_zero(ratio_sg, pos_mask).detach().item(),
+        "wdl_group_adv_is/ratio_max_pos_adv": _masked_max_or_zero(ratio_sg, pos_mask).detach().item(),
+        "wdl_group_adv_is/ratio_mean_neg_adv": _masked_mean_or_zero(ratio_sg, neg_mask).detach().item(),
+        "wdl_group_adv_is/ratio_max_neg_adv": _masked_max_or_zero(ratio_sg, neg_mask).detach().item(),
+        "wdl_group_adv_is/clipfrac_positive": _masked_mean_or_zero(pos_clipped, pos_mask).detach().item(),
+        "wdl_group_adv_is/clipfrac_negative": _masked_mean_or_zero(neg_clipped, neg_mask).detach().item(),
     }
     return pg_loss, pg_metrics
 

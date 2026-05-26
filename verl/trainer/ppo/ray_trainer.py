@@ -88,6 +88,8 @@ TEST_STEP_LOG_PREFIXES = (
 )
 
 WDL_SFT_REWARD_LABEL_LOSS_MODES = {"wdl_sft", "wdl_sft_is"}
+WDL_GROUP_ADV_IS_LOSS_MODE = "wdl_group_adv_is"
+DUAL_MODEL2_GROUP_ADV_IS_LOSS_MODE = "dual_model2_group_adv_is"
 VALID_JOINT_ROLLOUT_SOURCES = ("fused", "sub_model_0", "sub_model_1")
 JOINT_ROLLOUT_SOURCE_TO_METRIC_ALIAS = {
     "fused": "fused",
@@ -181,6 +183,34 @@ def select_joint_rollout_output(
     return selected_source, outputs_by_source[selected_source]
 
 
+def prepare_dual_model2_group_adv_is_rollout_log_probs(
+    batch: DataProto,
+    selected_source: str,
+    loss_mode: str,
+) -> DataProto:
+    """Preserve model2 rollout log-probs before fused old-log-prob recomputation."""
+    if loss_mode != DUAL_MODEL2_GROUP_ADV_IS_LOSS_MODE:
+        return batch
+    if selected_source != "sub_model_1":
+        raise ValueError(
+            "dual_model2_group_adv_is requires model2-only rollout; "
+            f"got selected_source={selected_source!r}"
+        )
+    if "rollout_log_probs" in batch.batch:
+        batch.batch["log_pi_model2_rollout"] = batch.batch["rollout_log_probs"].clone()
+        if "old_log_probs" in batch.batch:
+            batch.batch.pop("old_log_probs")
+        return batch
+    if "old_log_probs" in batch.batch:
+        batch.batch["log_pi_model2_rollout"] = batch.batch["old_log_probs"].clone()
+        batch.batch.pop("old_log_probs")
+        return batch
+    raise ValueError(
+        "dual_model2_group_adv_is requires model2 rollout log-probs. "
+        "Set actor_rollout_ref.rollout.calculate_log_probs=true."
+    )
+
+
 def _metric_value_to_python_scalar(value: Any) -> Any | None:
     if isinstance(value, Number | np.generic):
         return value.item() if isinstance(value, np.generic) else value
@@ -243,6 +273,141 @@ def apply_wdl_sft_reward_label_advantages(
         metrics["wdl_sft/correct_ratio"] = n_correct / max(n_total, 1)
 
     batch.batch["advantages"] = reward_labels.unsqueeze(-1).expand_as(batch.batch["response_mask"]).clone()
+    return batch
+
+
+def apply_wdl_group_advantage_positive_fallback(
+    batch: DataProto,
+    loss_mode: str,
+    metrics: Optional[dict[str, Any]] = None,
+    enabled: bool = True,
+    coef: float = 1.0,
+) -> DataProto:
+    """Add all-correct positive-SFT fallback to GRPO advantages for wdl_group_adv_is."""
+    if loss_mode != WDL_GROUP_ADV_IS_LOSS_MODE:
+        return batch
+    if not enabled:
+        return batch
+    if "uid" not in batch.non_tensor_batch:
+        raise ValueError("wdl_group_adv_is requires uid in non_tensor_batch to compute true prompt groups")
+    if "advantages" not in batch.batch:
+        raise ValueError("wdl_group_adv_is requires GRPO advantages before applying positive-SFT fallback")
+    if "token_level_scores" not in batch.batch:
+        raise ValueError("wdl_group_adv_is requires token_level_scores to compute all-correct fallback")
+
+    reward_labels = batch.batch["token_level_scores"].sum(dim=-1)
+    response_mask = batch.batch["response_mask"]
+    uids = batch.non_tensor_batch["uid"]
+    if len(uids) != reward_labels.shape[0]:
+        raise ValueError(f"uid length {len(uids)} does not match batch size {reward_labels.shape[0]}")
+
+    id2indices: dict[Any, list[int]] = defaultdict(list)
+    for row_idx, uid in enumerate(uids):
+        id2indices[uid].append(row_idx)
+
+    fallback = torch.zeros_like(reward_labels)
+    zero_adv_group_count = 0
+    mixed_group_count = 0
+    all_correct_group_count = 0
+    all_incorrect_group_count = 0
+
+    with torch.no_grad():
+        for indices in id2indices.values():
+            group_rewards = reward_labels[indices]
+            group_correct = group_rewards > 0
+            group_incorrect = group_rewards < 0
+            all_correct = bool(group_correct.all().item())
+            all_incorrect = bool(group_incorrect.all().item())
+            mixed = bool(group_correct.any().item() and group_incorrect.any().item())
+            if all_correct:
+                fallback[indices] = coef
+                all_correct_group_count += 1
+            if all_incorrect:
+                all_incorrect_group_count += 1
+            if mixed:
+                mixed_group_count += 1
+            if all_correct or all_incorrect:
+                zero_adv_group_count += 1
+
+    batch.batch["advantages"] = batch.batch["advantages"] + fallback.unsqueeze(-1) * response_mask
+
+    if metrics is not None:
+        group_count = max(len(id2indices), 1)
+        response_count = max(int(reward_labels.numel()), 1)
+        metrics["wdl_group_adv_is/zero_adv_group_fraction"] = zero_adv_group_count / group_count
+        metrics["wdl_group_adv_is/mixed_group_fraction"] = mixed_group_count / group_count
+        metrics["wdl_group_adv_is/all_correct_fallback_group_fraction"] = all_correct_group_count / group_count
+        metrics["wdl_group_adv_is/all_correct_fallback_response_fraction"] = (fallback > 0).sum().item() / response_count
+        metrics["wdl_group_adv_is/all_incorrect_group_fraction"] = all_incorrect_group_count / group_count
+
+    return batch
+
+
+def apply_dual_model2_group_advantage_positive_fallback(
+    batch: DataProto,
+    loss_mode: str,
+    metrics: Optional[dict[str, Any]] = None,
+    coef: float = 1.0,
+) -> DataProto:
+    """Add all-correct positive-SFT fallback to group advantages for the new dual loss."""
+    if loss_mode != DUAL_MODEL2_GROUP_ADV_IS_LOSS_MODE:
+        return batch
+    if "uid" not in batch.non_tensor_batch:
+        raise ValueError("dual_model2_group_adv_is requires uid in non_tensor_batch")
+    if "advantages" not in batch.batch:
+        raise ValueError("dual_model2_group_adv_is requires group advantages before positive fallback")
+    if "token_level_scores" not in batch.batch:
+        raise ValueError("dual_model2_group_adv_is requires token_level_scores for positive fallback")
+
+    reward_labels = batch.batch["token_level_scores"].sum(dim=-1)
+    response_mask = batch.batch["response_mask"]
+    uids = batch.non_tensor_batch["uid"]
+    if len(uids) != reward_labels.shape[0]:
+        raise ValueError(f"uid length {len(uids)} does not match batch size {reward_labels.shape[0]}")
+
+    id2indices: dict[Any, list[int]] = defaultdict(list)
+    for row_idx, uid in enumerate(uids):
+        id2indices[uid].append(row_idx)
+
+    fallback = torch.zeros_like(reward_labels)
+    zero_adv_group_count = 0
+    mixed_group_count = 0
+    all_correct_group_count = 0
+    all_incorrect_group_count = 0
+
+    with torch.no_grad():
+        for indices in id2indices.values():
+            group_rewards = reward_labels[indices]
+            group_correct = group_rewards > 0
+            group_incorrect = group_rewards < 0
+            all_correct = bool(group_correct.all().item())
+            all_incorrect = bool(group_incorrect.all().item())
+            mixed = bool(group_correct.any().item() and group_incorrect.any().item())
+            if all_correct:
+                fallback[indices] = coef
+                all_correct_group_count += 1
+            if all_incorrect:
+                all_incorrect_group_count += 1
+            if mixed:
+                mixed_group_count += 1
+            if all_correct or all_incorrect:
+                zero_adv_group_count += 1
+
+    batch.batch["advantages"] = batch.batch["advantages"] + fallback.unsqueeze(-1) * response_mask
+
+    if metrics is not None:
+        group_count = max(len(id2indices), 1)
+        response_count = max(int(reward_labels.numel()), 1)
+        metrics["dual_model2_group_adv_is/zero_adv_group_fraction"] = zero_adv_group_count / group_count
+        metrics["dual_model2_group_adv_is/mixed_group_fraction"] = mixed_group_count / group_count
+        metrics["dual_model2_group_adv_is/all_correct_fallback_group_fraction"] = (
+            all_correct_group_count / group_count
+        )
+        metrics["dual_model2_group_adv_is/all_correct_fallback_response_fraction"] = (
+            (fallback > 0).sum().item() / response_count
+        )
+        metrics["dual_model2_group_adv_is/all_incorrect_group_fraction"] = all_incorrect_group_count / group_count
+
     return batch
 
 
@@ -2031,6 +2196,12 @@ class RayPPOTrainer:
                     # repeat to align with repeated responses in rollout
                     batch = batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True)
                     batch = batch.union(gen_batch_output)
+                    wdl_sft_loss_mode = self.config.actor_rollout_ref.actor.policy_loss.get("loss_mode", "vanilla")
+                    batch = prepare_dual_model2_group_adv_is_rollout_log_probs(
+                        batch,
+                        selected_source,
+                        wdl_sft_loss_mode,
+                    )
 
                     if "response_mask" not in batch.batch.keys():
                         batch.batch["response_mask"] = compute_response_mask(batch)
@@ -2148,6 +2319,7 @@ class RayPPOTrainer:
                             rollout_corr_config is not None
                             and "rollout_log_probs" in batch.batch
                             and not bypass_recomputing_logprobs  # Only in decoupled mode
+                            and wdl_sft_loss_mode != DUAL_MODEL2_GROUP_ADV_IS_LOSS_MODE
                         ):
                             from verl.trainer.ppo.rollout_corr_helper import compute_rollout_correction_and_add_to_batch
 
@@ -2179,6 +2351,26 @@ class RayPPOTrainer:
                         # GRPO-normalized advantages. We use the advantages tensor to carry
                         # reward labels through the existing training pipeline.
                         wdl_sft_loss_mode = self.config.actor_rollout_ref.actor.policy_loss.get("loss_mode", "vanilla")
+                        if wdl_sft_loss_mode == WDL_GROUP_ADV_IS_LOSS_MODE:
+                            policy_loss_config = self.config.actor_rollout_ref.actor.policy_loss
+                            fallback_enabled = policy_loss_config.get("all_correct_sft_fallback", True)
+                            fallback_coef = policy_loss_config.get("pos_sft_fallback_coef", 1.0)
+                            batch = apply_wdl_group_advantage_positive_fallback(
+                                batch,
+                                wdl_sft_loss_mode,
+                                metrics,
+                                enabled=bool(fallback_enabled),
+                                coef=float(fallback_coef),
+                            )
+                        if wdl_sft_loss_mode == DUAL_MODEL2_GROUP_ADV_IS_LOSS_MODE:
+                            policy_loss_config = self.config.actor_rollout_ref.actor.policy_loss
+                            fallback_coef = float(policy_loss_config.get("gamma_pos_sft", 1.0))
+                            batch = apply_dual_model2_group_advantage_positive_fallback(
+                                batch,
+                                wdl_sft_loss_mode,
+                                metrics,
+                                coef=fallback_coef,
+                            )
                         batch = apply_wdl_sft_reward_label_advantages(batch, wdl_sft_loss_mode, metrics)
 
                     # update critic

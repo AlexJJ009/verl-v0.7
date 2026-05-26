@@ -46,6 +46,24 @@ logger = logging.getLogger(__file__)
 logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
 
 
+def select_old_log_prob_for_policy_loss(
+    *,
+    loss_mode: str,
+    config: ActorConfig,
+    model_inputs: dict,
+    log_prob: torch.Tensor,
+    on_policy: bool,
+) -> torch.Tensor:
+    """Choose the proximal old-log-prob anchor for policy loss computation."""
+    if loss_mode == "dual_model2_group_adv_is":
+        return model_inputs["old_log_probs"]
+    if hasattr(config, "use_rollout_log_probs") and config.use_rollout_log_probs:
+        return model_inputs["old_log_probs"]
+    if on_policy:
+        return log_prob.detach()
+    return model_inputs["old_log_probs"]
+
+
 class DataParallelPPOActor(BasePPOActor):
     """FSDP DataParallel PPO Actor or Ref worker
 
@@ -596,6 +614,8 @@ class DataParallelPPOActor(BasePPOActor):
         # Include rollout_log_probs for computing rollout_corr metrics in bypass mode
         if "rollout_log_probs" in data.batch.keys():
             select_keys.append("rollout_log_probs")
+        if "log_pi_model2_rollout" in data.batch.keys():
+            select_keys.append("log_pi_model2_rollout")
 
         has_multi_modal_inputs = "multi_modal_inputs" in data.non_tensor_batch.keys()
         non_tensor_select_keys = []
@@ -665,28 +685,27 @@ class DataParallelPPOActor(BasePPOActor):
                     if logit_disagreement is not None:
                         micro_batch_metrics["jointTraining/submodel_logit_disagreement"] = logit_disagreement
 
-                    # for fully_async_policy
-                    if hasattr(self.config, "use_rollout_log_probs") and self.config.use_rollout_log_probs:
-                        old_log_prob = model_inputs["old_log_probs"]
-                    else:
-                        if on_policy:
-                            old_log_prob = log_prob.detach()
-                        else:
-                            old_log_prob = model_inputs["old_log_probs"]
-
                     loss_mode = self.config.policy_loss.get("loss_mode", "vanilla")
+                    old_log_prob = select_old_log_prob_for_policy_loss(
+                        loss_mode=loss_mode,
+                        config=self.config,
+                        model_inputs=model_inputs,
+                        log_prob=log_prob,
+                        on_policy=on_policy,
+                    )
                     # vanilla -> verl.trainer.ppo.core_algos.compute_policy_loss_vanilla
 
                     # Extract pre-computed rollout correction weights if present
                     # Weights are computed centrally in trainer and added when algorithm.rollout_is=True
                     rollout_is_weights = model_inputs.get("rollout_is_weights", None)
+                    log_pi_model2_rollout = model_inputs.get("log_pi_model2_rollout", None)
 
                     # gpg -> verl.trainer.ppo.core_algos.compute_policy_loss_gpg
                     # clip_cov -> verl.trainer.ppo.core_algos.compute_policy_loss_clip_cov
                     policy_loss_fn = get_policy_loss_fn(loss_mode)
 
                     # Compute policy loss (any function is expected to return 2 values)
-                    pg_loss, pg_metrics = policy_loss_fn(
+                    loss_kwargs = dict(
                         old_log_prob=old_log_prob,
                         log_prob=log_prob,
                         advantages=advantages,
@@ -695,6 +714,9 @@ class DataParallelPPOActor(BasePPOActor):
                         config=self.config,
                         rollout_is_weights=rollout_is_weights,
                     )
+                    if loss_mode == "dual_model2_group_adv_is":
+                        loss_kwargs["log_pi_model2_rollout"] = log_pi_model2_rollout
+                    pg_loss, pg_metrics = policy_loss_fn(**loss_kwargs)
                     micro_batch_metrics.update(pg_metrics)
 
                     # Skip if using bypass_mode loss (metrics already computed in pg_metrics)

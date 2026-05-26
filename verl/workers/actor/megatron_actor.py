@@ -373,6 +373,8 @@ class MegatronPPOActor(BasePPOActor):
         # Include rollout_log_probs for computing rollout_corr metrics in bypass mode
         if "rollout_log_probs" in data.batch.keys():
             select_keys.append("rollout_log_probs")
+        if "log_pi_model2_rollout" in data.batch.keys():
+            select_keys.append("log_pi_model2_rollout")
         self.has_multi_modal_inputs = "multi_modal_inputs" in data.non_tensor_batch.keys()
         # router replay
         if self.enable_routing_replay:
@@ -508,7 +510,7 @@ class MegatronPPOActor(BasePPOActor):
                 # Extract pre-computed rollout correction weights if present
                 # Weights are computed centrally in trainer and added when algorithm.rollout_is=True
                 rollout_is_weights = data.get("rollout_is_weights", None)
-                pg_loss, pg_metrics = policy_loss_fn(
+                loss_kwargs = dict(
                     old_log_prob=old_log_prob,
                     log_prob=log_prob,
                     advantages=advantages,
@@ -517,6 +519,9 @@ class MegatronPPOActor(BasePPOActor):
                     config=self.config,
                     rollout_is_weights=rollout_is_weights,
                 )
+                if loss_mode == "dual_model2_group_adv_is":
+                    loss_kwargs["log_pi_model2_rollout"] = data.get("log_pi_model2_rollout", None)
+                pg_loss, pg_metrics = policy_loss_fn(**loss_kwargs)
                 stats.update(pg_metrics)
 
                 # Skip if using bypass_mode loss (metrics already computed in pg_metrics)

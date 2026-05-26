@@ -242,17 +242,19 @@ def test_dual_rollout_recipe_scripts_are_portable_and_opt_in():
     common = recipe_dir / "_common_dual_rollout.sh"
     run_3a = recipe_dir / "run_3a_model2_rollout_beta0.sh"
     run_3b = recipe_dir / "run_3b_model2_rollout_beta01.sh"
+    run_4a = recipe_dir / "run_4a_model2_group_adv_is.sh"
 
-    for path in [common, run_3a, run_3b, recipe_dir / "README.md"]:
+    for path in [common, run_3a, run_3b, run_4a, recipe_dir / "README.md"]:
         assert path.exists()
 
     common_text = common.read_text()
     run_3a_text = run_3a.read_text()
     run_3b_text = run_3b.read_text()
+    run_4a_text = run_4a.read_text()
 
-    assert "joint_rollout_sources=\"[sub_model_0,sub_model_1]\"" in common_text
-    assert "joint_rollout_select=sub_model_1" in common_text
-    assert "joint_rollout_train_on_selected_only=true" in common_text
+    assert 'joint_rollout_sources=${JOINT_ROLLOUT_SOURCES:-"[sub_model_0,sub_model_1]"}' in common_text
+    assert "joint_rollout_select=${JOINT_ROLLOUT_SELECT:-sub_model_1}" in common_text
+    assert "joint_rollout_train_on_selected_only=${JOINT_ROLLOUT_TRAIN_ON_SELECTED_ONLY:-true}" in common_text
     assert 'REPO_ROOT="${REPO_ROOT:-$(cd "${RECIPE_ROOT}/../.." && pwd)}"' in common_text
     assert "DATA_ROOT=${DATA_ROOT:-/data-1/dataset}" in common_text
     assert "TRAIN_FILE=${TRAIN_FILE:-\"${DATA_ROOT}/EnsembleLLM-data-processed/train_rl_format.parquet\"}" in common_text
@@ -264,6 +266,8 @@ def test_dual_rollout_recipe_scripts_are_portable_and_opt_in():
     assert "MAX_CRITIC_CKPTS_TO_KEEP=${MAX_CRITIC_CKPTS_TO_KEEP:-1}" in common_text
     assert "KEEP_BEST_CKPT=${KEEP_BEST_CKPT:-True}" in common_text
     assert "BEST_CKPT_METRIC_KEY=${BEST_CKPT_METRIC_KEY:-\"val-core/HuggingFaceH4/MATH-500/acc/mean@3\"}" in common_text
+    assert "+actor_rollout_ref.actor.policy_loss.gamma_pos_sft=${gamma_pos_sft}" in common_text
+    assert "+actor_rollout_ref.actor.policy_loss.tis_threshold=${tis_threshold}" in common_text
     assert "VAL_BEFORE_TRAIN" in common_text
     assert "/mnt/dolphinfs" not in common_text
 
@@ -271,3 +275,12 @@ def test_dual_rollout_recipe_scripts_are_portable_and_opt_in():
     assert 'WDL_SFT_BETA=${WDL_SFT_BETA:-0.1}' in run_3b_text
     assert 'source "${WRAPPER_SCRIPT_DIR}/_common_dual_rollout.sh" "$@"' in run_3a_text
     assert 'source "${WRAPPER_SCRIPT_DIR}/_common_dual_rollout.sh" "$@"' in run_3b_text
+    assert 'LOSS_MODE=${LOSS_MODE:-dual_model2_group_adv_is}' in run_4a_text
+    assert 'JOINT_ROLLOUT_SOURCES=${JOINT_ROLLOUT_SOURCES:-"[sub_model_1]"}' in run_4a_text
+    assert 'TRAIN_FILE=${TRAIN_FILE:-"/data-1/dataset/math/train_rl_format.parquet"}' in run_4a_text
+    assert 'GAMMA_POS_SFT=${GAMMA_POS_SFT:-1.0}' in run_4a_text
+    assert 'TIS_THRESHOLD=${TIS_THRESHOLD:-5.0}' in run_4a_text
+    assert 'ROLLOUT_IS=${ROLLOUT_IS:-null}' in run_4a_text
+    assert 'TOTAL_TRAINING_STEPS=${TOTAL_TRAINING_STEPS:-115}' in run_4a_text
+    assert 'TOTAL_EPOCHS=${TOTAL_EPOCHS:-1}' in run_4a_text
+    assert 'source "${WRAPPER_SCRIPT_DIR}/_common_dual_rollout.sh" "$@"' in run_4a_text

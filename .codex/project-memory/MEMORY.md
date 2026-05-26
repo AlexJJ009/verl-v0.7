@@ -14,6 +14,8 @@ files from here.
 
 - [Codex native memory summary](codex-native-summary.md) — durable project lessons
   found in Codex native memories and summarized for project-level sharing.
+- [Meituan compatibility and queue monitor rules](codex-native-summary.md#meituan-compatibility-and-queue-monitoring) —
+  project-level launch portability and queue-monitor defaults for new training scripts.
 
 <!-- BEGIN IMPORTED CLAUDE AUTO MEMORY -->
 ## Imported Claude Auto Memory

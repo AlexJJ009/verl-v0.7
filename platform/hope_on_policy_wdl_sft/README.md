@@ -1,19 +1,20 @@
 # hope_on_policy_wdl_sft
 
-Unified Meituan hope_dir for On-Policy WDL-SFT **LABELFIX** reruns.
+Unified Meituan hope_dir for On-Policy WDL-SFT runs.
 
 This directory is the hope submission entry point. It is checked in under
 `platform/hope_on_policy_wdl_sft/` so it can be `git pull`'d directly on the
 Meituan client host — no need to copy files around. The same template handles
-both joint 1X and single-model 2X experiments; the dispatcher in `jupyter.sh`
-picks the right `recipe/.../meituan/jupyter.sh` based on `$EXPERIMENT`.
+joint 1X, single-model 2X, and 4ABC group-advantage experiments; the dispatcher
+in `jupyter.sh` picks the right `recipe/.../meituan/jupyter.sh` based on
+`$EXPERIMENT`.
 
 ## Files
 
 | File | Purpose |
 |---|---|
 | `run.hope` | hope job spec template. Holds resource / image / env defaults. |
-| `jupyter.sh` | AFO worker entry. Dispatches `1*` to joint, `2*` to ablation. |
+| `jupyter.sh` | AFO worker entry. Dispatches `1*` to joint, `2*`/`4b`/`4c` to ablation, and `4a` to dual rollout. |
 | `submit_batch.sh` | **Use this.** Submits N experiments back-to-back, each with its own rendered run.hope and per-experiment log. |
 
 ## Quick start (陆晓东's workflow)
@@ -40,6 +41,9 @@ export REPO_SUBPATH='<subpath under $LGX where you cloned verl>'
 
 # Or just one:
 ./submit_batch.sh 1a
+
+# Or submit the current 4ABC family as separate Meituan jobs:
+./submit_batch.sh --4abc
 ```
 
 `hope run run.hope` packs the cwd into the job, so the script renders a fresh
@@ -95,6 +99,9 @@ submit if any `REPLACE_ME` placeholder remains.
 | `2z-sft` | single | Qwen3-4B-Base-SFT-stage-1 | `minirl` | - | 5e-7 | optional | Baseline unaffected by label bug |
 | `2g-base` | single | Qwen3-4B-Base | `vanilla` | - | 5e-7 | optional | Baseline unaffected by label bug |
 | `2g-sft` | single | Qwen3-4B-Base-SFT-stage-1 | `vanilla` | - | 5e-7 | optional | Baseline unaffected by label bug |
+| `4a` | dual rollout | Base + SFT-stage-1 joint model | `dual_model2_group_adv_is` | - | 5e-7 | no | Model2-only rollout, fused training, MATH train, 115 steps |
+| `4b-math-base` | single | Qwen3-4B-Base | `wdl_group_adv_is` | - | 5e-7 | no | Single-model Base ablation for 4A, MATH train, 115 steps |
+| `4c-math-sft` | single | Qwen3-4B-Base-SFT-stage-1 | `wdl_group_adv_is` | - | 5e-7 | no | Single-model SFT ablation for 4A, MATH train, 115 steps |
 
 ## How the dispatch chain resolves
 
@@ -105,6 +112,10 @@ platform/hope_on_policy_wdl_sft/jupyter.sh         (hope worker entry)
                     └── runs run_on_policy_wdl_sft_qwen3_4b_math_${exp}.sh
         2*-base|2*-sft) → recipe/on_policy_wdl_sft/ablation_single_model/meituan/jupyter.sh
                     └── runs ablation_single_model/run_${exp//-/_}.sh
+        4a) → recipe/on_policy_wdl_sft/dual_submodel_rollout/meituan/jupyter.sh
+                    └── runs dual_submodel_rollout/run_4a_model2_group_adv_is.sh
+        4b/4c) → recipe/on_policy_wdl_sft/ablation_single_model/meituan/jupyter.sh
+                    └── runs ablation_single_model/run_${exp//-/_}.sh
 ```
 
 Both adapters source their respective `meituan/env.sh` first, which sets:
@@ -112,10 +123,16 @@ Both adapters source their respective `meituan/env.sh` first, which sets:
 - `HF_HOME`, `BASE_CKPT_DIR`, `WANDB_DIR`, `LOG_DIR` → `$LGX/verl-exp/...`
 - `MEITUAN_BASE_MODEL_PATH`, `MEITUAN_SFT_MODEL_PATH` → flat dirs under `$LGX`
 - `TRAIN_FILE`, `TEST_FILES` → `$LGX/verl-exp/data/...`
+- `MATH_TRAIN_FILE` → `$LGX/verl-exp/data/math/train_rl_format.parquet` for
+  the 4B/4C MATH ablations
 - `WANDB_MODE=offline`, `MAX_ACTOR_CKPTS_TO_KEEP=1`, best-checkpoint vars
 
 The 1X joint run also auto-prepares the joint model under
 `$LGX/verl-exp/models/QwenJoint-4B-WDL-SFT-...` if the directory is missing.
+The 4A dual-rollout run uses
+`recipe/on_policy_wdl_sft/dual_submodel_rollout/meituan/env.sh`, which maps
+the prepared joint model and MATH train file to dolphinfs paths and defaults
+best-checkpoint selection to MATH-500 `mean@3`.
 
 ## LABELFIX guarantee
 

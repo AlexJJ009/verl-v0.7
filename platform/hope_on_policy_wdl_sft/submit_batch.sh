@@ -29,6 +29,7 @@
 #   --dry-run                Print substituted run.hope and exit (no hope call).
 #   --continue-on-error      Keep submitting after a failure.
 #   --all                    Use 1a 1b 1c 2a-base 2a-sft 2b-base 2b-sft 2c-base 2c-sft.
+#   --4abc                   Use 4a 4b-math-base 4c-math-sft.
 #   -h | --help              Show this help.
 #
 # Examples:
@@ -53,10 +54,12 @@ TEMPLATE_DIR="$HERE"
 # --- Defaults ----------------------------------------------------------------
 DEFAULT_EXPERIMENTS=(1a 1b 1c)
 ALL_EXPERIMENTS=(1a 1b 1c 2a-base 2a-sft 2b-base 2b-sft 2c-base 2c-sft)
+FOUR_ABC_EXPERIMENTS=(4a 4b-math-base 4c-math-sft)
 KNOWN_EXPERIMENTS=(
     1a 1b 1c
     2a-base 2a-sft 2b-base 2b-sft 2c-base 2c-sft
     2z-base 2z-sft 2g-base 2g-sft
+    4a 4a-dual 4a-model2-group-adv-is 4b-math-base 4c-math-sft
 )
 
 DRY_RUN=0
@@ -73,6 +76,7 @@ while [ $# -gt 0 ]; do
         --dry-run) DRY_RUN=1; shift ;;
         --continue-on-error) CONTINUE_ON_ERROR=1; shift ;;
         --all) EXPERIMENTS=("${ALL_EXPERIMENTS[@]}"); shift ;;
+        --4abc) EXPERIMENTS=("${FOUR_ABC_EXPERIMENTS[@]}"); shift ;;
         -h|--help) print_help; exit 0 ;;
         --) shift; break ;;
         -*)

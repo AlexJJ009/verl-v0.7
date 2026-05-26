@@ -36,12 +36,15 @@ case "$EXPERIMENT_LC" in
     1a|1b|1c|1a-joint|1b-joint|1c-joint)
         exec bash "$REPO/recipe/on_policy_wdl_sft/meituan/jupyter.sh"
         ;;
-    2a-base|2a-sft|2b-base|2b-sft|2c-base|2c-sft|2z-base|2z-sft|2g-base|2g-sft)
+    2a-base|2a-sft|2b-base|2b-sft|2c-base|2c-sft|2z-base|2z-sft|2g-base|2g-sft|4b-math-base|4c-math-sft)
         exec bash "$REPO/recipe/on_policy_wdl_sft/ablation_single_model/meituan/jupyter.sh"
+        ;;
+    4a|4a-dual|4a-model2-group-adv-is)
+        exec bash "$REPO/recipe/on_policy_wdl_sft/dual_submodel_rollout/meituan/jupyter.sh"
         ;;
     *)
         echo "[hope_on_policy_wdl_sft] ERROR: unsupported EXPERIMENT='$EXPERIMENT'" >&2
-        echo "[hope_on_policy_wdl_sft] Supported: 1a/1b/1c, 2a/2b/2c/2z/2g with -base or -sft." >&2
+        echo "[hope_on_policy_wdl_sft] Supported: 1a/1b/1c, 2a/2b/2c/2z/2g with -base or -sft, plus 4a and 4b/4c math ablations." >&2
         exit 1
         ;;
 esac

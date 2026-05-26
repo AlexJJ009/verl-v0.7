@@ -6,6 +6,7 @@ This index is branch-local for `feature/on-policy-wdl-sft-dual-rollout`.
 
 | Plan | Purpose | Status |
 |---|---|---|
+| `dual_model2_rollout_group_adv_is.md` | Active revision contract: model2-only rollout, fused two-submodel training, MiniRL-style token IS, group advantage, and binary staleness mask. | Implemented; 256-token plumbing smoke/stability complete, production-context learning-signal smoke required before full training. |
 | `dual_submodel_rollout_wdl_sft.md` | Dual-submodel rollout WDL-SFT plan and algorithm boundary. | Implemented, but 3A real training failed as method-level negative result; keep as the branch's main historical/active context. |
 | `dual_submodel_rollout_wdl_sft_status.md` | Status notes for the dual-submodel rollout work. | Active status reference. |
 | `wdl_sft_is.md` | WDL-SFT v2 loss plan inherited from the parent branch. | Background / still relevant where the dual branch uses v2 loss semantics. |
