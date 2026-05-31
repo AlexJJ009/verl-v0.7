@@ -1,0 +1,612 @@
+% ============================================================================
+% Stage-1 On-Policy SFT Algorithm Note
+% ----------------------------------------------------------------------------
+% Input fragment for main.tex. Keep this file free of preamble and document
+% environment commands. Shared packages and macros live in config.sty.
+% ============================================================================
+
+\section{Two-Stage On-Policy SFT to WDL-SFT Algorithm Note}
+\label{sec:opsft-note}
+\paragraph{Overview.}
+This note formalizes the two-stage experiment used in the current beta-search
+and fast-validation cycle. Stage 1 trains a single Qwen3-4B-Base policy with
+on-policy supervised fine-tuning (On-Policy SFT): for each prompt, the current
+policy samples multiple responses; a verifier assigns binary correctness
+labels; correct responses are optimized with ordinary SFT, while incorrect
+responses optionally contribute a reverse-SFT term controlled by a scalar
+hyperparameter $\beta$. Stage 2 initializes a two-submodel joint policy from
+the selected Stage-1 checkpoints, rolls out with Model~2 only, and trains both
+submodels through a fused-logit WDL-SFT loss. The purpose of this experiment is
+to test whether Stage-1 beta selection and Stage-2 fused-loss gradient
+amplification can improve the selected SFT baseline under controlled
+conditions.
+
+
+\section{Problem Setup}
+\label{sec:opsft-setup}
+
+Let $x\in\mathcal{X}$ be a math prompt sampled from the training distribution
+$\Dtrain$, and let $\pi_{\theta}$ denote the trainable language-model policy.
+At training iteration $s$, we sample $N$ responses from the current rollout
+policy:
+\begin{equation}
+    y_i=(y_{i,1},\ldots,y_{i,T_i})
+    \sim \pi_{\theta_s}(\cdot\mid x),
+    \qquad i=1,\ldots,N .
+\end{equation}
+The experiment uses $N=8$ rollouts per prompt. A rule-based verifier provides a
+binary reward label
+\begin{equation}
+    r_i = R(x,y_i)\in\{+1,-1\},
+\end{equation}
+where $+1$ means the response is judged correct and $-1$ means it is judged
+incorrect. The responses are partitioned into
+\begin{equation}
+    \Cset(x)=\{i:r_i=+1\},
+    \qquad
+    \Iset(x)=\{i:r_i=-1\}.
+\end{equation}
+
+For a response $y_i$, define its masked sequence log-likelihood under the
+current actor as
+\begin{equation}
+    \ell_{\theta}(x,y_i)
+    =
+    \sum_{t=1}^{T_{\max}}
+    m_{i,t}
+    \log \pi_{\theta}(y_{i,t}\mid x,y_{i,<t}),
+    \label{eq:opsft-seq-logprob}
+\end{equation}
+where $m_{i,t}\in\{0,1\}$ masks out padding tokens. In the implementation this
+quantity is computed from \texttt{log\_prob} and \texttt{response\_mask}.
+
+\paragraph{Stage-1 experimental scope.}
+The first half of this document describes the Stage-1 run family:
+\begin{itemize}[leftmargin=1.5em]
+    \item single-model training from Qwen3-4B-Base;
+    \item \texttt{loss\_mode=wdl\_sft};
+    \item \texttt{joint\_training=False};
+    \item \texttt{rollout\_is=null}, \texttt{rollout\_rs=null};
+    \item KL in reward and KL loss disabled;
+    \item beta grid $\beta\in\{0.0,0.1,\ldots,1.0\}$, with
+    $\beta\in\{0.0,0.1,0.2,0.3\}$ completed in the current reported segment.
+\end{itemize}
+The second half describes the Stage-2 fast validation for the selected
+Stage-1 checkpoints. IS-corrected WDL-SFT and group-advantage losses remain
+separate methods and are intentionally not part of this note.
+
+\section{Loss Function}
+\label{sec:opsft-loss}
+
+The On-Policy SFT loss has two components: a positive SFT term on correct
+rollouts and an optional reverse-SFT term on incorrect rollouts.
+
+\subsection{Positive SFT on Correct Rollouts}
+
+When at least one sampled response is correct, the positive term is
+\begin{equation}
+    \Lpos(x;\theta)
+    =
+    -\frac{1}{|\Cset(x)|}
+    \sum_{i\in\Cset(x)}
+    \ell_{\theta}(x,y_i).
+    \label{eq:opsft-lpos}
+\end{equation}
+Minimizing $\Lpos$ increases the likelihood of verifier-correct on-policy
+responses. This is ordinary supervised fine-tuning, but the supervision is
+created online by the current policy rather than taken from a fixed human
+demonstration dataset.
+
+\subsection{Reverse SFT on Incorrect Rollouts}
+
+For incorrect rollouts, define
+\begin{equation}
+    \Lneg(x;\theta)
+    =
+    \frac{1}{|\Iset(x)|}
+    \sum_{j\in\Iset(x)}
+    \ell_{\theta}(x,y_j),
+    \qquad |\Iset(x)|>0.
+    \label{eq:opsft-lneg}
+\end{equation}
+This term has the opposite sign from ordinary SFT. Since log probabilities are
+typically negative, minimizing $\Lneg$ decreases the likelihood of incorrect
+responses. The scalar $\beta\ge 0$ controls how strongly this reverse update is
+applied.
+
+\subsection{Total Objective and Boundary Cases}
+
+The per-prompt objective is
+\begin{equation}
+    \Ltotal(x;\theta)
+    =
+    \begin{cases}
+    \Lpos(x;\theta)+\beta\,\Lneg(x;\theta),
+        & |\Cset(x)|>0,\ |\Iset(x)|>0,\\[0.4em]
+    \Lpos(x;\theta),
+        & |\Cset(x)|>0,\ |\Iset(x)|=0,\\[0.4em]
+    0,
+        & |\Cset(x)|=0.
+    \end{cases}
+    \label{eq:opsft-total-loss}
+\end{equation}
+The batch loss is the same construction applied to the response batch consumed
+by the actor update: the implementation first converts verifier scores into raw
+reward labels, writes them into the \texttt{advantages} tensor, and then the
+loss reads the label of each response from \texttt{advantages[:,0]}. Thus the
+\texttt{advantages} tensor in this loss mode is not a GRPO advantage; it is a
+carrier for binary reward labels.
+
+The current code normalizes the positive and negative terms by the number of
+responses in their respective sets. This keeps the scale of each term less
+sensitive to the correct/incorrect ratio inside a mini-batch.
+
+The training objective is the on-policy empirical risk
+\begin{equation}
+    \min_{\theta}\;
+    \E_{x\sim\Dtrain}
+    \E_{y_1,\ldots,y_N\sim \pi_{\theta_{\mathrm{old}}}(\cdot\mid x)}
+    \left[
+        \Ltotal(x;\theta)
+    \right],
+    \label{eq:opsft-population-objective}
+\end{equation}
+where the sampled responses and verifier labels are treated as fixed targets
+during the actor update. The loss is therefore SFT-like in the inner update,
+but on-policy in how the targets are generated.
+
+\section{Algorithm}
+\label{sec:opsft-algorithm}
+
+\begin{algorithm}[t]
+\caption{Stage-1 On-Policy SFT with reverse-SFT beta}
+\label{alg:opsft-on-policy-sft}
+\begin{algorithmic}[1]
+\Require initial policy $\pi_{\theta_0}$; verifier $R$; beta $\beta$; rollouts per prompt $N$; training prompts $\Dtrain$
+\For{training step $s=0,1,\ldots,S-1$}
+    \State Sample a batch of prompts $x\sim\Dtrain$.
+    \ForAll{prompts $x$ in the batch}
+        \State Generate $N$ responses $y_1,\ldots,y_N\sim \pi_{\theta_s}(\cdot\mid x)$.
+        \State Score each response with the verifier: $r_i=R(x,y_i)\in\{+1,-1\}$.
+        \State Form $\Cset(x)=\{i:r_i=+1\}$ and $\Iset(x)=\{i:r_i=-1\}$.
+    \EndFor
+    \State Recompute token log-probabilities $\log \pi_{\theta_s}(y_{i,t}\mid x,y_{i,<t})$ with the actor.
+    \State Compute $\Ltotal$ from Eq.~\eqref{eq:opsft-total-loss}.
+    \State Update $\theta$ by backpropagating $\nabla_{\theta}\Ltotal$.
+    \State Every 5 steps, run validation and save latest/best checkpoints.
+\EndFor
+\end{algorithmic}
+\end{algorithm}
+
+\section{Flow Diagram}
+\label{sec:opsft-flow}
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+    node distance=9mm and 12mm,
+    box/.style={
+        draw,
+        rounded corners=2pt,
+        align=center,
+        minimum width=30mm,
+        minimum height=9mm,
+        font=\small
+    },
+    wide/.style={
+        draw,
+        rounded corners=2pt,
+        align=center,
+        minimum width=45mm,
+        minimum height=10mm,
+        font=\small
+    },
+    decision/.style={
+        draw,
+        diamond,
+        aspect=2.1,
+        align=center,
+        inner sep=1pt,
+        font=\small
+    },
+    arrow/.style={-{Latex[length=2.4mm]}, thick}
+]
+    \node[box] (prompt) {Training prompt\\$x\sim\Dtrain$};
+    \node[box, right=of prompt] (rollout) {On-policy rollout\\$y_1,\ldots,y_N\sim\pi_\theta$};
+    \node[box, right=of rollout] (verify) {Verifier\\$r_i\in\{+1,-1\}$};
+
+    \node[decision, below=of verify] (split) {Partition\\responses};
+    \node[box, below left=13mm and 10mm of split] (correct) {Correct set\\$\Cset$};
+    \node[box, below right=13mm and 10mm of split] (incorrect) {Incorrect set\\$\Iset$};
+
+    \node[wide, below=of correct] (pos) {Positive SFT\\$\Lpos=-|\Cset|^{-1}\sum_{i\in\Cset}\ell_\theta(x,y_i)$};
+    \node[wide, below=of incorrect] (neg) {Reverse SFT\\$\Lneg=|\Iset|^{-1}\sum_{j\in\Iset}\ell_\theta(x,y_j)$};
+
+    \node[wide, below right=16mm and -21mm of pos] (loss) {Total loss\\$\Ltotal=\Lpos+\beta\Lneg$\\skip if $\Cset=\emptyset$};
+    \node[box, below=of loss] (update) {Actor update\\backprop through $\log\pi_\theta$};
+    \node[box, below=of update] (eval) {Dense validation\\latest + best checkpoint};
+
+    \draw[arrow] (prompt) -- (rollout);
+    \draw[arrow] (rollout) -- (verify);
+    \draw[arrow] (verify) -- (split);
+    \draw[arrow] (split) -- (correct);
+    \draw[arrow] (split) -- (incorrect);
+    \draw[arrow] (correct) -- (pos);
+    \draw[arrow] (incorrect) -- (neg);
+    \draw[arrow] (pos) -- (loss);
+    \draw[arrow] (neg) -- (loss);
+    \draw[arrow] (loss) -- (update);
+    \draw[arrow] (update) -- (eval);
+    \draw[arrow] (eval.west) .. controls +(-35mm,0mm) and +(0mm,-18mm) .. (prompt.south);
+\end{tikzpicture}
+\caption{Current Stage-1 On-Policy SFT training loop. The supervision is generated online: the current policy samples responses, a verifier labels them, and the loss increases correct-response likelihood while optionally decreasing incorrect-response likelihood through $\beta$.}
+\label{fig:opsft-flow}
+\end{figure}
+
+\section{Interpretation of the Loss}
+\label{sec:opsft-interpretation}
+
+\paragraph{Why this is on-policy.}
+The responses used for the SFT target are sampled from the current policy
+during training. This differs from ordinary offline SFT, where the target
+sequence is fixed before training. Here, the model repeatedly proposes its own
+candidate solutions and then learns from the subset judged correct by the
+verifier.
+
+\paragraph{What the positive term does.}
+$\Lpos$ is selected SFT: among the model's own responses, it treats verified
+correct responses as demonstrations. If the policy discovers a correct solution
+style, the positive term reinforces that behavior.
+
+\paragraph{What the negative term does.}
+$\Lneg$ is reverse SFT. It asks the model to reduce probability mass on
+verified incorrect responses. This is not a policy-gradient advantage and not
+a KL penalty. It is a direct likelihood penalty on complete sampled responses.
+The hyperparameter $\beta$ is therefore important: too small may ignore useful
+negative evidence, while too large may punish broad regions of the policy and
+destabilize useful reasoning formats.
+
+\paragraph{Why all-incorrect prompts are skipped.}
+When $\Cset=\emptyset$, the current implementation returns zero loss. This
+choice avoids training solely from negative samples when the model has not
+found any verified correct answer for the prompt. It makes the algorithm
+conservative: every update must be anchored by at least one positive response.
+
+\paragraph{What this loss is not.}
+The current Stage-1 loss does not use old/current probability ratios,
+importance weights, rollout correction, GRPO advantages, or KL regularization.
+These omissions are deliberate for the beta-search phase: the experiment first
+isolates the behavior of selected on-policy SFT and the reverse-SFT coefficient
+$\beta$.
+
+\section{Beta Search Design}
+\label{sec:opsft-beta-search}
+
+The current grid searches only $\beta$ while holding the rest of the training
+configuration fixed: same initialization, data seed, learning rate, rollout
+count, validation cadence, and checkpoint-selection metric. Each run trains for
+150 steps with validation every 5 steps. The within-run best checkpoint is
+selected by
+\begin{equation}
+    \texttt{val-core/HuggingFaceH4/MATH-500/acc/mean@3}.
+\end{equation}
+
+\begin{table}[t]
+\centering
+\small
+\setlength{\tabcolsep}{3.3pt}
+\renewcommand{\arraystretch}{1.15}
+\caption{Stage-1 beta grid. Columns are beta values. Rows are online validation outcomes. Values are percentages from the local metrics JSONL files and the best-checkpoint metadata. The table reports the completed grid segment $\beta\in\{0.0,0.1,0.2,0.3\}$. The MATH-500 checkpoint row is selected by MATH-500 mean@3; rows labeled ``Best'' report each metric's own peak over validation steps.}
+\label{tab:opsft-beta-grid}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lcccc}
+\toprule
+Result / $\beta$ & 0.0 & 0.1 & 0.2 & 0.3 \\
+\midrule
+Status
+    & done & done & done & done \\
+Latest step
+    & 150 & 150 & 150 & 150 \\
+Best checkpoint step
+    & 85 & 150 & 65 & 50 \\
+Best MATH-500 mean@3
+    & 73.25 & \textbf{75.74} & 73.39 & 72.92 \\
+Best MATH-500 best@3
+    & 80.53 & \textbf{81.66} & 80.20 & 80.42 \\
+Final MATH-500 mean@3
+    & 70.70 & \textbf{75.74} & 68.28 & 68.55 \\
+Best AIME-2025 mean@3
+    & 14.10 & 15.38 & 17.95 & \textbf{19.23} \\
+Best AIME-2025 best@3
+    & 19.25 & 22.10 & 24.24 & \textbf{25.87} \\
+Health note
+    & stable & stable & MATH drift & MATH drift \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+\paragraph{Current reading.}
+The completed grid segment suggests a tradeoff. $\beta=0.1$ is the strongest
+MATH-500 setting and peaks at the final checkpoint, while larger beta values
+increase the best AIME-2025 metrics but drift downward on MATH-500 after their
+early best checkpoints. This is exactly the behavior the grid is meant to
+measure: reverse-SFT may help some harder generalization metrics, but excessive
+negative pressure can reduce the stable MATH trajectory.
+
+\section{Stage-2 Model2-Rollout WDL-SFT}
+\label{sec:stage2-wdl-sft}
+
+Stage 2 converts the best Stage-1 single-model checkpoints into the strong
+submodel of a two-submodel joint policy. Let $\pi_{\psi}$ denote the Stage-1
+policy selected by the beta search. We instantiate a joint model with two
+trainable submodels:
+\begin{equation}
+    \theta=(\theta_1,\theta_2),
+    \qquad
+    \pi_{\theta_1}^{(1)} \leftarrow \pi_{\mathrm{base}},
+    \qquad
+    \pi_{\theta_2}^{(2)} \leftarrow \pi_{\psi}.
+    \label{eq:stage2-init}
+\end{equation}
+Both $\theta_1$ and $\theta_2$ are updated during Stage 2. The key distinction
+from a fully fused rollout method is that sampling is performed only by
+Model~2:
+\begin{equation}
+    y_i\sim \pi_{\theta_{2,s}}^{(2)}(\cdot\mid x),
+    \qquad i=1,\ldots,N.
+    \label{eq:stage2-model2-rollout}
+\end{equation}
+Thus the behavior policy used to generate training targets is the current
+Model2 policy. The loss, however, is evaluated on a fused policy distribution
+constructed from both submodels' logits.
+
+\subsection{Fused Training Policy}
+\label{sec:stage2-fused-policy}
+
+Let $z^{(1)}_{\theta_1,t}(v)$ and $z^{(2)}_{\theta_2,t}(v)$ be the logits of
+Model~1 and Model~2 for token $v$ at position $t$ conditioned on
+$(x,y_{<t})$. For a fixed mixing coefficient $\lambda\in[0,1]$, the fused
+training distribution is
+\begin{equation}
+    \pi_{\theta}^{\mathrm{mix}}(v\mid x,y_{<t})
+    =
+    \mathrm{softmax}\!\left(
+        (1-\lambda)z^{(1)}_{\theta_1,t}(v)
+        +
+        \lambda z^{(2)}_{\theta_2,t}(v)
+    \right).
+    \label{eq:stage2-fused-policy}
+\end{equation}
+The sequence log-likelihood used by the Stage-2 loss is therefore
+\begin{equation}
+    \ell_{\theta}^{\mathrm{mix}}(x,y_i)
+    =
+    \sum_{t=1}^{T_{\max}}
+    m_{i,t}
+    \log
+    \pi_{\theta}^{\mathrm{mix}}(y_{i,t}\mid x,y_{i,<t}).
+    \label{eq:stage2-fused-loglik}
+\end{equation}
+Since $\pi_{\theta}^{\mathrm{mix}}$ depends on both submodels, the gradient
+backpropagates through both $\theta_1$ and $\theta_2$. In this design, Model~1
+is not frozen. It is allowed to move so that the fused-logit objective acts as
+a gradient amplifier for Model~2, while evaluation still targets Model~2
+rather than the fused policy.
+
+\subsection{Stage-2 Loss}
+\label{sec:stage2-loss}
+
+The verifier and response partition are identical to Stage 1:
+\begin{equation}
+    r_i=R(x,y_i)\in\{+1,-1\},
+    \qquad
+    \Cset(x)=\{i:r_i=+1\},
+    \qquad
+    \Iset(x)=\{i:r_i=-1\}.
+\end{equation}
+The only loss-level change is the replacement of the single-model
+log-likelihood $\ell_{\theta}$ by the fused log-likelihood
+$\ell_{\theta}^{\mathrm{mix}}$. The positive and negative Stage-2 terms are
+\begin{align}
+    \Lpos^{(2)}(x;\theta_1,\theta_2)
+    &=
+    -\frac{1}{|\Cset(x)|}
+    \sum_{i\in\Cset(x)}
+    \ell_{\theta}^{\mathrm{mix}}(x,y_i),
+    \label{eq:stage2-lpos}
+    \\
+    \Lneg^{(2)}(x;\theta_1,\theta_2)
+    &=
+    \frac{1}{|\Iset(x)|}
+    \sum_{j\in\Iset(x)}
+    \ell_{\theta}^{\mathrm{mix}}(x,y_j).
+    \label{eq:stage2-lneg}
+\end{align}
+The per-prompt Stage-2 objective is
+\begin{equation}
+    \Ltotal^{(2)}(x;\theta_1,\theta_2)
+    =
+    \begin{cases}
+    \Lpos^{(2)}(x;\theta_1,\theta_2)
+    +\beta_2\,\Lneg^{(2)}(x;\theta_1,\theta_2),
+        & |\Cset(x)|>0,\ |\Iset(x)|>0,\\[0.4em]
+    \Lpos^{(2)}(x;\theta_1,\theta_2),
+        & |\Cset(x)|>0,\ |\Iset(x)|=0,\\[0.4em]
+    0,
+        & |\Cset(x)|=0.
+    \end{cases}
+    \label{eq:stage2-total-loss}
+\end{equation}
+The population objective is
+\begin{equation}
+    \min_{\theta_1,\theta_2}
+    \E_{x\sim\Dtrain^{(2)}}
+    \E_{y_1,\ldots,y_N\sim \pi_{\theta_{2,\mathrm{old}}}^{(2)}(\cdot\mid x)}
+    \left[
+        \Ltotal^{(2)}(x;\theta_1,\theta_2)
+    \right].
+    \label{eq:stage2-objective}
+\end{equation}
+Here $\Dtrain^{(2)}$ is a non-overlapping shard that starts after the prompts
+consumed by the Stage-1 runs under the same data seed. In the current fast
+validation, $N=8$, the prompt batch size is 64, and the actor mini-batch size is
+512 responses. Consequently, each Model2 rollout batch is consumed by a single
+optimizer update with one PPO epoch. This does not remove all sources of
+off-policy mismatch---for example, FSDP/vLLM numerical differences still exist
+---but it avoids repeatedly reusing the same rollout batch across multiple
+mini-batch optimizer updates.
+
+\begin{algorithm}[t]
+\caption{Stage-2 Model2-Rollout Fused-Loss WDL-SFT}
+\label{alg:stage2-model2-rollout}
+\begin{algorithmic}[1]
+\Require Stage-1 selected Model2 checkpoint $\pi_{\psi}$; base model $\pi_{\mathrm{base}}$; verifier $R$; mixing weight $\lambda$; Stage-2 beta $\beta_2$; non-overlap prompts $\Dtrain^{(2)}$
+\State Initialize $\theta_1\leftarrow \pi_{\mathrm{base}}$ and $\theta_2\leftarrow \pi_{\psi}$.
+\For{training step $s=0,1,\ldots,S_2-1$}
+    \State Sample a prompt batch $x\sim\Dtrain^{(2)}$.
+    \ForAll{prompts $x$ in the batch}
+        \State Generate $N$ responses from Model~2 only:
+        $y_1,\ldots,y_N\sim\pi_{\theta_{2,s}}^{(2)}(\cdot\mid x)$.
+        \State Score each response with $R$ and form $\Cset(x)$ and $\Iset(x)$.
+    \EndFor
+    \State Run a fused forward pass with both submodels and compute $\pi_{\theta}^{\mathrm{mix}}$ from Eq.~\eqref{eq:stage2-fused-policy}.
+    \State Compute $\Ltotal^{(2)}$ from Eq.~\eqref{eq:stage2-total-loss}.
+    \State Update both $\theta_1$ and $\theta_2$ by backpropagating $\nabla_{\theta_1,\theta_2}\Ltotal^{(2)}$.
+    \State Validate Model~2 and retain latest/best checkpoints.
+\EndFor
+\end{algorithmic}
+\end{algorithm}
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+    node distance=8mm and 9mm,
+    box/.style={
+        draw,
+        rounded corners=2pt,
+        align=center,
+        minimum width=28mm,
+        minimum height=8mm,
+        font=\small
+    },
+    wide/.style={
+        draw,
+        rounded corners=2pt,
+        align=center,
+        minimum width=43mm,
+        minimum height=9mm,
+        font=\small
+    },
+    arrow/.style={-{Latex[length=2.2mm]}, thick}
+]
+    \node[box] (base) {Qwen3-4B-Base\\initial policy};
+    \node[wide, right=of base] (stage1) {Stage 1\\single-model on-policy SFT\\select best checkpoint};
+    \node[box, right=of stage1] (model2) {Stage-1 best\\Model~2 init};
+
+    \node[box, below=15mm of base] (m1) {Model~1\\base init\\trainable};
+    \node[box, below=15mm of model2] (m2) {Model~2\\Stage-1 init\\trainable};
+    \node[wide, below=of stage1] (rollout) {Model2-policy rollout\\$y_i\sim\pi_{\theta_2}^{(2)}(\cdot\mid x)$};
+    \node[box, below=of rollout] (verify) {Verifier\\$\Cset,\Iset$};
+    \node[wide, below=of verify] (fused) {Fused forward\\$\pi_\theta^{\mathrm{mix}}=\mathrm{softmax}((1-\lambda)z^{(1)}+\lambda z^{(2)})$};
+    \node[wide, below=of fused] (loss) {Stage-2 loss\\$\Ltotal^{(2)}=\Lpos^{(2)}+\beta_2\Lneg^{(2)}$};
+    \node[wide, below=of loss] (update) {Joint update\\$\nabla_{\theta_1,\theta_2}\Ltotal^{(2)}$\\evaluate Model~2};
+
+    \draw[arrow] (base) -- (stage1);
+    \draw[arrow] (stage1) -- (model2);
+    \draw[arrow] (base) -- (m1);
+    \draw[arrow] (model2) -- (m2);
+    \draw[arrow] (m2) -- (rollout);
+    \draw[arrow] (rollout) -- (verify);
+    \draw[arrow] (m1) |- (fused);
+    \draw[arrow] (m2) |- (fused);
+    \draw[arrow] (verify) -- (fused);
+    \draw[arrow] (fused) -- (loss);
+    \draw[arrow] (loss) -- (update);
+    \draw[arrow] (update.east) .. controls +(20mm,0mm) and +(18mm,-16mm) .. (m2.south);
+    \draw[arrow] (update.west) .. controls +(-20mm,0mm) and +(-18mm,-16mm) .. (m1.south);
+\end{tikzpicture}
+\caption{Relationship between Stage 1 and Stage 2. Stage 1 selects a single-model checkpoint that initializes Model~2. Stage 2 samples from Model~2 only, but constructs the training loss using a fused forward pass through Model~1 and Model~2, so both submodels receive gradients.}
+\label{fig:stage1-stage2-flow}
+\end{figure}
+
+\section{Stage-2 Fast-Validation Results}
+\label{sec:stage2-results}
+
+\begin{table}[t]
+\centering
+\small
+\setlength{\tabcolsep}{4.2pt}
+\renewcommand{\arraystretch}{1.15}
+\caption{Stage-2 fast-validation results. Both runs use Model2-policy rollout and fused-policy loss. Values are online validation percentages. ``Best checkpoint step'' is selected by MATH-500 mean@3; rows labeled ``Best'' report each metric's own peak over validation steps; ``Final'' is the step-75 validation.}
+\label{tab:stage2-fast-validation}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lcc}
+\toprule
+Result & S1 $\beta=0.0 \rightarrow$ S2 $\beta_2=0.0$ & S1 $\beta=0.1 \rightarrow$ S2 $\beta_2=0.1$ \\
+\midrule
+Stage-1 source checkpoint
+    & step 85 & step 150 \\
+Stage-1 best MATH-500 mean@3
+    & 73.25 & 75.74 \\
+Stage-2 latest step
+    & 75 & 75 \\
+Stage-2 best checkpoint step
+    & 35 & 20 \\
+Stage-2 best MATH-500 mean@3
+    & 74.80 & \textbf{76.68} \\
+Stage-2 best MATH-500 best@3
+    & 80.91 & \textbf{82.24} \\
+Stage-2 best AIME-2025 mean@3
+    & 16.67 & \textbf{19.23} \\
+Stage-2 best AIME-2025 best@3
+    & 21.83 & \textbf{25.85} \\
+Final MATH-500 mean@3
+    & 1.41 & 1.34 \\
+Final AIME-2025 mean@3
+    & 0.00 & 0.00 \\
+Final extraction-failure rate
+    & 55.75 & 93.23 \\
+Health note
+    & early gain, final collapse & early gain, final collapse \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+\paragraph{Interpretation.}
+The Stage-2 peak metrics are consistent with the intended gradient-amplification
+effect: both matched-beta runs improve over their Stage-1 source checkpoints at
+early validation steps. However, both 75-step runs collapse by the final
+validation, with very high answer-extraction failure rates. We therefore treat
+these Stage-2 runs as useful fast-validation evidence for the method mechanism,
+but not yet as stable final models. The next experimental question is how to
+keep the fused-loss amplification while preventing late-format drift.
+
+\section{Implementation Map}
+\label{sec:opsft-implementation}
+
+\begin{itemize}[leftmargin=1.5em]
+    \item Loss registration: \texttt{verl/trainer/ppo/core\_algos.py}, \texttt{loss\_mode=wdl\_sft}.
+    \item Reward-label override: \texttt{verl/trainer/ppo/ray\_trainer.py} writes raw verifier labels into \texttt{advantages} for \texttt{wdl\_sft}.
+    \item Stage-1 launcher: \texttt{recipe/on\_policy\_wdl\_sft/staged\_v1/run\_s1\_base\_sft.sh}.
+    \item Beta wrappers: \texttt{recipe/on\_policy\_wdl\_sft/staged\_v1/run\_s1\_beta\_*.sh}.
+    \item Queue: \texttt{recipe/on\_policy\_wdl\_sft/staged\_v1/run\_stage1\_beta\_search\_queue.sh}.
+    \item Stage-2 non-overlap shard builder: \texttt{recipe/on\_policy\_wdl\_sft/staged\_v1/create\_stage2\_nonoverlap\_shard.py}.
+    \item Stage-2 fast-validation launchers: \texttt{recipe/on\_policy\_wdl\_sft/staged\_v1/run\_s2\_from\_s1\_beta*\_beta*.sh}.
+    \item Stage-2 queue and monitor: \texttt{recipe/on\_policy\_wdl\_sft/staged\_v1/run\_stage2\_fast\_validation\_queue.sh} and \texttt{monitor\_stage2\_fast\_validation\_queue\_notify.sh}.
+\end{itemize}
+
+\section{Summary}
+\label{sec:opsft-summary}
+
+The current experiment is best understood as a staged progression from
+verifier-selected on-policy SFT to Model2-rollout fused-loss WDL-SFT. Stage 1
+uses Eq.~\eqref{eq:opsft-total-loss}: reinforce correct sampled responses,
+optionally penalize incorrect sampled responses, and skip prompts with no
+positive sample. Stage 2 uses Eq.~\eqref{eq:stage2-total-loss}: keep rollouts on
+the current Model2 policy, but construct the supervised loss on the fused
+logit distribution so gradients flow through both submodels. The first
+Stage-2 results support the existence of an early gradient-amplification
+effect, but the final-step validation collapse shows that the current
+implementation is not yet a stable final training recipe.
