@@ -1,6 +1,6 @@
 # Goal: Stage 1 On-Policy SFT Beta Grid Search
 
-- Status: READY FOR EXECUTION - plan accepted; implementation may start after this commit, training still requires explicit launch authorization
+- Status: IMPLEMENTED AND SMOKE-PASSED - Stage 1 wrappers/queue/monitor exist and passed a 10-step usability smoke; full beta grid still requires separate explicit authorization
 - Target branch: `feature/on-policy-wdl-sft`
 - Target loss mode: `wdl_sft`
 - Current target stage: Stage 1 single-model On-Policy SFT only
@@ -26,7 +26,7 @@ Define an executable plan for the current experimental phase:
 
 This goal is **not** to run Stage 2. Stage 2 joint WDL-SFT is recorded only as a future phase after Stage 1 beta search has produced a healthy selected checkpoint and the user explicitly authorizes the next phase.
 
-The current work is still plan-authoring. Do not launch training, smoke tests, or monitor queues while this plan is being finalized.
+The plan-authoring phase is complete. The current execution goal is to implement and verify the Stage 1 beta-search path. A short Stage 1 usability smoke may be launched as validation, but the full 11-run beta grid still requires separate explicit authorization.
 
 ## 2. Decision
 
@@ -34,8 +34,8 @@ The immediate workflow is:
 
 ```text
 finalize Stage 1 beta-search plan
--> after user authorization, implement/adjust Stage 1 beta wrappers and monitor
--> optional short Stage 1 smoke if authorized
+-> implement/adjust Stage 1 beta wrappers and monitor
+-> run an optional short Stage 1 smoke for usability validation
 -> after user authorization, run Stage 1 beta grid
 -> compare best checkpoints across beta values
 -> stop and report Stage 1 result
@@ -69,7 +69,7 @@ Therefore this goal should not add a new core loss. It should use the existing c
 
 ### In Scope
 
-- Plan and, after authorization, prepare Stage 1 beta-search scripts only.
+- Prepare and verify Stage 1 beta-search scripts only.
 - Keep Stage 1 as single-model on-policy SFT:
   - `loss_mode=wdl_sft`
   - `joint_training=False`
@@ -278,7 +278,7 @@ If the host cannot retain all 11 beta runs at once, the plan must switch to an e
 
 ## 10. Required Files For The Current Stage 1 Goal
 
-These are the files this plan expects after implementation is authorized. Existing Stage 2 files may remain in the repo, but they are not acceptance criteria for this goal.
+These are the files this plan expects for the current Stage 1 implementation. Existing Stage 2 files may remain in the repo, but they are not acceptance criteria for this goal.
 
 Recipe family:
 
@@ -343,7 +343,7 @@ The Stage 1 beta-search workflow must follow the four-layer Meituan launch patte
 
 All paths must be default-local and overridable. DolphinFS paths belong only in `meituan/env.sh` or `run.hope`.
 
-## 12. Implementation Tasks After User Authorization
+## 12. Implementation Tasks
 
 1. Update the goal-local status file to say the current goal is Stage 1 beta search only.
 2. Verify the existing `wdl_sft` code path and record that no core loss change is required.
@@ -372,7 +372,7 @@ All paths must be default-local and overridable. DolphinFS paths belong only in 
 10. Update `docs/joint_training/guides/training_script_index.md`.
 11. Update active plan index and bridge docs if the goal entry changes.
 12. Run shell syntax checks.
-13. If and only if user authorizes execution, start one real short Stage 1 smoke.
+13. Start one real short Stage 1 smoke under the current execution goal, unless a concrete runtime blocker is found first.
 14. Stop after the smoke and report usability. Do not launch the full beta grid without user authorization.
 
 ## 13. Usability Smoke Acceptance

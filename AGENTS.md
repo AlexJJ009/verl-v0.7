@@ -204,7 +204,7 @@ Key finding from v1: model2 ceiling ≈ 79-80% MATH-500 mean@3 regardless of lr/
 
 Key finding so far: **v2 breaks the v1 online ceiling** (+2.4 pp at step 300 vs M5.5). 1B matches 1A online despite β=0.1 — training-level evidence that v2 contains the reverse SFT instability. Preliminary offline eval on 1A step 225 model2: MATH-500 mean@3 = 83.07% (vs v1 EVAL-10 = 79.6%).
 
-**Current focus**: Implement `docs/joint_training/plans/active/wdl_group_advantage_is_goal.md` as the active contract: group advantages + all-correct positive-SFT fallback + explicit mixed-policy old/current IS, with complete Meituan four-layer launch support.
+**Current focus**: Implement `docs/joint_training/plans/active/stage2_model2_rollout_fused_loss_fast_validation.md`: Stage 2 fast validation with Model2-only rollout from merged Stage 1 best checkpoints, fused Model1+Model2 WDL-SFT loss, both submodels trainable, and a non-overlap Stage 2 data shard. The ongoing Stage 1 beta grid remains useful context, but Stage 2 fast validation is now the active development target.
 
 ## Documentation (Archival)
 
@@ -216,6 +216,8 @@ Documentation in `docs/joint_training/` was created during the parent branch's j
 | `constraints/` | Development rules and boundaries | Still applicable |
 | `constraints/experiment_tracking/training_script_index_policy.md` | **Training script index policy** — shared rule that every branch keeps its own script index and updates it when runnable training/monitor scripts are created or used | ACTIVE |
 | `plans/active/README.md` | Active plan index | ACTIVE |
+| `plans/active/stage2_model2_rollout_fused_loss_fast_validation.md` | **Stage 2 Model2-rollout fused-loss fast validation** — current development target: use Stage 1 beta `0.0` and `0.1` best checkpoints as Model2, original Base as Model1, rollout from Model2 only, train fused logits with `loss_mode=wdl_sft`, update both submodels, and use a non-overlap shard after the Stage 1 consumed prefix | ACTIVE |
+| `plans/active/on_policy_sft_then_wdl_sft_beta_search.md` | **Stage 1 On-Policy SFT beta search** — current scope is single-model Base training with `loss_mode=wdl_sft`, no joint model, and Stage 1 `wdl_sft_beta=0.0..1.0`; dense validation/checkpoint cadence, latest+best retention, W&B offline sync, local queue, and Meituan launch support. Stage 2 joint WDL-SFT is deferred | ACTIVE |
 | `plans/active/wdl_group_advantage_is_goal.md` | **WDL group-advantage IS implementation contract** — new beta-free loss with group advantages, all-correct positive-SFT fallback, explicit mixed-policy old/current IS, `norm_adv_by_std_in_grpo=false`; excludes rollout IS weights, KL penalty, and length normalization; requires complete Meituan four-layer launch scripts | ACTIVE |
 | `plans/active/wdl_sft_is.md` | **WDL-SFT v2 (IS-corrected)** — post-fix rerun matrix remains open; historical 1A/1B/1C are pre-fix | ACTIVE |
 | `plans/active/ablation_single_model.md` | **Single-model ablation (2A/B/C + 2Z baseline)** — partially complete; post-fix rows remain open | ACTIVE |
@@ -256,12 +258,15 @@ Before launching any training, monitoring, checkpoint transfer, or large file op
 ## Quick Links
 
 - Active plan index: `docs/joint_training/plans/active/README.md`
+- Stage 2 Model2-rollout fused-loss fast validation: `docs/joint_training/plans/active/stage2_model2_rollout_fused_loss_fast_validation.md`
+- Staged v1 On-Policy SFT -> WDL-SFT beta search: `docs/joint_training/plans/active/on_policy_sft_then_wdl_sft_beta_search.md`
 - WDL group-advantage IS implementation contract: `docs/joint_training/plans/active/wdl_group_advantage_is_goal.md`
-- **Current focus**: `docs/joint_training/plans/active/wdl_group_advantage_is_goal.md` (implementation contract for group-advantage IS with all-correct positive-SFT fallback)
+- **Current focus**: `docs/joint_training/plans/active/stage2_model2_rollout_fused_loss_fast_validation.md`
 - Archived dual-submodel rollout negative result: `docs/joint_training/plans/completed/dual_submodel_rollout_wdl_sft.md`
 - Dual-submodel 3A failure analysis: `docs/joint_training/plans/completed/dual_submodel_rollout_wdl_sft_3a_failure_analysis.md`
 - Single-model ablation plan: `docs/joint_training/plans/active/ablation_single_model.md`
 - Single-model ablation scripts: `recipe/on_policy_wdl_sft/ablation_single_model/`
+- Staged v1 scripts: `recipe/on_policy_wdl_sft/staged_v1/`
 - Training script index policy: `docs/joint_training/constraints/experiment_tracking/training_script_index_policy.md`
 - Training script index: `docs/joint_training/guides/training_script_index.md`
 - **Meituan platform playbook** (how to add experiments that run on both local + AFO): `docs/joint_training/guides/meituan_platform.md`

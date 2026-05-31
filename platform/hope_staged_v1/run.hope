@@ -1,0 +1,63 @@
+[base]
+afo.app.name = verl-staged-v1-REPLACE_ME
+type = ml-easy-job
+
+[resource]
+usergroup = hadoop-ai-search
+queue = root.shxs_training_cluster.hadoop-fridayagi.friday_h20_train
+
+[roles]
+workers = 1
+worker.memory = 1920000
+worker.vcore = 128
+worker.gcoresh20-141g = 8
+
+worker.script = bash jupyter.sh
+
+[user_args]
+
+[am]
+afo.app.am.resource.mb = 4096
+
+[tensorboard]
+with.tensor.board = false
+
+[docker]
+afo.docker.image.name = REPLACE_WITH_YOUR_V2_IMAGE_URL
+
+[data]
+afo.data.prefetch = false
+
+[failover]
+afo.app.support.engine.failover = true
+
+[others]
+client.git.revision.publish=false
+afo.app.env.YARN_CONTAINER_RUNTIME_DOCKER_SHM_SIZE_BYTES = 549755813888
+with_requirements = false
+afo.dolphinfs.otherusers = hadoop-mtsearch-assistant
+afo.role.worker.task.attempt.max.retry = 1
+
+afo.app.env.LGX = /mnt/dolphinfs/ssd_pool/docker/user/hadoop-ai-search/yangfengkai02/lgx
+afo.app.env.REPO_SUBPATH = verl08/verl-v0.7-feature-on-policy-wdl-sft
+
+# Dense validation/checkpoint cadence. Retention keeps latest + best only.
+afo.app.env.TEST_FREQ = 5
+afo.app.env.SAVE_FREQ = 5
+afo.app.env.VAL_N = 3
+afo.app.env.VAL_BEFORE_TRAIN = False
+afo.app.env.TOTAL_TRAINING_STEPS = 150
+afo.app.env.WANDB_PROJECT = OnPolicySFT-Then-WDLSFT-StagedV1
+afo.app.env.WANDB_MODE = offline
+afo.app.env.MAX_ACTOR_CKPTS_TO_KEEP = 1
+afo.app.env.KEEP_BEST_CKPT = True
+afo.app.env.BEST_CKPT_METRIC_KEY = val-core/HuggingFaceH4/MATH-500/acc/mean@3
+afo.app.env.BEST_CKPT_METRIC_MODE = max
+afo.app.env.BEST_CKPT_STRIP_OPTIMIZER = True
+afo.app.env.DATA_SEED = 20260528
+afo.app.env.TRAIN_MAX_SAMPLES = -1
+
+# Supported current Stage 1 experiments: s1-beta-0, s1-beta-01, s1-beta-02,
+# s1-beta-03, s1-beta-04, s1-beta-05, s1-beta-06, s1-beta-07,
+# s1-beta-08, s1-beta-09, s1-beta-10. s1-base-sft is kept as a manual alias.
+afo.app.env.EXPERIMENT = REPLACE_ME
