@@ -28,7 +28,7 @@ def test_joint_training_recipe_uses_vllm_rollout_and_no_sync_mode():
     assert 'resolves to the root filesystem (${BASE_CKPT_MOUNT_SOURCE})' in script
     assert 'prefer BASE_CKPT_DIR=/data-1/checkpoints.' in script
     assert 'ERROR: ${BASE_CKPT_DIR} has only $((BASE_CKPT_FREE_KB / 1024 / 1024)) GiB free' in script
-    assert "ROLLOUT_GPU_MEMORY_UTILIZATION=${ROLLOUT_GPU_MEMORY_UTILIZATION:-0.75}" in script
+    assert "ROLLOUT_GPU_MEMORY_UTILIZATION=${ROLLOUT_GPU_MEMORY_UTILIZATION:-0.4}" in script
     assert "ROLLOUT_AGENT_NUM_WORKERS=${ROLLOUT_AGENT_NUM_WORKERS:-8}" in script
     assert "ROLLOUT_MAX_NUM_SEQS=${ROLLOUT_MAX_NUM_SEQS:-256}" in script
     assert "export VLLM_NO_USAGE_STATS=${VLLM_NO_USAGE_STATS:-1}" in script

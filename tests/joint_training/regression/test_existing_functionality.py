@@ -163,7 +163,7 @@ class TestLogProbsComputation:
         logits = torch.randn(2, 8, 1000)
         labels = torch.randint(0, 1000, (2, 8))
 
-        log_probs = logprobs_from_logits(logits, labels)
+        log_probs = logprobs_from_logits(logits, labels, inplace_backward=False)
         assert log_probs.shape == (2, 8)
         assert (log_probs <= 0).all()
 
@@ -179,8 +179,8 @@ class TestLogProbsComputation:
 
         fused_logits = 0.5 * logits_0 + 0.5 * logits_1
 
-        lp_single = logprobs_from_logits(logits_0, labels)
-        lp_fused = logprobs_from_logits(fused_logits, labels)
+        lp_single = logprobs_from_logits(logits_0, labels, inplace_backward=False)
+        lp_fused = logprobs_from_logits(fused_logits, labels, inplace_backward=False)
 
         assert not torch.allclose(lp_single, lp_fused)
 

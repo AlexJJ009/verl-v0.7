@@ -225,7 +225,7 @@ class TestOldLogProbConsistency:
             ).squeeze(-1)
 
             # verl's utility
-            verl_lp = logprobs_from_logits(logits, targets)
+            verl_lp = logprobs_from_logits(logits, targets, inplace_backward=False)
 
             torch.testing.assert_close(manual_lp, verl_lp)
 

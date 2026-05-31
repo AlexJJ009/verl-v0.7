@@ -507,6 +507,16 @@ class RayPPOTrainer:
 
         # Detect joint training mode from config
         self._is_joint_training = config.actor_rollout_ref.model.get("joint_training", False)
+        self._joint_training_rollout_source = config.actor_rollout_ref.model.get(
+            "joint_training_rollout_source", "joint"
+        )
+        if self._joint_training_rollout_source not in {"joint", "model2"}:
+            raise ValueError(
+                "actor_rollout_ref.model.joint_training_rollout_source must be one of "
+                f"{{'joint', 'model2'}}, got {self._joint_training_rollout_source!r}"
+            )
+        if self._joint_training_rollout_source == "model2" and not self._is_joint_training:
+            raise ValueError("joint_training_rollout_source=model2 requires actor_rollout_ref.model.joint_training=True")
 
         if self.hybrid_engine:
             assert Role.ActorRollout in role_worker_mapping or Role.ActorRolloutRef in role_worker_mapping, (
@@ -791,9 +801,8 @@ class RayPPOTrainer:
         is_joint = getattr(self, "_is_joint_training", False)
         print(f"[WDL-SFT VERIFY] _validate() entered, _is_joint_training={is_joint}", flush=True)
         if is_joint:
-            print("[WDL-SFT VERIFY] calling checkpoint_manager.update_weights(eval_only=True)", flush=True)
-            self.checkpoint_manager.update_weights(eval_only=True)
-            print("[WDL-SFT VERIFY] update_weights(eval_only=True) returned", flush=True)
+            print("[WDL-SFT VERIFY] validation rollout source: model2-only", flush=True)
+            self._update_rollout_weights(reason="validation")
 
         data_source_lst = []
         reward_extra_infos_dict: dict[str, list] = defaultdict(list)
@@ -871,7 +880,7 @@ class RayPPOTrainer:
                 if self.use_rm:
                     # wake up rollout model
                     # replace with wake_up method once supported
-                    self.checkpoint_manager.update_weights()
+                    self._update_rollout_weights(reason="validation_after_reward")
 
             # Store generated outputs
             output_ids = test_batch.batch["responses"]
@@ -946,7 +955,7 @@ class RayPPOTrainer:
             print("_merge_validation_results validate result will be merged")
             # Joint training: restore full joint model weights after eval
             if is_joint:
-                self.checkpoint_manager.update_weights()
+                self._update_rollout_weights(reason="post_validation_restore")
             return {
                 "data_sources": data_source_lst,
                 "sample_uids": sample_uids,
@@ -958,9 +967,28 @@ class RayPPOTrainer:
 
         # Joint training: restore full joint model weights after eval
         if is_joint:
-            self.checkpoint_manager.update_weights()
+            self._update_rollout_weights(reason="post_validation_restore")
 
         return result
+
+    def _rollout_eval_only(self) -> bool:
+        return bool(self._is_joint_training and self._joint_training_rollout_source == "model2")
+
+    def _update_rollout_weights(self, reason: str = "train"):
+        eval_only = self._rollout_eval_only()
+        if eval_only:
+            print(
+                "[WDL-SFT VERIFY] rollout source: model2-only; "
+                f"reason={reason}; actor_training_model=joint; sync_eval_only=True",
+                flush=True,
+            )
+        elif self._is_joint_training:
+            print(
+                "[WDL-SFT VERIFY] rollout source: joint-fused; "
+                f"reason={reason}; actor_training_model=joint; sync_eval_only=False",
+                flush=True,
+            )
+        self.checkpoint_manager.update_weights(eval_only=eval_only)
 
     def _val_metrics_update(self, data_sources, sample_uids, reward_extra_infos_dict, sample_turns):
         data_src2var2metric2val = process_validation_metrics(data_sources, sample_uids, reward_extra_infos_dict)
@@ -1812,7 +1840,7 @@ class RayPPOTrainer:
         # load checkpoint and update weights before doing anything
         self._load_checkpoint()
         self._load_best_checkpoint_tracker()
-        self.checkpoint_manager.update_weights()
+        self._update_rollout_weights(reason="initial")
 
         current_epoch = self.global_steps // len(self.train_dataloader)
 
@@ -2112,7 +2140,7 @@ class RayPPOTrainer:
 
                         # update weights from trainer to rollout
                         with marked_timer("update_weights", timing_raw, color="red"):
-                            self.checkpoint_manager.update_weights()
+                            self._update_rollout_weights(reason="post_actor_update")
 
                         actor_output_metrics = reduce_metrics(actor_output.meta_info["metrics"])
                         metrics.update(actor_output_metrics)

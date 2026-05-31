@@ -178,13 +178,13 @@ class QwenJointForCausalLM(nn.Module):
 
         return self._pack_hidden_states(output0, output1)
 
-    def compute_logits(self, hidden_states) -> Optional[torch.Tensor]:
+    def compute_logits(self, hidden_states, sampling_metadata=None) -> Optional[torch.Tensor]:
         if self._use_model2_only:
-            return self.sub_models[1].compute_logits(hidden_states)
+            return self.sub_models[1].compute_logits(hidden_states, sampling_metadata)
 
         hidden_states0, hidden_states1 = self._unpack_hidden_states(hidden_states)
-        logits0 = self.sub_models[0].compute_logits(hidden_states0)
-        logits1 = self.sub_models[1].compute_logits(hidden_states1)
+        logits0 = self.sub_models[0].compute_logits(hidden_states0, sampling_metadata)
+        logits1 = self.sub_models[1].compute_logits(hidden_states1, sampling_metadata)
 
         if logits0 is None:
             return logits1

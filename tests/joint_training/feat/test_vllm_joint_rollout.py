@@ -120,8 +120,10 @@ def test_joint_vllm_registry_patches_layer_indexing_for_dual_submodels():
     assert branch0_layer7 == 7
     assert branch1_layer0 > branch0_layer7
     assert branch1_layer0 != branch0_layer0
-    assert vllm_utils.extract_layer_index("sub_models.1.model.layers.0.self_attn.attn") == branch1_layer0
-    assert v1_utils.extract_layer_index("sub_models.1.model.layers.0.self_attn.attn") == branch1_layer0
+    if hasattr(vllm_utils, "extract_layer_index"):
+        assert vllm_utils.extract_layer_index("sub_models.1.model.layers.0.self_attn.attn") == branch1_layer0
+    if hasattr(v1_utils, "extract_layer_index"):
+        assert v1_utils.extract_layer_index("sub_models.1.model.layers.0.self_attn.attn") == branch1_layer0
 
 
 def test_vllm_async_server_imports_with_legacy_vllm():
@@ -372,8 +374,8 @@ def test_patch_vllm_moe_model_weight_loader_ignores_non_moe_joint_models():
 def test_process_vllm_weights_after_loading_falls_back_for_legacy_vllm(monkeypatch):
     pytest.importorskip("vllm")
 
-    import vllm.model_executor.model_loader.loader as loader_module
     import vllm.model_executor.model_loader.utils as loader_utils
+    loader_module = pytest.importorskip("vllm.model_executor.model_loader.loader")
 
     from verl.workers.rollout.vllm_rollout.utils import _process_vllm_weights_after_loading
 

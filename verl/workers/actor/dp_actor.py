@@ -477,7 +477,7 @@ class DataParallelPPOActor(BasePPOActor):
         norms = flat1.norm() * flat2.norm()
         if norms.item() < 1e-12:
             return 0.0
-        return (dot / norms).item()
+        return torch.clamp(dot / norms, min=-1.0, max=1.0).item()
 
     @GPUMemoryLogger(role="dp actor", logger=logger)
     def compute_log_prob(self, data: DataProto, calculate_entropy: bool = False) -> dict[str, torch.Tensor]:

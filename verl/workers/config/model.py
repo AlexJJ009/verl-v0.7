@@ -143,6 +143,7 @@ class HFModelConfig(BaseConfig):
 
     # Joint training configuration
     joint_training: bool = False
+    joint_training_rollout_source: str = "joint"
 
     def __post_init__(self):
         import_external_libs(self.external_lib)

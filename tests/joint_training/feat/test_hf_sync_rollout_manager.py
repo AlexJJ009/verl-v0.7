@@ -16,6 +16,8 @@ from unittest.mock import MagicMock, AsyncMock, patch
 
 from verl import DataProto
 
+TOKENIZER_PATH = "/data-1/.cache/Qwen3-4B-Base-SFT-stage-1"
+
 
 class TestHFSyncRolloutManagerInterface:
     """Verify HFSyncRolloutManager has the AgentLoopManager-compatible interface."""
@@ -221,10 +223,7 @@ class TestTokenizeRawPromptsForHF:
         from transformers import AutoTokenizer
         from verl.workers.fsdp_workers import ActorRolloutRefWorker
 
-        tokenizer = AutoTokenizer.from_pretrained(
-            "/data-1/.cache/huggingface/QwenJoint-1.7B",
-            trust_remote_code=True,
-        )
+        tokenizer = AutoTokenizer.from_pretrained(TOKENIZER_PATH, trust_remote_code=True)
         max_len = 64
 
         worker = ActorRolloutRefWorker.__new__(ActorRolloutRefWorker)
@@ -245,10 +244,7 @@ class TestTokenizeRawPromptsForHF:
         from transformers import AutoTokenizer
         from verl.workers.fsdp_workers import ActorRolloutRefWorker
 
-        tokenizer = AutoTokenizer.from_pretrained(
-            "/data-1/.cache/huggingface/QwenJoint-1.7B",
-            trust_remote_code=True,
-        )
+        tokenizer = AutoTokenizer.from_pretrained(TOKENIZER_PATH, trust_remote_code=True)
         max_len = 64
         n_prompts = 3
 
@@ -283,10 +279,7 @@ class TestTokenizeRawPromptsForHF:
         from transformers import AutoTokenizer
         from verl.workers.fsdp_workers import ActorRolloutRefWorker
 
-        tokenizer = AutoTokenizer.from_pretrained(
-            "/data-1/.cache/huggingface/QwenJoint-1.7B",
-            trust_remote_code=True,
-        )
+        tokenizer = AutoTokenizer.from_pretrained(TOKENIZER_PATH, trust_remote_code=True)
         max_len = 64
 
         worker = ActorRolloutRefWorker.__new__(ActorRolloutRefWorker)
@@ -315,10 +308,7 @@ class TestTokenizeRawPromptsForHF:
         from transformers import AutoTokenizer
         from verl.workers.fsdp_workers import ActorRolloutRefWorker
 
-        tokenizer = AutoTokenizer.from_pretrained(
-            "/data-1/.cache/huggingface/QwenJoint-1.7B",
-            trust_remote_code=True,
-        )
+        tokenizer = AutoTokenizer.from_pretrained(TOKENIZER_PATH, trust_remote_code=True)
         tokenizer.padding_side = "right"  # Set to right before calling
         max_len = 64
 
