@@ -1,6 +1,6 @@
 # Active Plan Index
 
-Last organized: 2026-05-29.
+Last organized: 2026-05-31.
 
 This directory should contain only plans that still need decisions, reruns, or
 follow-up experiments. Completed, superseded, or negative-result plans should
@@ -10,8 +10,7 @@ live in `../completed/`.
 
 | Plan | Status | Why it remains active |
 | --- | --- | --- |
-| `stage2_model2_rollout_fused_loss_fast_validation.md` | Active Stage 2 fast-validation plan | New Stage 2 scope: Model2-only rollout from merged Stage 1 best checkpoints, fused Model1+Model2 WDL-SFT loss, both submodels trainable, non-overlap Stage 2 data shard after the Stage 1 consumed prefix, and two default 75-step validation runs from Stage 1 beta `0.0` and `0.1`. |
-| `on_policy_sft_then_wdl_sft_beta_search.md` | Active Stage 1 implementation and experiment plan | Current scope is Stage 1 only: single-model on-policy SFT from Base with `loss_mode=wdl_sft`, no joint model, and `wdl_sft_beta=0.0..1.0` at `0.1` intervals. Stage 2 joint WDL-SFT is deferred until Stage 1 produces a selected checkpoint and the user authorizes a new phase. |
+| `boxed_matched_stage1_stage2_chain.md` | Active execution plan | Current boxed-prompt rerun: beta `0.0` Stage1 -> fixed Model2 merge -> beta `0.0` Stage2, then beta `0.1` Stage1 -> fixed Model2 merge -> beta `0.1` Stage2. |
 | `wdl_group_advantage_is_goal.md` | Active implementation contract | New method revision: group advantages + all-correct positive-SFT fallback + explicit mixed-policy old/current IS for joint rollout/joint training, with `norm_adv_by_std_in_grpo=false`, no `rollout_is_weights`, no KL penalty, no length normalization, no `beta`, and a required complete Meituan four-layer launch family. |
 | `wdl_sft_is.md` | Active, but historical sections are stale | The post-fix rerun matrix is still open. Pre-fix 1A/1B/1C results remain useful history, but should not be treated as spec-correct current runs. |
 | `ablation_single_model.md` | Active / partially completed | The SFT-init ablation has useful results, but the post-fix rerun matrix is incomplete and several rows remain not started. |
@@ -25,3 +24,7 @@ live in `../completed/`.
 | `../completed/dual_submodel_rollout_wdl_sft_goal.md` | Implementation contract preserved for traceability; no longer an active goal. |
 | `../completed/dual_submodel_rollout_wdl_sft_status.md` | Final implementation/smoke/failure status preserved with the archived plan. |
 | `../completed/dual_submodel_rollout_wdl_sft_3a_failure_analysis.md` | Detailed gradient, loss, and distribution analysis for the 3A negative result. |
+| `../completed/on_policy_sft_then_wdl_sft_beta_search.md` | Stage 1 implementation/smoke goal is complete and superseded by the boxed matched execution plan. |
+| `../completed/on_policy_sft_then_wdl_sft_beta_search_status.md` | Status for the completed Stage 1 implementation/smoke goal. |
+| `../completed/stage2_model2_rollout_fused_loss_fast_validation.md` | Original Stage 2 fast-validation goal reached local PASS; superseded by boxed-prompt rerun after prompt-format diagnosis. |
+| `../completed/stage2_model2_rollout_fused_loss_fast_validation_status.md` | Status for the completed original Stage 2 fast-validation goal. |
