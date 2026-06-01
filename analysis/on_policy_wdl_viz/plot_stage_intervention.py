@@ -28,9 +28,11 @@ class RunSpec:
     stage1_source_step: int
     stage2_best_step: int
     color: str
+    title: str | None = None
 
 
-RUNS = [
+PRESETS = {
+    "historical": [
     RunSpec(
         beta_label="beta=0.0",
         stage1_jsonl="ONPOLICY-SFT-Qwen3-4B-MATH-S1-BETA0-V1_1779962803.jsonl",
@@ -47,7 +49,24 @@ RUNS = [
         stage2_best_step=20,
         color="#d62728",
     ),
-]
+    ],
+    "boxed": [
+        RunSpec(
+            beta_label="boxed beta=0.0",
+            stage1_jsonl="ONPOLICY-SFT-Qwen3-4B-MATH-S1-BOXED-BETA0-V1_1780230447.jsonl",
+            stage2_jsonl="WDL-SFT-STAGED-V1-S2-BOXED-FROM-S1-BETA0-BETA0_1780249087.jsonl",
+            stage1_source_step=135,
+            stage2_best_step=15,
+            color="#0f766e",
+            title="Boxed matched chain, beta=0.0",
+        ),
+    ],
+}
+
+PRESET_TITLES = {
+    "historical": "Stage 2 intervention gives an early MATH-500 lift, but the current recipe is not yet stable",
+    "boxed": "Boxed-prompt rerun: Stage 2 beats same-budget Stage 1 continuation, but still collapses late",
+}
 
 
 def find_repo_root(start: Path) -> Path:
@@ -134,12 +153,15 @@ def plot_intervention(
     metrics_root: Path,
     output_stem: Path,
     overleaf_images: Path | None,
+    runs: list[RunSpec],
+    title: str,
 ) -> list[dict[str, str | int | float]]:
-    fig, axes = plt.subplots(1, 2, figsize=(13.2, 5.4), sharey=False)
-    ax_beta0, ax_beta01 = axes
+    fig_width = 7.4 if len(runs) == 1 else 13.2
+    fig, axes = plt.subplots(1, len(runs), figsize=(fig_width, 5.4), sharey=False)
+    axes = np.atleast_1d(axes)
     summary_rows: list[dict[str, str | int | float]] = []
 
-    for ax, spec in zip([ax_beta0, ax_beta01], RUNS, strict=True):
+    for ax, spec in zip(axes, runs, strict=True):
         stage1_path = metrics_root / spec.stage1_jsonl
         stage2_path = metrics_root / spec.stage2_jsonl
         stage1_math = read_metric_series(stage1_path, METRIC_MATH_MEAN3)
@@ -166,15 +188,19 @@ def plot_intervention(
         ax.scatter([stage2_best_effective_step], [stage2_best_value], color=spec.color, s=64, zorder=5)
 
         ax.annotate(
-            f"handoff\nstep {spec.stage1_source_step}",
+            f"insert Stage 2\nfrom S1 step {spec.stage1_source_step}",
             xy=(spec.stage1_source_step, source_value),
             xytext=(spec.stage1_source_step + 8, source_value - 7),
             arrowprops={"arrowstyle": "->", "lw": 1.0, "color": "#111827"},
             fontsize=9,
             color="#111827",
         )
+        if baseline_at_stage2_best is None:
+            delta_text = f"Stage 2 effect: {stage2_best_value - source_value:+.2f} pp vs source"
+        else:
+            delta_text = f"Stage 2 effect: {stage2_best_value - baseline_at_stage2_best:+.2f} pp vs S1 cont."
         ax.annotate(
-            f"+{stage2_best_value - source_value:.2f} pp\nat S2 step {spec.stage2_best_step}",
+            f"{delta_text}\nat S2 step {spec.stage2_best_step}",
             xy=(stage2_best_effective_step, stage2_best_value),
             xytext=(stage2_best_effective_step + 8, stage2_best_value + 3),
             arrowprops={"arrowstyle": "->", "lw": 1.0, "color": spec.color},
@@ -192,7 +218,7 @@ def plot_intervention(
                 color="#7c2d12",
             )
 
-        ax.set_title(f"Matched chain, {spec.beta_label}", fontsize=12, weight="bold")
+        ax.set_title(spec.title or f"Matched chain, {spec.beta_label}", fontsize=12, weight="bold")
         ax.set_xlabel("Effective training step")
         ax.set_ylabel("MATH-500 mean@3 (%)")
         ax.grid(True, color="#e5e7eb", linewidth=0.8)
@@ -222,11 +248,7 @@ def plot_intervention(
             }
         )
 
-    fig.suptitle(
-        "Stage 2 intervention gives an early MATH-500 lift, but the current recipe is not yet stable",
-        fontsize=14,
-        weight="bold",
-    )
+    fig.suptitle(title, fontsize=14, weight="bold")
     fig.text(
         0.5,
         0.01,
@@ -258,6 +280,7 @@ def parse_args() -> argparse.Namespace:
     default_overleaf_images = repo_root / "docs/joint_training/courses/on-policy-wdl-overleaf/images"
 
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--preset", choices=sorted(PRESETS), default="historical")
     parser.add_argument("--metrics-root", type=Path, default=default_metrics)
     parser.add_argument("--output-stem", type=Path, default=default_output_stem)
     parser.add_argument("--summary-csv", type=Path, default=default_output_stem.parent / "stage_intervention_summary.csv")
@@ -270,7 +293,14 @@ def main() -> None:
     args = parse_args()
     repo_root = find_repo_root(Path(__file__))
     overleaf_images = None if args.no_overleaf_copy else args.overleaf_images
-    summary_rows = plot_intervention(repo_root, args.metrics_root, args.output_stem, overleaf_images)
+    summary_rows = plot_intervention(
+        repo_root,
+        args.metrics_root,
+        args.output_stem,
+        overleaf_images,
+        PRESETS[args.preset],
+        PRESET_TITLES[args.preset],
+    )
     write_summary(args.summary_csv, summary_rows)
     print(f"Wrote {args.output_stem.with_suffix('.png')}")
     print(f"Wrote {args.output_stem.with_suffix('.pdf')}")

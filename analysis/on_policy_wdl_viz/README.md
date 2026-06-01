@@ -11,6 +11,16 @@ uv run --project analysis/on_policy_wdl_viz \
   python analysis/on_policy_wdl_viz/plot_stage_intervention.py
 ```
 
+Generate the boxed-prompt rerun figure:
+
+```bash
+uv run --project analysis/on_policy_wdl_viz \
+  python analysis/on_policy_wdl_viz/plot_stage_intervention.py \
+  --preset boxed \
+  --output-stem analysis/on_policy_wdl_viz/outputs/stage_intervention_boxed_math500 \
+  --summary-csv analysis/on_policy_wdl_viz/outputs/stage_intervention_boxed_summary.csv
+```
+
 Default outputs:
 
 - `analysis/on_policy_wdl_viz/outputs/stage_intervention_summary.csv`
@@ -18,6 +28,14 @@ Default outputs:
 - `analysis/on_policy_wdl_viz/outputs/stage_intervention_math500.pdf`
 - `docs/joint_training/courses/on-policy-wdl-overleaf/images/stage_intervention_math500.png`
 - `docs/joint_training/courses/on-policy-wdl-overleaf/images/stage_intervention_math500.pdf`
+
+Boxed-prompt outputs:
+
+- `analysis/on_policy_wdl_viz/outputs/stage_intervention_boxed_summary.csv`
+- `analysis/on_policy_wdl_viz/outputs/stage_intervention_boxed_math500.png`
+- `analysis/on_policy_wdl_viz/outputs/stage_intervention_boxed_math500.pdf`
+- `docs/joint_training/courses/on-policy-wdl-overleaf/images/stage_intervention_boxed_math500.png`
+- `docs/joint_training/courses/on-policy-wdl-overleaf/images/stage_intervention_boxed_math500.pdf`
 
 The main plot compares the Stage 1 continuation curve with a Stage 2
 intervention curve. Stage 2 is shifted so its step 0 equals the selected Stage 1

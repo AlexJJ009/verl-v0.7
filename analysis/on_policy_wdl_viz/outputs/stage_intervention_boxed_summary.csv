@@ -1,0 +1,2 @@
+beta,stage1_source_step,stage1_source_math500_mean3_pct,stage1_best_step,stage1_best_math500_mean3_pct,stage2_best_step,stage2_best_effective_step,stage2_best_math500_mean3_pct,stage1_continuation_at_stage2_best_pct,delta_vs_source_pp,delta_vs_stage1_continuation_pp,stage2_final_step,stage2_final_math500_mean3_pct,stage2_final_extraction_failure_pct
+boxed beta=0.0,135,71.0349,135,71.0349,15,150,70.7661,68.8172,-0.2688,1.9489,75,0.2016,96.1686
