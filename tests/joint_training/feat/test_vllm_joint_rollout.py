@@ -457,7 +457,7 @@ class _FakeSubModel(nn.Module):
         self.load_calls.append(weights)
         return {name for name, _ in weights}
 
-    def compute_logits(self, hidden_states, sampling_metadata=None):
+    def compute_logits(self, hidden_states):
         return hidden_states + self.bias
 
     def forward(self, input_ids=None, positions=None, intermediate_tensors=None, inputs_embeds=None):
@@ -578,6 +578,17 @@ def test_joint_vllm_model_computes_fused_logits_from_concatenated_hidden_states(
     fused = model.compute_logits(sample_hidden_states, None)
 
     assert torch.allclose(fused, torch.tensor([[6.5]]))
+
+
+def test_joint_vllm_model_does_not_forward_sampling_metadata_to_qwen3_submodels():
+    model = _build_joint_vllm_model(fusion_lambda=0.25)
+
+    fused = model.compute_logits((torch.tensor([2.0]), torch.tensor([4.0])), object())
+    assert torch.allclose(fused, torch.tensor([5.75]))
+
+    model._use_model2_only = True
+    eval_only = model.compute_logits(torch.tensor([4.0]), object())
+    assert torch.allclose(eval_only, torch.tensor([14.0]))
 
 
 def test_joint_vllm_model_uses_only_model2_forward_in_eval_mode():

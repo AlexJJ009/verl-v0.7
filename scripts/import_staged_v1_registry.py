@@ -30,6 +30,8 @@ PROJECT_NAME = "verl:feature/on-policy-wdl-sft"
 PROJECT_KEY = "verl_feature_on_policy_wdl_sft"
 BRANCH = "feature/on-policy-wdl-sft"
 IMPORTER = "import_staged_v1_on_policy_sft_v1"
+WANDB_ENTITY = "gongxunli-beihang-universally"
+WANDB_PROJECT = "OnPolicySFT-Then-WDLSFT-StagedV1"
 
 REPO = Path("/data-1/verl07/verl")
 METRICS_DIR = REPO / "recipe/on_policy_wdl_sft/staged_v1/metrics/OnPolicySFT-Then-WDLSFT-StagedV1"
@@ -37,8 +39,12 @@ CHECKPOINT_ROOT = Path("/data-1/checkpoints")
 MODEL_WEIGHT_ROOT = Path("/data-1/model_weights/staged_v1")
 
 TRAIN_STAGE1 = Path("/data-1/dataset/EnsembleLLM-data-processed/train_rl_format.parquet")
+TRAIN_STAGE1_BOXED = Path("/data-1/dataset/EnsembleLLM-data-processed/staged_v1/train_rl_format_boxed_prompt.parquet")
+TRAIN_STAGE1_BOXED_MANIFEST = Path("/data-1/dataset/EnsembleLLM-data-processed/staged_v1/train_rl_format_boxed_prompt.manifest.json")
 TRAIN_STAGE2 = Path("/data-1/dataset/EnsembleLLM-data-processed/staged_v1/stage2_after_s1_150steps_seed20260528_75steps.parquet")
 TRAIN_STAGE2_MANIFEST = Path("/data-1/dataset/EnsembleLLM-data-processed/staged_v1/stage2_after_s1_150steps_seed20260528_75steps.manifest.json")
+TRAIN_STAGE2_BOXED = Path("/data-1/dataset/EnsembleLLM-data-processed/staged_v1/stage2_boxed_after_s1_150steps_seed20260528_75steps.parquet")
+TRAIN_STAGE2_BOXED_MANIFEST = Path("/data-1/dataset/EnsembleLLM-data-processed/staged_v1/stage2_boxed_after_s1_150steps_seed20260528_75steps.manifest.json")
 MATH500 = Path("/data-1/dataset/MATH-500/math500-test_with_system_prompt.parquet")
 AIME2025 = Path("/data-1/dataset/AIME-2025/aime-2025_with_system_prompt.parquet")
 
@@ -135,6 +141,113 @@ RUNS = [
         "trust_level": "usable_with_caution",
         "notes": "Completed 75 steps; best online validation improved over Stage 1 but final validation collapsed.",
     },
+    {
+        "stage": 1,
+        "beta": 0.0,
+        "run_name": "ONPOLICY-SFT-Qwen3-4B-MATH-S1-BOXED-BETA0-V1_1780230447",
+        "wandb_id": "t0xmcx0y",
+        "status": "completed",
+        "trust_level": "trusted",
+        "train_dataset": "stage1_boxed",
+        "chain_group": "boxed_matched_beta0",
+        "notes": "Boxed-prompt matched Stage-1 run; use best checkpoint step 135.",
+    },
+    {
+        "stage": 2,
+        "beta": 0.0,
+        "stage1_beta": 0.0,
+        "stage1_run": "ONPOLICY-SFT-Qwen3-4B-MATH-S1-BOXED-BETA0-V1_1780230447",
+        "stage1_step": 135,
+        "run_name": "WDL-SFT-STAGED-V1-S2-BOXED-FROM-S1-BETA0-BETA0_1780249087",
+        "wandb_id": "hah6m6o3",
+        "status": "completed",
+        "trust_level": "usable_with_caution",
+        "train_dataset": "stage2_boxed",
+        "chain_group": "boxed_matched_beta0",
+        "stage1_source_json": "/data-1/model_weights/staged_v1/boxed_matched/model2-from-s1-boxed-beta0-best/stage1_source.json",
+        "extra_logs": [
+            "recipe/on_policy_wdl_sft/staged_v1/WDL-SFT-STAGED-V1-S2-BOXED-FROM-S1-BETA0-BETA0_1780249087_resumed_1780278457.log"
+        ],
+        "notes": "Completed 75 steps after resumed launch; online validation peaked at step 15 and collapsed by final step.",
+    },
+    {
+        "stage": 1,
+        "beta": 0.1,
+        "run_name": "ONPOLICY-SFT-Qwen3-4B-MATH-S1-BOXED-BETA01-V1_1780298630",
+        "wandb_id": "vvjrd1ct",
+        "status": "completed",
+        "trust_level": "trusted",
+        "train_dataset": "stage1_boxed",
+        "chain_group": "boxed_matched_beta01",
+        "notes": "Boxed-prompt matched Stage-1 run; use best checkpoint step 115.",
+    },
+    {
+        "stage": 2,
+        "beta": 0.1,
+        "stage1_beta": 0.1,
+        "stage1_run": "ONPOLICY-SFT-Qwen3-4B-MATH-S1-BOXED-BETA01-V1_1780298630",
+        "stage1_step": 115,
+        "run_name": "WDL-SFT-STAGED-V1-S2-BOXED-FROM-S1-BETA01-BETA01_1780317270",
+        "wandb_id": "k4vf25id",
+        "status": "completed",
+        "trust_level": "usable_with_caution",
+        "train_dataset": "stage2_boxed",
+        "chain_group": "boxed_matched_beta01",
+        "stage1_source_json": "/data-1/model_weights/staged_v1/boxed_matched/model2-from-s1-boxed-beta01-best/stage1_source.json",
+        "notes": "Completed 75 steps; online validation peaked at step 30 and collapsed by final step.",
+    },
+    {
+        "stage": 1,
+        "beta": 0.0,
+        "run_name": "ONPOLICY-SFT-Qwen3-4B-MATH-S1-PLATEAU-P60-BETA0-V1_1780381684",
+        "wandb_id": "vcxq990i",
+        "status": "completed",
+        "trust_level": "trusted",
+        "train_dataset": "stage1_boxed",
+        "chain_group": "plateau_p60_beta0",
+        "notes": "Plateau-handoff P60 Stage-1 source run; fixed handoff checkpoint is step 60.",
+    },
+    {
+        "stage": 2,
+        "beta": 0.0,
+        "stage1_beta": 0.0,
+        "stage1_run": "ONPOLICY-SFT-Qwen3-4B-MATH-S1-PLATEAU-P60-BETA0-V1_1780381684",
+        "stage1_step": 60,
+        "run_name": "WDL-SFT-STAGED-V1-S2-PLATEAU-P60-BETA0-BETA0_1780389822",
+        "wandb_id": "8kei5dy6",
+        "status": "completed",
+        "trust_level": "usable_with_caution",
+        "train_dataset": "stage2_boxed",
+        "chain_group": "plateau_p60_beta0",
+        "stage1_source_json": "/data-1/model_weights/staged_v1/plateau_handoff_p60/model2-from-s1-p60-beta0-step60/stage1_source.json",
+        "notes": "Plateau-handoff P60 matched beta=0.0 Stage-2 run; peak improved over Stage-1 source but final step dropped below peak.",
+    },
+    {
+        "stage": 1,
+        "beta": 0.1,
+        "run_name": "ONPOLICY-SFT-Qwen3-4B-MATH-S1-PLATEAU-P60-BETA01-V1_1780395823",
+        "wandb_id": "vuzmnho2",
+        "status": "completed",
+        "trust_level": "trusted",
+        "train_dataset": "stage1_boxed",
+        "chain_group": "plateau_p60_beta01",
+        "notes": "Plateau-handoff P60 Stage-1 source run; fixed handoff checkpoint is step 60.",
+    },
+    {
+        "stage": 2,
+        "beta": 0.1,
+        "stage1_beta": 0.1,
+        "stage1_run": "ONPOLICY-SFT-Qwen3-4B-MATH-S1-PLATEAU-P60-BETA01-V1_1780395823",
+        "stage1_step": 60,
+        "run_name": "WDL-SFT-STAGED-V1-S2-PLATEAU-P60-BETA01-BETA01_1780460682",
+        "wandb_id": "uye2wcno",
+        "status": "completed",
+        "trust_level": "trusted",
+        "train_dataset": "stage2_boxed",
+        "chain_group": "plateau_p60_beta01",
+        "stage1_source_json": "/data-1/model_weights/staged_v1/plateau_handoff_p60/model2-from-s1-p60-beta01-step60/stage1_source.json",
+        "notes": "Plateau-handoff P60 matched beta=0.1 Stage-2 run; peak and final online MATH-500 mean@3 are both stable.",
+    },
 ]
 
 
@@ -200,16 +313,45 @@ def final_validation_row(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
     return vals[-1] if vals else None
 
 
+def chain_family_suffix(run: dict[str, Any]) -> str:
+    chain_group = run.get("chain_group") or ""
+    if chain_group.startswith("plateau_p60"):
+        return "_plateau_p60"
+    if run.get("train_dataset") in {"stage1_boxed", "stage2_boxed"}:
+        return "_boxed_matched"
+    return ""
+
+
 def training_run_key(run: dict[str, Any]) -> str:
     family = "stage1_on_policy_sft_beta" if run["stage"] == 1 else "stage2_model2_rollout_fused_loss_beta"
+    family += chain_family_suffix(run)
     beta_tag = f"{run['beta']:.1f}".replace(".", "p")
     return f"feature_on_policy_wdl_sft.staged_v1.{family}_{beta_tag}.{run['run_name']}.training_metrics_jsonl"
 
 
 def experiment_key(run: dict[str, Any]) -> str:
     family = "stage1_on_policy_sft_beta" if run["stage"] == 1 else "stage2_model2_rollout_fused_loss_beta"
+    family += chain_family_suffix(run)
     beta_tag = f"{run['beta']:.1f}".replace(".", "p")
     return f"verl.branch.feature_on_policy_wdl_sft.staged_v1.{family}_{beta_tag}.{run['run_name']}"
+
+
+def dataset_for_run(run: dict[str, Any], dataset_ids: dict[str, int]) -> int:
+    if run.get("train_dataset") == "stage1_boxed":
+        return dataset_ids["stage1_boxed"]
+    if run.get("train_dataset") == "stage2_boxed":
+        return dataset_ids["stage2_boxed"]
+    return dataset_ids["stage1"] if run["stage"] == 1 else dataset_ids["stage2"]
+
+
+def manifest_for_run(run: dict[str, Any]) -> Path | None:
+    if run.get("train_dataset") == "stage1_boxed":
+        return TRAIN_STAGE1_BOXED_MANIFEST
+    if run.get("train_dataset") == "stage2_boxed":
+        return TRAIN_STAGE2_BOXED_MANIFEST
+    if run["stage"] == 2:
+        return TRAIN_STAGE2_MANIFEST
+    return None
 
 
 def upsert_project(conn: sqlite3.Connection) -> int:
@@ -363,9 +505,11 @@ def upsert_experiment(conn: sqlite3.Connection, project_id: int, run: dict[str, 
         "stage1_beta": run.get("stage1_beta"),
         "stage2_beta": run["beta"] if stage == 2 else None,
         "loss_mode": "wdl_sft",
+        "train_dataset": run.get("train_dataset"),
+        "chain_group": run.get("chain_group"),
         "best_checkpoint": best,
         "latest_step": latest,
-        "wandb_cloud": f"https://wandb.ai/gongxunli-beihang-universally/OnPolicyWDLSFT/runs/{run['wandb_id']}",
+        "wandb_cloud": f"https://wandb.ai/{WANDB_ENTITY}/{WANDB_PROJECT}/runs/{run['wandb_id']}",
     }
     now = utc_now()
     conn.execute(
@@ -523,6 +667,8 @@ def upsert_training_run(
         "rollout_source": "model2" if run["stage"] == 2 else "actor",
         "stage1_run": run.get("stage1_run"),
         "stage1_step": run.get("stage1_step"),
+        "train_dataset": run.get("train_dataset"),
+        "chain_group": run.get("chain_group"),
         "best_checkpoint": best,
     }
     conn.execute(
@@ -577,7 +723,7 @@ def upsert_training_run(
             latest or rows[-1]["step"],
             final.get("actor/wdl_sft_loss_total"),
             str(metrics_path),
-            f"https://wandb.ai/gongxunli-beihang-universally/OnPolicyWDLSFT/runs/{run['wandb_id']}",
+            f"https://wandb.ai/{WANDB_ENTITY}/{WANDB_PROJECT}/runs/{run['wandb_id']}",
             BRANCH,
             GIT_COMMIT,
             json.dumps({"final_validation_step": val_final["step"] if val_final else None}, ensure_ascii=False),
@@ -601,6 +747,39 @@ def add_quality_flag(conn: sqlite3.Connection, entity_type: str, entity_id: int,
     )
 
 
+def add_validation_check(
+    conn: sqlite3.Connection,
+    check_name: str,
+    source_path: Path,
+    source_value: Any,
+    database_value: Any,
+    notes: str | None = None,
+) -> None:
+    try:
+        passed = abs(float(source_value) - float(database_value)) < 1e-9
+    except (TypeError, ValueError):
+        passed = str(source_value) == str(database_value)
+    conn.execute(
+        """
+        insert into validation_checks(check_name, source_path, source_value, database_value, passed, checked_at, notes)
+        values (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (check_name, str(source_path), str(source_value), str(database_value), int(passed), utc_now(), notes),
+    )
+
+
+def db_metric(conn: sqlite3.Connection, tr_id: int, metric_name: str, scope: str, step: int | None) -> float | None:
+    row = conn.execute(
+        """
+        select metric_value
+        from training_metrics
+        where training_run_id=? and metric_name=? and metric_scope=? and step is ?
+        """,
+        (tr_id, metric_name, scope, step),
+    ).fetchone()
+    return float(row["metric_value"]) if row else None
+
+
 def main() -> None:
     db = "/data-1/experiment_registry/experiment_registry.sqlite"
     init_db(db)
@@ -611,9 +790,17 @@ def main() -> None:
     with connect(db) as conn:
         project_id = upsert_project(conn)
         ds_stage1 = upsert_dataset(conn, "math.ensemblellm_train_rl_format", "EnsembleLLM train RL format", TRAIN_STAGE1, "train")
+        ds_stage1_boxed = upsert_dataset(conn, "math.ensemblellm_staged_v1_train_rl_format_boxed_prompt", "EnsembleLLM staged-v1 boxed-prompt train RL format", TRAIN_STAGE1_BOXED, "train", "Train prompts aligned to validation boxed final-answer instruction.")
         ds_stage2 = upsert_dataset(conn, "math.ensemblellm_staged_v1_stage2_nonoverlap_seed20260528", "EnsembleLLM staged-v1 Stage-2 non-overlap shard", TRAIN_STAGE2, "train", "Skip first 9600 eligible prompts and use next 4800 prompts.")
+        ds_stage2_boxed = upsert_dataset(conn, "math.ensemblellm_staged_v1_stage2_boxed_nonoverlap_seed20260528", "EnsembleLLM staged-v1 boxed Stage-2 non-overlap shard", TRAIN_STAGE2_BOXED, "train", "Boxed-prompt Stage-2 shard; skip first 9600 eligible prompts and use next 4800 prompts.")
         ds_math500 = upsert_dataset(conn, "math.math500_test_with_system_prompt", "MATH-500 with system prompt", MATH500, "validation")
         ds_aime2025 = upsert_dataset(conn, "math.aime2025_with_system_prompt", "AIME-2025 with system prompt", AIME2025, "validation")
+        train_dataset_ids = {
+            "stage1": ds_stage1,
+            "stage1_boxed": ds_stage1_boxed,
+            "stage2": ds_stage2,
+            "stage2_boxed": ds_stage2_boxed,
+        }
 
         for run in RUNS:
             metrics_path = METRICS_DIR / f"{run['run_name']}.jsonl"
@@ -626,13 +813,26 @@ def main() -> None:
             exp_id = upsert_experiment(conn, project_id, run, best, latest)
             for tag in ["staged_v1", f"stage{run['stage']}", f"beta_{run['beta']:.1f}", "wdl_sft"]:
                 add_tag(conn, "experiment", exp_id, tag)
+            if run.get("chain_group"):
+                add_tag(conn, "experiment", exp_id, run["chain_group"])
+            if run.get("train_dataset") in {"stage1_boxed", "stage2_boxed"}:
+                add_tag(conn, "experiment", exp_id, "boxed_matched")
             if run["stage"] == 2:
                 add_tag(conn, "experiment", exp_id, "model2_rollout_fused_loss")
                 add_tag(conn, "experiment", exp_id, "nonoverlap_stage2_shard")
 
             best_model_path = str(Path(best["checkpoint_dir"]) / "actor")
             if run["stage"] == 1:
-                merged_path = str(MODEL_WEIGHT_ROOT / run["run_name"] / f"step_{best['step']}")
+                if run.get("chain_group") == "boxed_matched_beta0":
+                    merged_path = "/data-1/model_weights/staged_v1/boxed_matched/model2-from-s1-boxed-beta0-best"
+                elif run.get("chain_group") == "boxed_matched_beta01":
+                    merged_path = "/data-1/model_weights/staged_v1/boxed_matched/model2-from-s1-boxed-beta01-best"
+                elif run.get("chain_group") == "plateau_p60_beta0":
+                    merged_path = "/data-1/model_weights/staged_v1/plateau_handoff_p60/model2-from-s1-p60-beta0-step60"
+                elif run.get("chain_group") == "plateau_p60_beta01":
+                    merged_path = "/data-1/model_weights/staged_v1/plateau_handoff_p60/model2-from-s1-p60-beta01-step60"
+                else:
+                    merged_path = str(MODEL_WEIGHT_ROOT / run["run_name"] / f"step_{best['step']}")
                 role = "stage1_model2_candidate"
                 model_path = merged_path if Path(merged_path).exists() else best_model_path
             else:
@@ -656,14 +856,14 @@ def main() -> None:
                 conn,
                 exp_id,
                 run,
-                ds_stage1 if run["stage"] == 1 else ds_stage2,
+                dataset_for_run(run, train_dataset_ids),
                 model_id,
                 rows,
                 best,
                 latest,
                 metrics_path,
             )
-            link_training_dataset(conn, tr_id, ds_stage1 if run["stage"] == 1 else ds_stage2, "train")
+            link_training_dataset(conn, tr_id, dataset_for_run(run, train_dataset_ids), "train")
             link_training_dataset(conn, tr_id, ds_math500, "validation")
             link_training_dataset(conn, tr_id, ds_aime2025, "validation")
             if run["stage"] == 2:
@@ -671,6 +871,8 @@ def main() -> None:
                     "stage": 1,
                     "beta": run["stage1_beta"],
                     "run_name": run["stage1_run"],
+                    "train_dataset": "stage1_boxed" if run.get("train_dataset") == "stage2_boxed" else None,
+                    "chain_group": run.get("chain_group"),
                 })
                 parent = conn.execute("select id from experiments where experiment_key=?", (parent_key,)).fetchone()
                 if parent:
@@ -705,16 +907,59 @@ def main() -> None:
             add_training_metric(conn, tr_id, "best_checkpoint/selection_metric", best["metric_value"], best["step"], "best_checkpoint")
             add_training_metric(conn, tr_id, "latest_checkpoint/step", latest, latest, "checkpoint")
 
+            add_validation_check(
+                conn,
+                f"staged_v1_{run['run_name']}_best_checkpoint_selection_metric",
+                best_path,
+                best["metric_value"],
+                db_metric(conn, tr_id, "best_checkpoint/selection_metric", "best_checkpoint", best["step"]),
+                "Source best_checkpoint.json metric_value equals registry training_metrics.",
+            )
+            add_validation_check(
+                conn,
+                f"staged_v1_{run['run_name']}_latest_checkpoint_step",
+                CHECKPOINT_ROOT / run["run_name"] / "latest_checkpointed_iteration.txt",
+                latest,
+                db_metric(conn, tr_id, "latest_checkpoint/step", "checkpoint", latest),
+                "Source latest checkpoint marker equals registry training_metrics.",
+            )
+            if final_val:
+                final_math_key = "val-core/HuggingFaceH4/MATH-500/acc/mean@3"
+                add_validation_check(
+                    conn,
+                    f"staged_v1_{run['run_name']}_final_math500_mean3",
+                    metrics_path,
+                    final_val["data"].get(final_math_key),
+                    db_metric(conn, tr_id, f"final_validation/{final_math_key}", "final_validation", final_val["step"]),
+                    "Final validation MATH-500 mean@3 in metrics JSONL equals registry training_metrics.",
+                )
+            peak_math_key = "val-core/HuggingFaceH4/MATH-500/acc/mean@3"
+            add_validation_check(
+                conn,
+                f"staged_v1_{run['run_name']}_peak_math500_mean3",
+                metrics_path,
+                best_math["data"].get(peak_math_key),
+                db_metric(conn, tr_id, f"peak_metric/{peak_math_key}", "peak_metric", best_math["step"]),
+                "Peak validation MATH-500 mean@3 in metrics JSONL equals registry training_metrics.",
+            )
+
             add_artifact(conn, exp_id, tr_id, model_id, "training_metrics_jsonl", str(metrics_path), "Training metrics JSONL.")
             add_artifact(conn, exp_id, tr_id, model_id, "best_checkpoint_json", str(best_path), "Best checkpoint metadata.")
             add_artifact(conn, exp_id, tr_id, model_id, "checkpoint_dir", best["checkpoint_dir"], "Best checkpoint directory.")
             log_path = REPO / f"recipe/on_policy_wdl_sft/staged_v1/{run['run_name']}.log"
             add_artifact(conn, exp_id, tr_id, model_id, "training_log", str(log_path), "Training stdout/stderr log.")
-            if run["stage"] == 2:
-                add_artifact(conn, exp_id, tr_id, None, "dataset_manifest", str(TRAIN_STAGE2_MANIFEST), "Stage-2 non-overlap shard manifest.")
+            for extra_log in run.get("extra_logs", []):
+                add_artifact(conn, exp_id, tr_id, model_id, "training_log", str(REPO / extra_log), "Additional training stdout/stderr log.")
+            manifest = manifest_for_run(run)
+            if manifest:
+                add_artifact(conn, exp_id, tr_id, None, "dataset_manifest", str(manifest), "Training dataset manifest.")
+            if run.get("stage1_source_json"):
+                add_artifact(conn, exp_id, tr_id, None, "stage1_source_json", run["stage1_source_json"], "Fixed merged Model2 provenance from Stage 1.")
 
             add_source_record(conn, metrics_path, "full", "training_runs", tr_id, training_run_key(run))
             add_source_record(conn, best_path, "best_checkpoint", "models", model_id, slug(f"{run['run_name']}.best.step_{best['step']}"))
+            if run.get("stage1_source_json"):
+                add_source_record(conn, Path(run["stage1_source_json"]), "stage1_source", "training_runs", tr_id, training_run_key(run))
 
             if run["stage"] == 2:
                 final_math = final_val["data"].get("val-core/HuggingFaceH4/MATH-500/acc/mean@3") if final_val else None

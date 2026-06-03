@@ -179,12 +179,15 @@ class QwenJointForCausalLM(nn.Module):
         return self._pack_hidden_states(output0, output1)
 
     def compute_logits(self, hidden_states, sampling_metadata=None) -> Optional[torch.Tensor]:
+        # vLLM 0.12 calls model.compute_logits(hidden_states) and its Qwen3
+        # sub-model no longer accepts sampling_metadata. Keep the optional
+        # parameter on the joint wrapper for older callers, but do not forward it.
         if self._use_model2_only:
-            return self.sub_models[1].compute_logits(hidden_states, sampling_metadata)
+            return self.sub_models[1].compute_logits(hidden_states)
 
         hidden_states0, hidden_states1 = self._unpack_hidden_states(hidden_states)
-        logits0 = self.sub_models[0].compute_logits(hidden_states0, sampling_metadata)
-        logits1 = self.sub_models[1].compute_logits(hidden_states1, sampling_metadata)
+        logits0 = self.sub_models[0].compute_logits(hidden_states0)
+        logits1 = self.sub_models[1].compute_logits(hidden_states1)
 
         if logits0 is None:
             return logits1

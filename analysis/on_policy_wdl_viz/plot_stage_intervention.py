@@ -29,6 +29,7 @@ class RunSpec:
     stage2_best_step: int
     color: str
     title: str | None = None
+    stage1_continuation_jsonl: str | None = None
 
 
 PRESETS = {
@@ -61,11 +62,34 @@ PRESETS = {
             title="Boxed matched chain, beta=0.0",
         ),
     ],
+    "plateau_p60": [
+        RunSpec(
+            beta_label="plateau P60 beta=0.0",
+            stage1_jsonl="ONPOLICY-SFT-Qwen3-4B-MATH-S1-PLATEAU-P60-BETA0-V1_1780381684.jsonl",
+            stage2_jsonl="WDL-SFT-STAGED-V1-S2-PLATEAU-P60-BETA0-BETA0_1780389822.jsonl",
+            stage1_source_step=60,
+            stage2_best_step=20,
+            color="#0f766e",
+            title="Plateau handoff vs Stage 1-only, beta=0.0",
+            stage1_continuation_jsonl="ONPOLICY-SFT-Qwen3-4B-MATH-S1-BOXED-BETA0-V1_1780230447.jsonl",
+        ),
+        RunSpec(
+            beta_label="plateau P60 beta=0.1",
+            stage1_jsonl="ONPOLICY-SFT-Qwen3-4B-MATH-S1-PLATEAU-P60-BETA01-V1_1780395823.jsonl",
+            stage2_jsonl="WDL-SFT-STAGED-V1-S2-PLATEAU-P60-BETA01-BETA01_1780460682.jsonl",
+            stage1_source_step=60,
+            stage2_best_step=35,
+            color="#1d4ed8",
+            title="Plateau handoff vs Stage 1-only, beta=0.1",
+            stage1_continuation_jsonl="ONPOLICY-SFT-Qwen3-4B-MATH-S1-BOXED-BETA01-V1_1780298630.jsonl",
+        ),
+    ],
 }
 
 PRESET_TITLES = {
     "historical": "Stage 2 intervention gives an early MATH-500 lift, but the current recipe is not yet stable",
     "boxed": "Boxed-prompt rerun: Stage 2 beats same-budget Stage 1 continuation, but still collapses late",
+    "plateau_p60": "Plateau handoff P60: Stage 2 outperforms Stage 1-only continuation for the stable beta=0.1 chain",
 }
 
 
@@ -163,25 +187,27 @@ def plot_intervention(
 
     for ax, spec in zip(axes, runs, strict=True):
         stage1_path = metrics_root / spec.stage1_jsonl
+        continuation_path = metrics_root / (spec.stage1_continuation_jsonl or spec.stage1_jsonl)
         stage2_path = metrics_root / spec.stage2_jsonl
         stage1_math = read_metric_series(stage1_path, METRIC_MATH_MEAN3)
+        continuation_math = read_metric_series(continuation_path, METRIC_MATH_MEAN3)
         stage2_math = read_metric_series(stage2_path, METRIC_MATH_MEAN3)
         stage2_extract = read_metric_series(stage2_path, METRIC_EXTRACT_FAIL)
 
         source_value = value_at(stage1_math, spec.stage1_source_step)
-        stage1_best_step, stage1_best_value = best_point(stage1_math)
+        stage1_best_step, stage1_best_value = best_point(continuation_math)
         stage2_best_value = value_at(stage2_math, spec.stage2_best_step)
         stage2_best_effective_step = spec.stage1_source_step + spec.stage2_best_step
-        baseline_at_stage2_best = interpolate_baseline(stage1_math, stage2_best_effective_step)
+        baseline_at_stage2_best = interpolate_baseline(continuation_math, stage2_best_effective_step)
         final_stage2_step, final_stage2_value = stage2_math[-1]
         final_extract = stage2_extract[-1][1] if stage2_extract else float("nan")
 
-        stage1_x = np.array([s for s, _ in stage1_math])
-        stage1_y = np.array([v for _, v in stage1_math])
+        stage1_x = np.array([s for s, _ in continuation_math])
+        stage1_y = np.array([v for _, v in continuation_math])
         stage2_x = np.array([spec.stage1_source_step + s for s, _ in stage2_math])
         stage2_y = np.array([v for _, v in stage2_math])
 
-        ax.plot(stage1_x, stage1_y, color="#6b7280", lw=2.0, marker="o", ms=3, label="Stage 1 continuation")
+        ax.plot(stage1_x, stage1_y, color="#6b7280", lw=2.0, marker="o", ms=3, label="Stage 1-only baseline")
         ax.plot(stage2_x, stage2_y, color=spec.color, lw=2.4, marker="o", ms=3.5, label="Stage 2 intervention")
         ax.axvline(spec.stage1_source_step, color="#111827", ls="--", lw=1.3)
         ax.scatter([spec.stage1_source_step], [source_value], color="#111827", s=42, zorder=5)
@@ -213,6 +239,15 @@ def plot_intervention(
                 "late collapse",
                 xy=(spec.stage1_source_step + final_stage2_step, final_stage2_value),
                 xytext=(spec.stage1_source_step + final_stage2_step - 48, final_stage2_value + 10),
+                arrowprops={"arrowstyle": "->", "lw": 1.0, "color": "#7c2d12"},
+                fontsize=9,
+                color="#7c2d12",
+            )
+        elif stage2_best_value - final_stage2_value > 5.0:
+            ax.annotate(
+                "late degradation",
+                xy=(spec.stage1_source_step + final_stage2_step, final_stage2_value),
+                xytext=(spec.stage1_source_step + final_stage2_step - 28, final_stage2_value - 10),
                 arrowprops={"arrowstyle": "->", "lw": 1.0, "color": "#7c2d12"},
                 fontsize=9,
                 color="#7c2d12",

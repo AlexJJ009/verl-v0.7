@@ -204,7 +204,7 @@ Key finding from v1: model2 ceiling ≈ 79-80% MATH-500 mean@3 regardless of lr/
 
 Key finding so far: **v2 breaks the v1 online ceiling** (+2.4 pp at step 300 vs M5.5). 1B matches 1A online despite β=0.1 — training-level evidence that v2 contains the reverse SFT instability. Preliminary offline eval on 1A step 225 model2: MATH-500 mean@3 = 83.07% (vs v1 EVAL-10 = 79.6%).
 
-**Current focus**: Execute the boxed-prompt matched Stage1 -> fixed Model2 merge -> Stage2 chain in `recipe/on_policy_wdl_sft/staged_v1/run_boxed_matched_chain_queue.sh`: first beta `0.0` Stage1 then fixed merge then beta `0.0` Stage2, followed by beta `0.1` Stage1 then fixed merge then beta `0.1` Stage2. This rerun fixes the train/validation prompt-format mismatch by using boxed-prompt train data and fixed provenance-checked Model2 merge directories.
+**Current focus**: Design and implement the plateau-handoff Stage1 -> Stage2 experiment in `docs/joint_training/plans/active/plateau_handoff_stage1_stage2.md`: take Model2 from an early Stage1 plateau checkpoint (primary: step 60), run short matched-beta Stage2 (primary: 40 steps), and test whether early handoff preserves the local Stage2 gain while avoiding late collapse.
 
 ## Documentation (Archival)
 
@@ -217,6 +217,7 @@ Documentation in `docs/joint_training/` was created during the parent branch's j
 | `constraints/experiment_tracking/training_script_index_policy.md` | **Training script index policy** — shared rule that every branch keeps its own script index and updates it when runnable training/monitor scripts are created or used | ACTIVE |
 | `plans/active/README.md` | Active plan index | ACTIVE |
 | `plans/active/boxed_matched_stage1_stage2_chain.md` | **Boxed matched Stage1 -> Stage2 chain** — current execution plan: boxed-prompt beta `0.0` Stage1 -> fixed Model2 merge -> beta `0.0` Stage2, then the same matched chain for beta `0.1` | ACTIVE |
+| `plans/active/plateau_handoff_stage1_stage2.md` | **Plateau handoff Stage1 -> Stage2** — new experiment plan: take Model2 from early Stage1 plateau checkpoints (primary: step 60) and run short matched-beta Stage2 (primary: 40 steps) to preserve early Stage2 gains while avoiding late collapse | ACTIVE |
 | `plans/active/wdl_group_advantage_is_goal.md` | **WDL group-advantage IS implementation contract** — new beta-free loss with group advantages, all-correct positive-SFT fallback, explicit mixed-policy old/current IS, `norm_adv_by_std_in_grpo=false`; excludes rollout IS weights, KL penalty, and length normalization; requires complete Meituan four-layer launch scripts | ACTIVE |
 | `plans/active/wdl_sft_is.md` | **WDL-SFT v2 (IS-corrected)** — post-fix rerun matrix remains open; historical 1A/1B/1C are pre-fix | ACTIVE |
 | `plans/active/ablation_single_model.md` | **Single-model ablation (2A/B/C + 2Z baseline)** — partially complete; post-fix rows remain open | ACTIVE |
@@ -229,6 +230,7 @@ Documentation in `docs/joint_training/` was created during the parent branch's j
 | `plans/completed/` | Archived plans from Stage 1 & 2 | ARCHIVAL |
 | `courses/` | Educational docs on joint-training theory | ARCHIVAL — background reference |
 | `guides/` | Testing, tuning, migration guides | Partially applicable |
+| `guides/hf_model_weight_upload_playbook.md` | **Hugging Face model-weight upload playbook** — checkpoint-to-HF operational flow: proxy routing, queue launch, upload verification, manifest registration, and verified-only checkpoint cleanup. Mid-goal snapshot exists; update after the current migration queue completes | ACTIVE |
 | `guides/meituan_platform.md` | **Meituan AFO layered launch + cross-host portability playbook** — MUST follow when adding any experiment that will run on Meituan | ACTIVE |
 | `references/` | External articles and papers | ARCHIVAL — background reference |
 
@@ -262,10 +264,11 @@ Before launching any training, monitoring, checkpoint transfer, or large file op
 - Boxed matched chain queue: `recipe/on_policy_wdl_sft/staged_v1/run_boxed_matched_chain_queue.sh`
 - Boxed matched chain monitor: `recipe/on_policy_wdl_sft/staged_v1/monitor_boxed_matched_chain_notify.sh`
 - Boxed matched Stage1 -> Stage2 chain plan: `docs/joint_training/plans/active/boxed_matched_stage1_stage2_chain.md`
+- Plateau handoff Stage1 -> Stage2 plan: `docs/joint_training/plans/active/plateau_handoff_stage1_stage2.md`
 - Archived Stage 2 Model2-rollout fused-loss fast validation: `docs/joint_training/plans/completed/stage2_model2_rollout_fused_loss_fast_validation.md`
 - Archived staged v1 On-Policy SFT -> WDL-SFT beta search: `docs/joint_training/plans/completed/on_policy_sft_then_wdl_sft_beta_search.md`
 - WDL group-advantage IS implementation contract: `docs/joint_training/plans/active/wdl_group_advantage_is_goal.md`
-- **Current focus**: `recipe/on_policy_wdl_sft/staged_v1/run_boxed_matched_chain_queue.sh`
+- **Current focus**: `docs/joint_training/plans/active/plateau_handoff_stage1_stage2.md`
 - Archived dual-submodel rollout negative result: `docs/joint_training/plans/completed/dual_submodel_rollout_wdl_sft.md`
 - Dual-submodel 3A failure analysis: `docs/joint_training/plans/completed/dual_submodel_rollout_wdl_sft_3a_failure_analysis.md`
 - Single-model ablation plan: `docs/joint_training/plans/active/ablation_single_model.md`
@@ -273,6 +276,7 @@ Before launching any training, monitoring, checkpoint transfer, or large file op
 - Staged v1 scripts: `recipe/on_policy_wdl_sft/staged_v1/`
 - Training script index policy: `docs/joint_training/constraints/experiment_tracking/training_script_index_policy.md`
 - Training script index: `docs/joint_training/guides/training_script_index.md`
+- HF model-weight upload playbook: `docs/joint_training/guides/hf_model_weight_upload_playbook.md`
 - **Meituan platform playbook** (how to add experiments that run on both local + AFO): `docs/joint_training/guides/meituan_platform.md`
 - v1 vs v2 loss spec: `docs/joint_training/specs/wdl_sft_is.md`
 - v1 loss code: `verl/trainer/ppo/core_algos.py:1861` (wdl_sft)

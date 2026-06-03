@@ -21,6 +21,16 @@ uv run --project analysis/on_policy_wdl_viz \
   --summary-csv analysis/on_policy_wdl_viz/outputs/stage_intervention_boxed_summary.csv
 ```
 
+Generate the plateau-handoff P60 figure:
+
+```bash
+uv run --project analysis/on_policy_wdl_viz \
+  python analysis/on_policy_wdl_viz/plot_stage_intervention.py \
+  --preset plateau_p60 \
+  --output-stem analysis/on_policy_wdl_viz/outputs/stage_intervention_plateau_p60_math500 \
+  --summary-csv analysis/on_policy_wdl_viz/outputs/stage_intervention_plateau_p60_summary.csv
+```
+
 Default outputs:
 
 - `analysis/on_policy_wdl_viz/outputs/stage_intervention_summary.csv`
@@ -36,6 +46,14 @@ Boxed-prompt outputs:
 - `analysis/on_policy_wdl_viz/outputs/stage_intervention_boxed_math500.pdf`
 - `docs/joint_training/courses/on-policy-wdl-overleaf/images/stage_intervention_boxed_math500.png`
 - `docs/joint_training/courses/on-policy-wdl-overleaf/images/stage_intervention_boxed_math500.pdf`
+
+Plateau-handoff P60 outputs:
+
+- `analysis/on_policy_wdl_viz/outputs/stage_intervention_plateau_p60_summary.csv`
+- `analysis/on_policy_wdl_viz/outputs/stage_intervention_plateau_p60_math500.png`
+- `analysis/on_policy_wdl_viz/outputs/stage_intervention_plateau_p60_math500.pdf`
+- `docs/joint_training/courses/on-policy-wdl-overleaf/images/stage_intervention_plateau_p60_math500.png`
+- `docs/joint_training/courses/on-policy-wdl-overleaf/images/stage_intervention_plateau_p60_math500.pdf`
 
 The main plot compares the Stage 1 continuation curve with a Stage 2
 intervention curve. Stage 2 is shifted so its step 0 equals the selected Stage 1

@@ -1,6 +1,6 @@
 # Active Plan Index
 
-Last organized: 2026-05-31.
+Last organized: 2026-06-02.
 
 This directory should contain only plans that still need decisions, reruns, or
 follow-up experiments. Completed, superseded, or negative-result plans should
@@ -11,6 +11,7 @@ live in `../completed/`.
 | Plan | Status | Why it remains active |
 | --- | --- | --- |
 | `boxed_matched_stage1_stage2_chain.md` | Active execution plan | Current boxed-prompt rerun: beta `0.0` Stage1 -> fixed Model2 merge -> beta `0.0` Stage2, then beta `0.1` Stage1 -> fixed Model2 merge -> beta `0.1` Stage2. |
+| `plateau_handoff_stage1_stage2.md` | Active experiment plan, implementation ready | New registered experiment: take Model2 from early Stage1 plateau checkpoints (primary: step 60) and run short Stage2 (primary: 40 steps) to test whether early handoff preserves the local Stage2 gain while avoiding late collapse. Primary runnable wrappers and queue exist; results are not complete. |
 | `wdl_group_advantage_is_goal.md` | Active implementation contract | New method revision: group advantages + all-correct positive-SFT fallback + explicit mixed-policy old/current IS for joint rollout/joint training, with `norm_adv_by_std_in_grpo=false`, no `rollout_is_weights`, no KL penalty, no length normalization, no `beta`, and a required complete Meituan four-layer launch family. |
 | `wdl_sft_is.md` | Active, but historical sections are stale | The post-fix rerun matrix is still open. Pre-fix 1A/1B/1C results remain useful history, but should not be treated as spec-correct current runs. |
 | `ablation_single_model.md` | Active / partially completed | The SFT-init ablation has useful results, but the post-fix rerun matrix is incomplete and several rows remain not started. |
