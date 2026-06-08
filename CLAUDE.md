@@ -195,6 +195,7 @@ Before launching any training, monitoring, checkpoint transfer, or large file op
 ## Agent Guidelines
 
 - **Subagents**: Use subagents (Agent tool) for exploratory/independent work to save main context. Subagents should use the **Haiku** model (`model: "haiku"`) for cost efficiency — do NOT use Opus for subagent work unless the task specifically requires strong reasoning.
+- **Paper/Overleaf QA**: For paper-writing or Overleaf-writing tasks, every generated or modified figure/table must be reviewed before the agent considers the work complete. After rendering a figure/table or before a final commit/push, assign a reviewer subagent to check visual QA, formatting QA, and aesthetic/readability QA against the compiled PDF or rendered image whenever possible. Address blocking findings before commit/push, or explicitly record why a finding is deferred.
 - **Plans**: Active plans live in `docs/joint_training/plans/active/`. When creating or updating experiment plans, always update the index in this CLAUDE.md file.
 
 ## Quick Links
