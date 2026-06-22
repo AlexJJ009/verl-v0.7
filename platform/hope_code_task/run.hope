@@ -1,0 +1,20 @@
+# Template only. Set EXPERIMENT to one of:
+#   s1-code-smoke-beta-0
+#   s1-code-pilot-beta-0
+#   s1-code-onpolicy-sft-beta-0
+#   s1-code-onpolicy-sft-beta-01
+#   s1-code-onpolicy-sft-beta-0-retention
+#   s1-code-onpolicy-sft-beta-01-retention
+#   s2-code-smoke-beta0-beta0
+#   s2-code-pilot-beta0-beta0
+#   s2-code-retention-beta0-beta0
+#   s2-code-retention-beta01-beta01
+#
+# Smoke example:
+#   EXPERIMENT=s1-code-smoke-beta-0 SMOKE=1 DRY_RUN=1 bash platform/hope_code_task/jupyter.sh
+#
+# Pilot/formal runs require SANDBOX_FUSION_URL and user approval.
+entrypoint: platform/hope_code_task/jupyter.sh
+env:
+  EXPERIMENT: s1-code-smoke-beta-0
+  WANDB_MODE: offline

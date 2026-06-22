@@ -15,6 +15,7 @@
 # limitations under the License.
 
 import copy
+import json
 import logging
 import os
 import re
@@ -35,6 +36,15 @@ from verl.utils.chat_template import normalize_chat_template_token_ids
 from verl.utils.import_utils import load_extern_object
 
 logger = logging.getLogger(__name__)
+
+
+def _json_load_if_string(value):
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            return value
+    return value
 
 
 def collate_fn(data_list: list[dict]) -> dict:
@@ -246,7 +256,11 @@ class RLHFDataset(Dataset):
 
                         return len(
                             normalize_chat_template_token_ids(
-                                tokenizer.apply_chat_template(doc[prompt_key], add_generation_prompt=True, **apply_kwargs)
+                                tokenizer.apply_chat_template(
+                                    _json_load_if_string(doc[prompt_key]),
+                                    add_generation_prompt=True,
+                                    **apply_kwargs,
+                                )
                             )
                         )
                     except Exception:
@@ -297,7 +311,7 @@ class RLHFDataset(Dataset):
         Returns:
             messages: List of messages with replaced placeholder.
         """
-        messages: list = example[self.prompt_key]
+        messages: list = _json_load_if_string(example[self.prompt_key])
         # When concatenating image and video datasets, pop will return None for image or video sample
         images = example.pop(self.image_key, None) or []
         videos = example.pop(self.video_key, None) or []
@@ -344,6 +358,9 @@ class RLHFDataset(Dataset):
     def __getitem__(self, item):
         """For rollout, apply_chat_template has been moved to AgentLoop, so we only return raw_prompt here."""
         row_dict: dict = self.dataframe[item]
+        for key in ("reward_model", "extra_info"):
+            if key in row_dict:
+                row_dict[key] = _json_load_if_string(row_dict[key])
         row_dict["raw_prompt"] = self._build_messages(row_dict)
 
         # TODO(wuxibin): We still need a dummy tensor to make sure DataProto.batch is not empty.

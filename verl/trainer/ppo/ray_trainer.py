@@ -135,6 +135,35 @@ def _checkpoint_step_from_path(path: str) -> int | None:
         return None
 
 
+def _checkpoint_steps_from_config_value(value: Any) -> set[int]:
+    if value is None:
+        return set()
+    if OmegaConf.is_list(value):
+        value = list(value)
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped or stripped.lower() in {"none", "null", "[]"}:
+            return set()
+        value = stripped.replace("[", "").replace("]", "").replace(";", ",").split(",")
+    elif not isinstance(value, (list, tuple, set)):
+        value = [value]
+
+    steps = set()
+    for item in value:
+        if item is None:
+            continue
+        text = str(item).strip()
+        if not text:
+            continue
+        try:
+            step = int(text)
+        except ValueError:
+            raise ValueError(f"trainer.protected_ckpt_steps contains a non-integer value: {item!r}") from None
+        if step > 0:
+            steps.add(step)
+    return steps
+
+
 def apply_wdl_sft_reward_label_advantages(
     batch: DataProto,
     loss_mode: str,
@@ -650,7 +679,7 @@ class RayPPOTrainer:
         except Exception as e:
             print(f"Warning: Could not set total_training_steps in config. Structure missing? Error: {e}")
 
-    def _dump_generations(self, inputs, outputs, gts, scores, reward_extra_infos_dict, dump_path):
+    def _dump_generations(self, inputs, outputs, gts, scores, reward_extra_infos_dict, dump_path, data_sources=None):
         """Dump rollout/validation samples as JSONL."""
         os.makedirs(dump_path, exist_ok=True)
         filename = os.path.join(dump_path, f"{self.global_steps}.jsonl")
@@ -663,6 +692,8 @@ class RayPPOTrainer:
             "score": scores,
             "step": [self.global_steps] * n,
         }
+        if data_sources is not None and len(data_sources) == n:
+            base_data["data_source"] = data_sources
 
         for k, v in reward_extra_infos_dict.items():
             if len(v) == n:
@@ -946,6 +977,7 @@ class RayPPOTrainer:
                 scores=sample_scores,
                 reward_extra_infos_dict=reward_extra_infos_dict,
                 dump_path=val_data_dir,
+                data_sources=sample_data_sources,
             )
 
         for key_info, lst in reward_extra_infos_dict.items():
@@ -1000,7 +1032,7 @@ class RayPPOTrainer:
                 for metric_name, metric_val in metric2val.items():
                     if (
                         (var_name == core_var)
-                        and any(metric_name.startswith(pfx) for pfx in ["mean", "maj", "best"])
+                        and any(metric_name.startswith(pfx) for pfx in ["mean", "maj", "best", "pass"])
                         and (f"@{n_max}" in metric_name)
                     ):
                         metric_sec = "val-core"
@@ -1381,6 +1413,9 @@ class RayPPOTrainer:
                 step_dirs.append((step, path))
         return sorted(step_dirs)
 
+    def _protected_checkpoint_steps(self) -> set[int]:
+        return _checkpoint_steps_from_config_value(self.config.trainer.get("protected_ckpt_steps", None))
+
     def _load_best_checkpoint_tracker(self):
         tracker_path = self._best_checkpoint_tracker_path()
         if not os.path.exists(tracker_path):
@@ -1487,7 +1522,9 @@ class RayPPOTrainer:
     def _cleanup_best_latest_checkpoints(self, latest_step: int | None):
         if not self.config.trainer.get("keep_best_ckpt", False):
             return
+        protected_steps = self._protected_checkpoint_steps()
         keep_steps = {step for step in (latest_step, self.best_ckpt_step) if step is not None}
+        keep_steps.update(protected_steps)
         for step, path in self._iter_checkpoint_step_dirs():
             if step in keep_steps:
                 continue
@@ -1502,6 +1539,14 @@ class RayPPOTrainer:
             best_dir = self._checkpoint_dir_for_step(self.best_ckpt_step)
             if best_dir is not None and os.path.isdir(best_dir):
                 self._strip_optimizer_from_checkpoint(best_dir)
+
+        if self.config.trainer.get("protected_ckpt_strip_optimizer", False):
+            for step in sorted(protected_steps):
+                if step == latest_step:
+                    continue
+                protected_dir = self._checkpoint_dir_for_step(step)
+                if protected_dir is not None and os.path.isdir(protected_dir):
+                    self._strip_optimizer_from_checkpoint(protected_dir)
 
     def _load_checkpoint(self):
         if self.config.trainer.resume_mode == "disable":

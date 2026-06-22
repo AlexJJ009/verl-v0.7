@@ -175,6 +175,14 @@ RUN MAX_JOBS=16 uv pip install flash-attn==2.8.1 --no-build-isolation
 # Verify installation
 RUN python3 -c "import flash_attn; print(f'flash_attn {flash_attn.__version__} installed successfully')"
 
+# ======================== Code-task official sandbox =========================
+# KodCode/code-r1 official scorer runs hidden pytest cases under firejail.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    firejail \
+    firejail-profiles \
+    python3-pytest \
+    && rm -rf /var/lib/apt/lists/*
+
 # ======================== Cleanup ============================================
 RUN rm -rf /tmp/build && \
     rm -rf /root/.cache/pip && \

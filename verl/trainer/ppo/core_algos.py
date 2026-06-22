@@ -1935,7 +1935,8 @@ def compute_wdl_sft_loss(
 
     Boundary conditions:
     - When all responses are correct (k=N): L- = 0, total = L+ only.
-    - When all responses are incorrect (k=0): prompt is skipped (loss = 0).
+    - When all responses are incorrect (k=0): use reverse SFT only
+      (L+ = 0, total = beta * L-) so hard code batches still train for beta > 0.
 
     Args:
         log_prob: Per-token log probabilities of the fused model, shape (N, T).
@@ -1967,18 +1968,14 @@ def compute_wdl_sft_loss(
     k = correct_mask.sum()  # |C|
     n_minus_k = incorrect_mask.sum()  # |I| = N - k
 
-    # Edge case: all incorrect (k=0) -> skip this prompt entirely
-    if k.item() == 0:
-        zero = torch.zeros(1, device=device, dtype=dtype).squeeze(0)
-        return {
-            "total_loss": zero,
-            "loss_positive": zero,
-            "loss_negative": zero,
-        }
+    zero = seq_log_probs.sum() * 0.0
 
     # Forward loss: L+ = -(1/k) * sum_{i in C} sum_t log P(y^i_t | ...)
     # This is the mean negative log-likelihood over correct responses (standard SFT).
-    loss_positive = -(correct_mask * seq_log_probs).sum() / k
+    if k.item() > 0:
+        loss_positive = -(correct_mask * seq_log_probs).sum() / k
+    else:
+        loss_positive = zero
 
     # Reverse loss: L- = (1/(N-k)) * sum_{j in I} sum_t log P(y^j_t | ...)
     # Since log probs are negative, L- is negative, and minimizing beta*L-

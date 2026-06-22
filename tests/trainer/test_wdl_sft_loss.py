@@ -5,7 +5,7 @@ Tests cover:
 - Reverse loss (L-) correctness with hand-computed values
 - Combined loss correctness with mixed correct/incorrect responses
 - Edge case: all correct (C=N, I=empty)
-- Edge case: all incorrect (C=empty, I=N)
+- Edge case: all incorrect (C=empty, I=N) uses reverse SFT only
 - No NaN/Inf for random inputs (fuzz test)
 - Gradient flow through the loss
 - Various beta values
@@ -86,7 +86,7 @@ class TestReverseLossCorrectness:
     """AC5: Reverse loss (L-) correctness with hand-computed values."""
 
     def test_all_incorrect_simple(self):
-        """All N=4 incorrect → prompt is skipped (loss=0)."""
+        """All N=4 incorrect → reverse SFT only."""
         N, T = 4, 3
         log_prob = torch.full((N, T), -1.0)
         response_mask = torch.ones(N, T)
@@ -94,10 +94,13 @@ class TestReverseLossCorrectness:
 
         result = compute_wdl_sft_loss(log_prob, response_mask, reward_labels, beta=0.1)
 
-        # k=0 → skip prompt, all losses = 0
-        assert abs(result["total_loss"].item()) < 1e-5
+        # k=0, N-k=4
+        # L+ = 0
+        # L- = (1/4) * sum_i(-3.0) = -3.0
+        # total = 0.1 * -3.0 = -0.3
+        assert abs(result["total_loss"].item() - (-0.3)) < 1e-5
         assert abs(result["loss_positive"].item()) < 1e-5
-        assert abs(result["loss_negative"].item()) < 1e-5
+        assert abs(result["loss_negative"].item() - (-3.0)) < 1e-5
 
     def test_reverse_loss_mixed(self):
         """Test L- with known inputs where some are incorrect."""
@@ -248,20 +251,20 @@ class TestEdgeCaseAllCorrect:
 
 
 class TestEdgeCaseAllIncorrect:
-    """AC8: All incorrect (C=empty, I=N) → prompt skipped, loss=0, no NaN/Inf."""
+    """AC8: All incorrect (C=empty, I=N) → reverse SFT only, no NaN/Inf."""
 
     def test_all_incorrect_n8(self):
-        """N=8 all incorrect, loss should be 0."""
+        """N=8 all incorrect, loss should be beta-weighted reverse SFT."""
         N, T = 8, 5
-        log_prob = torch.randn(N, T)
+        log_prob = torch.full((N, T), -1.0)
         response_mask = torch.ones(N, T)
         reward_labels = -torch.ones(N)
 
         result = compute_wdl_sft_loss(log_prob, response_mask, reward_labels, beta=0.1)
 
-        assert result["total_loss"].item() == 0.0
+        assert abs(result["total_loss"].item() - (-0.5)) < 1e-5
         assert result["loss_positive"].item() == 0.0
-        assert result["loss_negative"].item() == 0.0
+        assert abs(result["loss_negative"].item() - (-5.0)) < 1e-5
 
     def test_all_incorrect_no_nan_inf(self):
         """Ensure no NaN or Inf when all incorrect."""
@@ -334,18 +337,31 @@ class TestGradientFlow:
         assert torch.isfinite(log_prob.grad).all()
 
     def test_gradient_flow_all_incorrect(self):
-        """All incorrect, loss=0 → no gradient dependency on log_prob."""
+        """All incorrect uses reverse SFT and produces finite gradients for beta > 0."""
         N, T = 4, 5
         log_prob = torch.randn(N, T, requires_grad=True)
         response_mask = torch.ones(N, T)
         reward_labels = -torch.ones(N)
 
         result = compute_wdl_sft_loss(log_prob, response_mask, reward_labels, beta=0.1)
+        result["total_loss"].backward()
 
-        # When all incorrect, prompt is skipped: loss=0 with no grad_fn
-        # (no dependency on log_prob). This is correct behavior.
-        assert result["total_loss"].item() == 0.0
-        assert not result["total_loss"].requires_grad or result["total_loss"].grad_fn is None
+        assert log_prob.grad is not None
+        assert torch.isfinite(log_prob.grad).all()
+        assert (log_prob.grad[response_mask.bool()] > 0).all()
+
+    def test_gradient_flow_all_incorrect_beta_zero(self):
+        """With beta=0, all-incorrect reverse SFT is intentionally disabled."""
+        N, T = 4, 5
+        log_prob = torch.randn(N, T, requires_grad=True)
+        response_mask = torch.ones(N, T)
+        reward_labels = -torch.ones(N)
+
+        result = compute_wdl_sft_loss(log_prob, response_mask, reward_labels, beta=0.0)
+        result["total_loss"].backward()
+
+        assert log_prob.grad is not None
+        assert torch.count_nonzero(log_prob.grad).item() == 0
 
     def test_gradient_direction_correct(self):
         """Verify gradient pushes correct response log probs up (SFT direction)."""

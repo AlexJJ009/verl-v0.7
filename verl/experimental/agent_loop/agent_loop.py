@@ -53,6 +53,27 @@ logger = logging.getLogger(__file__)
 logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
 
 
+def _default_reward_extra_value(key: str) -> Any:
+    code_reward_defaults = {
+        "score": -1.0,
+        "acc": 0.0,
+        "code_reward_status": "missing",
+        "code_reward_extraction_fail": 0,
+        "code_reward_compile_error": 0,
+        "code_reward_runtime_error": 0,
+        "code_reward_timeout": 0,
+        "code_reward_dependency_error": 0,
+        "code_reward_num_tests": 0,
+        "code_reward_num_passed": 0,
+        "code_reward_stderr_excerpt": "",
+        "pred": "",
+        "verification_method": "",
+        "official_aligned": False,
+        "code_reward_sandbox": "",
+    }
+    return code_reward_defaults.get(key, "")
+
+
 class AsyncLLMServerManager:
     """
     A class to manage multiple OpenAI compatible LLM servers. This class provides
@@ -768,9 +789,11 @@ class AgentLoopWorker:
 
         # add reward_extra_info to non_tensor_batch
         reward_extra_infos = [input.extra_fields.get("reward_extra_info", {}) for input in inputs]
-        reward_extra_keys = list(reward_extra_infos[0].keys())
+        reward_extra_keys = sorted({key for info in reward_extra_infos for key in info.keys()})
         for key in reward_extra_keys:
-            non_tensor_batch[key] = np.array([info[key] for info in reward_extra_infos])
+            non_tensor_batch[key] = np.array(
+                [info.get(key, _default_reward_extra_value(key)) for info in reward_extra_infos]
+            )
 
         # Add multi_modal_inputs to non_tensor_batch if any samples have them
         multi_modal_inputs_list = [input.multi_modal_inputs for input in inputs]

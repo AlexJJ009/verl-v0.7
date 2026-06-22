@@ -133,3 +133,6 @@ flash_attn-*.whl
 
 # Temporary eval launch scripts
 run_eval*.sh
+
+# External Overleaf working copy (managed by its own git remote)
+docs/joint_training/courses/on-policy-wdl-overleaf/
