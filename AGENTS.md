@@ -204,7 +204,7 @@ Key finding from v1: model2 ceiling ≈ 79-80% MATH-500 mean@3 regardless of lr/
 
 Key finding so far: **v2 breaks the v1 online ceiling** (+2.4 pp at step 300 vs M5.5). 1B matches 1A online despite β=0.1 — training-level evidence that v2 contains the reverse SFT instability. Preliminary offline eval on 1A step 225 model2: MATH-500 mean@3 = 83.07% (vs v1 EVAL-10 = 79.6%).
 
-**Current focus**: Design and implement the plateau-handoff Stage1 -> Stage2 experiment in `docs/joint_training/plans/active/plateau_handoff_stage1_stage2.md`: take Model2 from an early Stage1 plateau checkpoint (primary: step 60), run short matched-beta Stage2 (primary: 40 steps), and test whether early handoff preserves the local Stage2 gain while avoiding late collapse.
+**Current focus**: Interpret the plateau-handoff Stage1 -> Stage2 math results in `docs/joint_training/plans/active/plateau_handoff_stage1_stage2.md`, run Math-7 offline eval, and implement the code-task script plan in `docs/joint_training/plans/active/code_task_scripts_implementation_plan.md` before any code training launch.
 
 ## Documentation (Archival)
 
@@ -214,10 +214,16 @@ Documentation in `docs/joint_training/` was created during the parent branch's j
 |---|---|---|
 | `specs/` | Technical specs for joint model / logit fusion | ARCHIVAL — infrastructure reference |
 | `constraints/` | Development rules and boundaries | Still applicable |
+| `constraints/principles/workspace_artifact_hygiene.md` | **Workspace artifact hygiene** — mandatory rules for keeping repo root and `/data-1` clean when agents run tests, dry-runs, generated code, benchmark harnesses, or cleanup work | ACTIVE |
 | `constraints/experiment_tracking/training_script_index_policy.md` | **Training script index policy** — shared rule that every branch keeps its own script index and updates it when runnable training/monitor scripts are created or used | ACTIVE |
 | `plans/active/README.md` | Active plan index | ACTIVE |
 | `plans/active/boxed_matched_stage1_stage2_chain.md` | **Boxed matched Stage1 -> Stage2 chain** — current execution plan: boxed-prompt beta `0.0` Stage1 -> fixed Model2 merge -> beta `0.0` Stage2, then the same matched chain for beta `0.1` | ACTIVE |
 | `plans/active/plateau_handoff_stage1_stage2.md` | **Plateau handoff Stage1 -> Stage2** — new experiment plan: take Model2 from early Stage1 plateau checkpoints (primary: step 60) and run short matched-beta Stage2 (primary: 40 steps) to preserve early Stage2 gains while avoiding late collapse | ACTIVE |
+| `plans/active/code_task_extension_on_policy_wdl_sft.md` | **Code task extension for On-Policy WDL-SFT** — research plan for extending Stage1 -> Stage2 to code tasks; implementation gated on executable reward, sandbox/dependency, data conversion, and offline code eval validation | ACTIVE |
+| `plans/active/code_task_scripts_implementation_plan.md` | **Code task script implementation plan** — concrete development plan for code-task data conversion, reward smoke, Stage1/Stage2 wrappers, queue/monitor, offline eval, Meituan-ready env overrides, and shared main/reviewer checks | ACTIVE |
+| `reports/deepcoder_preview_code_task_transfer_design.md` | **DeepCoder-Preview code-task transfer design** — experiment-design document for replacing KodCode with DeepCoder-Preview; not a `/goal` execution plan | ACTIVE DESIGN |
+| `reports/deepcoder_kodcode_failure_analysis.md` | **DeepCoder vs KodCode failure analysis** — experiment-result report for the DeepCoder data switch; records reward sparsity, stdin/stdout-vs-function interface mismatch, beta `0.5` non-improvement, and the decision basis for returning code-task Stage1 to KodCode | ACTIVE RESULT |
+| `plans/completed/deepcoder_stage1_training_execution_plan.md` | **DeepCoder Stage1 training execution plan** — completed/superseded execution contract for the DeepCoder Stage1 batch; preserved for traceability after the DeepCoder data switch was recorded as a negative transfer result | ARCHIVAL |
 | `plans/active/wdl_group_advantage_is_goal.md` | **WDL group-advantage IS implementation contract** — new beta-free loss with group advantages, all-correct positive-SFT fallback, explicit mixed-policy old/current IS, `norm_adv_by_std_in_grpo=false`; excludes rollout IS weights, KL penalty, and length normalization; requires complete Meituan four-layer launch scripts | ACTIVE |
 | `plans/active/wdl_sft_is.md` | **WDL-SFT v2 (IS-corrected)** — post-fix rerun matrix remains open; historical 1A/1B/1C are pre-fix | ACTIVE |
 | `plans/active/ablation_single_model.md` | **Single-model ablation (2A/B/C + 2Z baseline)** — partially complete; post-fix rows remain open | ACTIVE |
@@ -253,6 +259,8 @@ Before launching any training, monitoring, checkpoint transfer, or large file op
 
 5. **Training script index must stay current**: Follow `docs/joint_training/constraints/experiment_tracking/training_script_index_policy.md`. Whenever you create a runnable training/monitor script or use one for a real run, update this branch's own `docs/joint_training/guides/training_script_index.md`. Keep the index branch-local and factual; put full launch commands, monitor commands, and run playbooks in the relevant guide/workflow instead.
 
+6. **Keep the workspace clean**: Follow `docs/joint_training/constraints/principles/workspace_artifact_hygiene.md` before running generated code, benchmark samples, dry-runs, smoke tests, cleanup work, or any script that may write files. Never use repo root as scratch space; route scratch to `/data-1/tmp/verl_agent_scratch/...`, preserve W&B staging by default, and classify `/data-1/tmp` / `/data-1/ray_tmp` as runtime temp requiring live-process checks before cleanup.
+
 ## Agent Guidelines
 
 - **Subagents**: Use subagents (Agent tool) for exploratory/independent work to save main context. Subagents should use the **Haiku** model (`model: "haiku"`) for cost efficiency — do NOT use Opus for subagent work unless the task specifically requires strong reasoning.
@@ -266,16 +274,22 @@ Before launching any training, monitoring, checkpoint transfer, or large file op
 - Boxed matched chain monitor: `recipe/on_policy_wdl_sft/staged_v1/monitor_boxed_matched_chain_notify.sh`
 - Boxed matched Stage1 -> Stage2 chain plan: `docs/joint_training/plans/active/boxed_matched_stage1_stage2_chain.md`
 - Plateau handoff Stage1 -> Stage2 plan: `docs/joint_training/plans/active/plateau_handoff_stage1_stage2.md`
+- Code task extension plan: `docs/joint_training/plans/active/code_task_extension_on_policy_wdl_sft.md`
+- Code task script implementation plan: `docs/joint_training/plans/active/code_task_scripts_implementation_plan.md`
+- DeepCoder-Preview code-task transfer design: `docs/joint_training/reports/deepcoder_preview_code_task_transfer_design.md`
+- DeepCoder vs KodCode failure analysis: `docs/joint_training/reports/deepcoder_kodcode_failure_analysis.md`
+- Archived DeepCoder Stage1 training execution plan: `docs/joint_training/plans/completed/deepcoder_stage1_training_execution_plan.md`
 - Archived Stage 2 Model2-rollout fused-loss fast validation: `docs/joint_training/plans/completed/stage2_model2_rollout_fused_loss_fast_validation.md`
 - Archived staged v1 On-Policy SFT -> WDL-SFT beta search: `docs/joint_training/plans/completed/on_policy_sft_then_wdl_sft_beta_search.md`
 - WDL group-advantage IS implementation contract: `docs/joint_training/plans/active/wdl_group_advantage_is_goal.md`
-- **Current focus**: `docs/joint_training/plans/active/plateau_handoff_stage1_stage2.md`
+- **Current focus**: `docs/joint_training/plans/active/plateau_handoff_stage1_stage2.md` and `docs/joint_training/plans/active/code_task_scripts_implementation_plan.md`
 - Archived dual-submodel rollout negative result: `docs/joint_training/plans/completed/dual_submodel_rollout_wdl_sft.md`
 - Dual-submodel 3A failure analysis: `docs/joint_training/plans/completed/dual_submodel_rollout_wdl_sft_3a_failure_analysis.md`
 - Single-model ablation plan: `docs/joint_training/plans/active/ablation_single_model.md`
 - Single-model ablation scripts: `recipe/on_policy_wdl_sft/ablation_single_model/`
 - Staged v1 scripts: `recipe/on_policy_wdl_sft/staged_v1/`
 - Training script index policy: `docs/joint_training/constraints/experiment_tracking/training_script_index_policy.md`
+- Workspace artifact hygiene policy: `docs/joint_training/constraints/principles/workspace_artifact_hygiene.md`
 - Training script index: `docs/joint_training/guides/training_script_index.md`
 - HF model-weight upload playbook: `docs/joint_training/guides/hf_model_weight_upload_playbook.md`
 - **Meituan platform playbook** (how to add experiments that run on both local + AFO): `docs/joint_training/guides/meituan_platform.md`
