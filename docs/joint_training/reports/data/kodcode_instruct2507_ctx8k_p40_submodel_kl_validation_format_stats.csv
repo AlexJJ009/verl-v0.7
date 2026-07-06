@@ -1,0 +1,6 @@
+run,run_short,raw_step,effective_step,n,mean_chars,long_gt_6000,repeat_like,multi_answer,missing_fence,non_ascii
+Pure Stage1 beta=0.1,stage1,150,150,670,1467.5,26,4,0,11,133
+Stage2 no KL lambda=0.8,no-kl-l0.8,60,100,670,6988.7,301,20,8,62,664
+Stage2 M1-only KL lambda=0.8,m1-kl-l0.8,60,100,670,4861.8,179,10,0,111,635
+Stage2 M2-only KL lambda=0.8,m2-kl-l0.8,60,100,670,2102.5,52,3,0,26,248
+Stage2 both KL lambda=0.8,both-kl-l0.8,60,100,670,5816.4,234,21,3,71,667
