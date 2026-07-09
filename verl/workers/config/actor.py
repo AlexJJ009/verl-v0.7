@@ -29,6 +29,8 @@ from .optimizer import OptimizerConfig
 __all__ = [
     "PolicyLossConfig",
     "RouterReplayConfig",
+    "SubmodelKLConfig",
+    "SubmodelKLPairConfig",
     "ActorConfig",
     "FSDPActorConfig",
     "McoreActorConfig",
@@ -95,6 +97,45 @@ class PolicyLossConfig(BaseConfig):
 
 
 @dataclass
+class SubmodelKLConfig(BaseConfig):
+    """KL regularization settings for one submodel in a joint actor."""
+
+    enabled: bool = False
+    coef: float = 0.0
+    kl_type: str = "low_var_kl"
+    ref_path: Optional[str] = None
+
+    def is_effective(self) -> bool:
+        """Return true when this submodel needs KL compute and a reference path."""
+        return bool(self.enabled) and float(self.coef) > 0.0
+
+    def __post_init__(self):
+        valid_kl_types = {"kl", "abs", "mse", "low_var_kl", "full"}
+        if self.kl_type not in valid_kl_types:
+            raise ValueError(f"Invalid submodel KL type: {self.kl_type}. Must be one of {sorted(valid_kl_types)}")
+        if float(self.coef) < 0.0:
+            raise ValueError(f"Submodel KL coef must be non-negative, got {self.coef}")
+
+
+@dataclass
+class SubmodelKLPairConfig(BaseConfig):
+    """Independent KL regularization settings for the two submodels in a joint actor."""
+
+    enabled: bool = False
+    model1: SubmodelKLConfig = field(default_factory=SubmodelKLConfig)
+    model2: SubmodelKLConfig = field(default_factory=SubmodelKLConfig)
+
+    def is_model1_effective(self) -> bool:
+        return bool(self.enabled) and self.model1.is_effective()
+
+    def is_model2_effective(self) -> bool:
+        return bool(self.enabled) and self.model2.is_effective()
+
+    def is_effective(self) -> bool:
+        return self.is_model1_effective() or self.is_model2_effective()
+
+
+@dataclass
 class ActorConfig(BaseConfig):
     """Configuration for actor model training.
 
@@ -120,6 +161,7 @@ class ActorConfig(BaseConfig):
         tau_pos (float): Positive tau for SAPO smoothing (>= 1.0 keeps rewards stable).
         tau_neg (float): Negative tau for SAPO smoothing (> tau_pos for asymmetry).
         use_kl_loss (bool): Whether to use KL divergence loss.
+        submodel_kl (SubmodelKLPairConfig): Independent KL regularization for joint submodels.
         use_torch_compile (bool): Whether to use torch.compile for optimization.
         kl_loss_coef (float): KL divergence loss coefficient.
         kl_loss_type (str): Type of KL loss to use.
@@ -162,6 +204,7 @@ class ActorConfig(BaseConfig):
     tau_neg: float = 1.05
     calculate_entropy: bool = False
     use_kl_loss: bool = False
+    submodel_kl: SubmodelKLPairConfig = field(default_factory=SubmodelKLPairConfig)
     # Whether to enable PrefixGrouper-based shared-prefix forward
     use_prefix_grouper: bool = False
     use_torch_compile: bool = True

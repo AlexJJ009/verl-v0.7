@@ -117,6 +117,41 @@ class DataParallelPPOActor(BasePPOActor):
                 f"{self.use_fused_kernels=} or {self.use_prefix_grouper=} for now."
             )
 
+    @staticmethod
+    def _conf_get(config, key: str, default=None):
+        if config is None:
+            return default
+        if hasattr(config, "get"):
+            return config.get(key, default)
+        return getattr(config, key, default)
+
+    def _enabled_submodel_kl_indices(self) -> list[int]:
+        submodel_kl = self._conf_get(self.config, "submodel_kl")
+        if submodel_kl is None or not self._conf_get(submodel_kl, "enabled", False):
+            return []
+        enabled = []
+        for idx, name in enumerate(("model1", "model2")):
+            model_cfg = self._conf_get(submodel_kl, name)
+            if (
+                model_cfg is not None
+                and self._conf_get(model_cfg, "enabled", False)
+                and float(self._conf_get(model_cfg, "coef", 0.0) or 0.0) > 0.0
+            ):
+                enabled.append(idx)
+        return enabled
+
+    @staticmethod
+    def _submodel_logprob_key(index: int) -> str:
+        return f"model{index + 1}_log_probs"
+
+    @staticmethod
+    def _submodel_ref_logprob_key(index: int) -> str:
+        return f"model{index + 1}_ref_log_probs"
+
+    @staticmethod
+    def _kl_type_code(kl_type: str) -> int:
+        return {"kl": 1, "k1": 1, "mse": 2, "k2": 2, "low_var_kl": 3, "k3": 3, "abs": 4, "full": 5}[kl_type]
+
     def _forward_micro_batch(
         self, micro_batch: dict[str, torch.Tensor], temperature: float, calculate_entropy: bool = False
     ) -> dict[str, torch.Tensor]:
@@ -131,6 +166,9 @@ class DataParallelPPOActor(BasePPOActor):
         """
         calculate_sum_pi_squared = self.config.get("calculate_sum_pi_squared", False)
         sum_pi_squared_checkpointing = self.config.get("sum_pi_squared_checkpointing", False)
+        return_submodel_log_probs = bool(micro_batch.get("return_submodel_log_probs", False))
+        if return_submodel_log_probs and (self.use_fused_kernels or self.use_prefix_grouper):
+            raise NotImplementedError("submodel KL log-probs do not support fused kernels or PrefixGrouper yet")
         # PrefixGrouper path for shared-prefix optimization
         if self.use_prefix_grouper:
             can_use_pg = (
@@ -254,6 +292,7 @@ class DataParallelPPOActor(BasePPOActor):
                     position_ids=position_ids_rmpad,
                     **multi_modal_inputs,
                     use_cache=False,
+                    return_submodel_logits=return_submodel_log_probs,
                     **extra_args,
                 )  # prevent model thinks we are generating
 
@@ -274,6 +313,18 @@ class DataParallelPPOActor(BasePPOActor):
                         labels=input_ids_rmpad_rolled,
                         inplace_backward=inplace_backward,
                     )
+                    submodel_log_probs_rmpad = {}
+                    if return_submodel_log_probs:
+                        if not hasattr(output, "submodel_logits"):
+                            raise RuntimeError("submodel KL requested but model output has no submodel_logits")
+                        for sub_idx, sub_logits in enumerate(output.submodel_logits):
+                            sub_logits_rmpad = sub_logits.squeeze(0)
+                            sub_logits_rmpad = sub_logits_rmpad / temperature
+                            submodel_log_probs_rmpad[sub_idx] = logprobs_from_logits(
+                                logits=sub_logits_rmpad,
+                                labels=input_ids_rmpad_rolled,
+                                inplace_backward=False,
+                            )
 
                     # compute entropy
                     if calculate_entropy:
@@ -314,11 +365,20 @@ class DataParallelPPOActor(BasePPOActor):
                         sum_pi_squared_rmpad = gather_outputs_and_unpad(
                             sum_pi_squared_rmpad, gather_dim=0, unpad_dim=0, padding_size=pad_size
                         )
+                    for sub_idx, sub_log_probs in list(submodel_log_probs_rmpad.items()):
+                        submodel_log_probs_rmpad[sub_idx] = gather_outputs_and_unpad(
+                            sub_log_probs,
+                            gather_dim=0,
+                            unpad_dim=0,
+                            padding_size=pad_size,
+                        )
 
                 if is_mask_all_zero:
                     log_probs = log_probs[:0]
                     if calculate_entropy:
                         entropy_rmpad = entropy_rmpad[:0]
+                    for sub_idx, sub_log_probs in list(submodel_log_probs_rmpad.items()):
+                        submodel_log_probs_rmpad[sub_idx] = sub_log_probs[:0]
 
                 # pad back to (bsz, seqlen)
                 if calculate_entropy:
@@ -341,6 +401,14 @@ class DataParallelPPOActor(BasePPOActor):
                     batch=batch_size,
                     seqlen=seqlen,
                 )
+                full_submodel_log_probs = {}
+                for sub_idx, sub_log_probs in submodel_log_probs_rmpad.items():
+                    full_submodel_log_probs[sub_idx] = pad_input(
+                        hidden_states=sub_log_probs.unsqueeze(-1),
+                        indices=indices,
+                        batch=batch_size,
+                        seqlen=seqlen,
+                    )
 
                 # only return response part:
                 if calculate_entropy:
@@ -349,6 +417,10 @@ class DataParallelPPOActor(BasePPOActor):
                     # (bsz, response_length)
                     sum_pi_squared = full_sum_pi_squared.squeeze(-1)[:, -response_length - 1 : -1]
                 log_probs = full_log_probs.squeeze(-1)[:, -response_length - 1 : -1]  # (bsz, response_length)
+                submodel_log_probs = {
+                    sub_idx: full.squeeze(-1)[:, -response_length - 1 : -1]
+                    for sub_idx, full in full_submodel_log_probs.items()
+                }
 
             else:  # not using rmpad and no ulysses sp
                 extra_args = {}
@@ -362,6 +434,7 @@ class DataParallelPPOActor(BasePPOActor):
                     position_ids=position_ids,
                     **multi_modal_inputs,
                     use_cache=False,
+                    return_submodel_logits=return_submodel_log_probs,
                     **extra_args,
                 )  # prevent model thinks we are generating
 
@@ -375,6 +448,14 @@ class DataParallelPPOActor(BasePPOActor):
                     logits.div_(temperature)
                     logits = logits[:, -response_length - 1 : -1, :]  # (bsz, response_length, vocab_size)
                     log_probs = logprobs_from_logits(logits, micro_batch["responses"])
+                    submodel_log_probs = {}
+                    if return_submodel_log_probs:
+                        if not hasattr(output, "submodel_logits"):
+                            raise RuntimeError("submodel KL requested but model output has no submodel_logits")
+                        for sub_idx, sub_logits in enumerate(output.submodel_logits):
+                            sub_logits = sub_logits / temperature
+                            sub_logits = sub_logits[:, -response_length - 1 : -1, :]
+                            submodel_log_probs[sub_idx] = logprobs_from_logits(sub_logits, micro_batch["responses"])
                     if calculate_entropy:
                         entropy_fn = self.compute_entropy_from_logits
                         if not self.config.entropy_checkpointing:
@@ -394,6 +475,9 @@ class DataParallelPPOActor(BasePPOActor):
                 outputs["entropys"] = entropy
             if calculate_sum_pi_squared:
                 outputs["sum_pi_squared"] = sum_pi_squared
+            if return_submodel_log_probs:
+                for sub_idx, sub_log_probs in submodel_log_probs.items():
+                    outputs[self._submodel_logprob_key(sub_idx)] = sub_log_probs
             return outputs
 
     def _optimizer_step(self):
@@ -535,20 +619,28 @@ class DataParallelPPOActor(BasePPOActor):
         log_probs_lst = []
         entropy_lst = []
         sum_pi_squared_lst = []
+        submodel_log_probs_lst: dict[str, list[torch.Tensor]] = {}
+        enabled_submodel_kl_indices = self._enabled_submodel_kl_indices()
         for micro_batch in micro_batches:
             micro_batch = micro_batch.to(get_device_id())
             model_inputs = {**micro_batch.batch, **micro_batch.non_tensor_batch, "pad_token_id": pad_token_id}
+            model_inputs["return_submodel_log_probs"] = bool(enabled_submodel_kl_indices)
             with torch.no_grad():
                 outputs = self._forward_micro_batch(
                     model_inputs, temperature=temperature, calculate_entropy=calculate_entropy
                 )
             log_probs_lst.append(outputs["log_probs"])
+            for sub_idx in enabled_submodel_kl_indices:
+                key = self._submodel_logprob_key(sub_idx)
+                if key in outputs:
+                    submodel_log_probs_lst.setdefault(key, []).append(outputs[key])
             if calculate_entropy:
                 entropy_lst.append(outputs["entropys"])
             if calculate_sum_pi_squared:
                 sum_pi_squared_lst.append(outputs["sum_pi_squared"])
 
         log_probs = torch.concat(log_probs_lst, dim=0)
+        submodel_log_probs = {key: torch.concat(values, dim=0) for key, values in submodel_log_probs_lst.items()}
         if calculate_entropy:
             entropys = torch.concat(entropy_lst, dim=0)
         if calculate_sum_pi_squared:
@@ -560,8 +652,11 @@ class DataParallelPPOActor(BasePPOActor):
                 entropys = restore_dynamic_batch(entropys, batch_idx_list)
             if calculate_sum_pi_squared:
                 sum_pi_squared = restore_dynamic_batch(sum_pi_squared, batch_idx_list)
+            for key, value in list(submodel_log_probs.items()):
+                submodel_log_probs[key] = restore_dynamic_batch(value, batch_idx_list)
 
         outputs = {"log_probs": log_probs}
+        outputs.update(submodel_log_probs)
         if calculate_entropy:
             outputs["entropys"] = entropys
         if calculate_sum_pi_squared:
@@ -589,6 +684,9 @@ class DataParallelPPOActor(BasePPOActor):
             select_keys.append("prompts")
         if self.config.use_kl_loss:
             select_keys.append("ref_log_prob")
+        enabled_submodel_kl_indices = self._enabled_submodel_kl_indices()
+        for sub_idx in enabled_submodel_kl_indices:
+            select_keys.append(self._submodel_ref_logprob_key(sub_idx))
         # Include pre-computed IS weights if present in batch
         # Weights are computed centrally in trainer and added to batch when algorithm.rollout_is=True
         if "rollout_is_weights" in data.batch.keys():
@@ -653,6 +751,7 @@ class DataParallelPPOActor(BasePPOActor):
                         loss_scale_factor = 1 / self.gradient_accumulation
 
                     # all return: (bsz, response_length)
+                    model_inputs["return_submodel_log_probs"] = bool(enabled_submodel_kl_indices)
                     outputs = self._forward_micro_batch(
                         model_inputs, temperature=temperature, calculate_entropy=calculate_entropy
                     )
@@ -729,6 +828,33 @@ class DataParallelPPOActor(BasePPOActor):
                         policy_loss = policy_loss + kl_loss * self.config.kl_loss_coef
                         metrics["actor/kl_loss"] += kl_loss.detach().item() * loss_scale_factor
                         micro_batch_metrics["actor/kl_coef"] = self.config.kl_loss_coef
+
+                    submodel_kl_total = log_prob.sum() * 0.0
+                    for sub_idx in enabled_submodel_kl_indices:
+                        model_name = f"model{sub_idx + 1}"
+                        model_cfg = self.config.submodel_kl[model_name]
+                        logprob_key = self._submodel_logprob_key(sub_idx)
+                        ref_key = self._submodel_ref_logprob_key(sub_idx)
+                        if logprob_key not in outputs:
+                            raise KeyError(logprob_key)
+                        if ref_key not in model_inputs:
+                            raise KeyError(ref_key)
+                        kld = kl_penalty(
+                            logprob=outputs[logprob_key],
+                            ref_logprob=model_inputs[ref_key],
+                            kl_penalty=model_cfg.kl_type,
+                        )
+                        kl_loss = agg_loss(loss_mat=kld, loss_mask=response_mask, loss_agg_mode=loss_agg_mode)
+                        coef = float(model_cfg.coef)
+                        policy_loss = policy_loss + kl_loss * coef
+                        submodel_kl_total = submodel_kl_total + kl_loss * coef
+                        micro_batch_metrics[f"actor/submodel_kl/{model_name}_loss"] = kl_loss.detach().item()
+                        micro_batch_metrics[f"actor/submodel_kl/{model_name}_coef"] = coef
+                        micro_batch_metrics[f"actor/submodel_kl/{model_name}_type_code"] = self._kl_type_code(
+                            model_cfg.kl_type
+                        )
+                    if enabled_submodel_kl_indices:
+                        micro_batch_metrics["actor/submodel_kl/total_loss"] = submodel_kl_total.detach().item()
 
                     if self.config.use_dynamic_bsz:
                         # relative to the dynamic bsz

@@ -7,6 +7,9 @@ Gradients flow to both models weighted by (1-λ) and λ respectively.
 For evaluation, pass eval_only=True to get only model2's logits.
 """
 
+from dataclasses import dataclass
+from typing import Optional
+
 import torch
 import torch.nn as nn
 from transformers import Qwen3ForCausalLM
@@ -15,6 +18,13 @@ from transformers.modeling_outputs import CausalLMOutputWithPast
 from transformers.modeling_utils import PreTrainedModel
 
 from verl.models.joint_model.configuration_joint_qwen3 import QwenJointConfig
+
+
+@dataclass
+class QwenJointCausalLMOutputWithPast(CausalLMOutputWithPast):
+    """CausalLM output that explicitly carries per-submodel logits when requested."""
+
+    submodel_logits: Optional[tuple[torch.FloatTensor, ...]] = None
 
 
 class QwenJointForCausalLM(PreTrainedModel, GenerationMixin):
@@ -53,6 +63,7 @@ class QwenJointForCausalLM(PreTrainedModel, GenerationMixin):
         cache_position=None,
         logits_to_keep=0,
         eval_only=False,
+        return_submodel_logits=False,
         **kwargs,
     ):
         # Support eval_only via model attribute (for HF generate() which can't pass custom kwargs)
@@ -124,13 +135,15 @@ class QwenJointForCausalLM(PreTrainedModel, GenerationMixin):
                 vocab_size=self.config.vocab_size,
             )
 
-        return CausalLMOutputWithPast(
+        result = QwenJointCausalLMOutputWithPast(
             loss=loss,
             logits=logits,
             past_key_values=outputs_list[1].past_key_values,
             hidden_states=outputs_list[1].hidden_states,
             attentions=outputs_list[1].attentions,
+            submodel_logits=tuple(out.logits for out in outputs_list) if return_submodel_logits else None,
         )
+        return result
 
     def get_input_embeddings(self):
         return self.sub_models[0].get_input_embeddings()

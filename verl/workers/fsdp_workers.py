@@ -97,6 +97,14 @@ logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
 device_name = get_device_name()
 
 
+def _ref_logprob_tensors_from_actor_outputs(outputs: dict):
+    tensors = {"ref_log_prob": outputs["log_probs"]}
+    for key in ("model1_log_probs", "model2_log_probs"):
+        if key in outputs:
+            tensors[key.replace("_log_probs", "_ref_log_probs")] = outputs[key]
+    return tensors
+
+
 def create_device_mesh(world_size, fsdp_size):
     if fsdp_size < 0 or fsdp_size >= world_size:
         device_mesh = init_device_mesh(device_name, mesh_shape=(world_size,), mesh_dim_names=["fsdp"])
@@ -1022,6 +1030,8 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
             with open_dict(self.config.ref):
                 self.config.ref.use_remove_padding = use_remove_padding
                 self.config.ref.use_fused_kernels = use_fused_kernels
+                if hasattr(self.config, "actor") and self.config.actor.get("submodel_kl", None) is not None:
+                    self.config.ref.submodel_kl = self.config.actor.submodel_kl
                 if use_prefix_grouper:
                     self.config.ref.use_prefix_grouper = use_prefix_grouper
             ref_dp_group = (
@@ -1271,7 +1281,7 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
             if not is_lora:
                 tensors = {"old_log_probs": outputs["log_probs"]}
             else:
-                tensors = {"ref_log_prob": outputs["log_probs"]}
+                tensors = _ref_logprob_tensors_from_actor_outputs(outputs)
             if calculate_entropy:
                 tensors["entropys"] = outputs["entropys"]
             if "sum_pi_squared" in outputs:
@@ -1314,7 +1324,8 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
         with self.ulysses_sharding_manager:
             data = data.to("cpu")  # data will to device with each micro batch on ref.compute_log_prob
             outputs = self.ref_policy.compute_log_prob(data=data, calculate_entropy=False)
-            output = DataProto.from_dict(tensors={"ref_log_prob": outputs["log_probs"]})
+            tensors = _ref_logprob_tensors_from_actor_outputs(outputs)
+            output = DataProto.from_dict(tensors=tensors)
 
         output = output.to("cpu")
 

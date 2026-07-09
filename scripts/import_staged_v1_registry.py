@@ -7,11 +7,13 @@ files, checkpoint metadata, launcher-derived W&B ids, and dataset metadata.
 
 from __future__ import annotations
 
+import argparse
 import datetime as dt
 import hashlib
 import json
 import re
 import sqlite3
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -37,6 +39,7 @@ REPO = Path("/data-1/verl07/verl")
 METRICS_DIR = REPO / "recipe/on_policy_wdl_sft/staged_v1/metrics/OnPolicySFT-Then-WDLSFT-StagedV1"
 CHECKPOINT_ROOT = Path("/data-1/checkpoints")
 MODEL_WEIGHT_ROOT = Path("/data-1/model_weights/staged_v1")
+RELEASE_GATE_SCRIPT = REPO / "scripts/training_result_release_gate.py"
 
 TRAIN_STAGE1 = Path("/data-1/dataset/EnsembleLLM-data-processed/train_rl_format.parquet")
 TRAIN_STAGE1_BOXED = Path("/data-1/dataset/EnsembleLLM-data-processed/staged_v1/train_rl_format_boxed_prompt.parquet")
@@ -249,6 +252,11 @@ RUNS = [
         "notes": "Plateau-handoff P60 matched beta=0.1 Stage-2 run; peak and final online MATH-500 mean@3 are both stable.",
     },
 ]
+
+
+def check_release_gate(run_names: list[str]) -> None:
+    for run_name in run_names:
+        subprocess.check_call([sys.executable, str(RELEASE_GATE_SCRIPT), "check", "--run-name", run_name])
 
 
 def read_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -781,7 +789,11 @@ def db_metric(conn: sqlite3.Connection, tr_id: int, metric_name: str, scope: str
 
 
 def main() -> None:
-    db = "/data-1/experiment_registry/experiment_registry.sqlite"
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--db", default="/data-1/experiment_registry/experiment_registry.sqlite")
+    args = parser.parse_args()
+    db = args.db
+    check_release_gate([run["run_name"] for run in RUNS])
     init_db(db)
     git_commit = __import__("subprocess").check_output(["git", "rev-parse", "HEAD"], cwd=REPO, text=True).strip()
     global GIT_COMMIT

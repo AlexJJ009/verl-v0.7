@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import subprocess
 import sys
 
 import wandb
@@ -31,8 +32,20 @@ def main() -> int:
     parser.add_argument("--entity", required=True)
     parser.add_argument("--project", required=True)
     parser.add_argument("--run-id", required=True)
+    parser.add_argument("--release-gate-run-name", required=True)
+    parser.add_argument("--release-gate-script", default="/data-1/verl07/verl/scripts/training_result_release_gate.py")
     parser.add_argument("--mark-synced", action="store_true")
     args = parser.parse_args()
+
+    subprocess.check_call(
+        [
+            sys.executable,
+            args.release_gate_script,
+            "check",
+            "--run-name",
+            args.release_gate_run_name,
+        ]
+    )
 
     sync_file = _find_wandb_file(args.path)
     root_dir = os.path.dirname(sync_file)
@@ -45,47 +58,58 @@ def main() -> int:
     finished = False
     sent = 0
     skipped_artifacts = 0
+    scan_error = None
     shown = False
 
-    while True:
-        data = ds.scan_data()
-        if data is None:
-            break
+    try:
+        while True:
+            data = ds.scan_data()
+            if data is None:
+                break
 
-        pb = wandb_internal_pb2.Record()
-        pb.ParseFromString(data)
-        record_type = pb.WhichOneof("record_type")
+            pb = wandb_internal_pb2.Record()
+            pb.ParseFromString(data)
+            record_type = pb.WhichOneof("record_type")
 
-        if record_type == "run":
-            pb.run.run_id = args.run_id
-            pb.run.entity = args.entity
-            pb.run.project = args.project
-            pb.control.req_resp = True
-        elif record_type == "artifact":
-            skipped_artifacts += 1
-            continue
-        elif record_type == "exit":
-            exit_pb = pb
-            finished = True
-            continue
-        elif record_type == "final":
-            if exit_pb is None:
-                raise RuntimeError("final record seen without an exit record")
-            pb = exit_pb
-            exit_pb = None
+            if record_type == "run":
+                pb.run.run_id = args.run_id
+                pb.run.entity = args.entity
+                pb.run.project = args.project
+                pb.control.req_resp = True
+            elif record_type == "artifact":
+                skipped_artifacts += 1
+                continue
+            elif record_type == "exit":
+                exit_pb = pb
+                finished = True
+                continue
+            elif record_type == "final":
+                if exit_pb is None:
+                    raise RuntimeError("final record seen without an exit record")
+                pb = exit_pb
+                exit_pb = None
 
-        sm.send(pb)
+            sm.send(pb)
+            sent += 1
+
+            while not sm._record_q.empty():
+                sm.send(sm._record_q.get(block=True))
+
+            if pb.control.req_resp:
+                result = sm._result_q.get(block=True)
+                if not shown and result.WhichOneof("result_type") == "run_result":
+                    r = result.run_result.run
+                    print(f"Syncing without artifacts: {r.entity}/{r.project}/{r.run_id}")
+                    shown = True
+    except Exception as exc:
+        scan_error = f"{type(exc).__name__}: {exc}"
+
+    if exit_pb is not None:
+        sm.send(exit_pb)
         sent += 1
-
         while not sm._record_q.empty():
             sm.send(sm._record_q.get(block=True))
-
-        if pb.control.req_resp:
-            result = sm._result_q.get(block=True)
-            if not shown and result.WhichOneof("result_type") == "run_result":
-                r = result.run_result.run
-                print(f"Syncing without artifacts: {r.entity}/{r.project}/{r.run_id}")
-                shown = True
+        exit_pb = None
 
     sm.finish()
 
@@ -95,7 +119,7 @@ def main() -> int:
 
     print(
         f"done sent_records={sent} skipped_artifact_records={skipped_artifacts} "
-        f"finished={finished}"
+        f"finished={finished} scan_error={scan_error}"
     )
     return 0 if finished else 2
 

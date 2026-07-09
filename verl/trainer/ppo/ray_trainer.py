@@ -1750,7 +1750,18 @@ class RayPPOTrainer:
             # step 4. No padding to padding
             log_probs = no_padding_2_padding(log_probs, batch_td)
             # step 5: rebuild a tensordict and convert to dataproto
-            ref_log_prob = tu.get_tensordict({"ref_log_prob": log_probs.float()})
+            tensor_dict = {"ref_log_prob": log_probs.float()}
+            for source_key, target_key in (
+                ("model1_log_probs", "model1_ref_log_probs"),
+                ("model2_log_probs", "model2_ref_log_probs"),
+            ):
+                try:
+                    submodel_log_probs = tu.get(output, source_key)
+                except Exception:
+                    submodel_log_probs = None
+                if submodel_log_probs is not None:
+                    tensor_dict[target_key] = no_padding_2_padding(submodel_log_probs, batch_td).float()
+            ref_log_prob = tu.get_tensordict(tensor_dict)
             ref_log_prob = DataProto.from_tensordict(ref_log_prob)
         else:
             ref_log_prob = self.ref_policy_wg.compute_ref_log_prob(batch)

@@ -293,7 +293,8 @@ class TestEdgeCases:
         assert torch.isclose(out["total_loss"], torch.tensor(0.0), atol=1e-6)
 
     def test_k_zero_but_beta_positive_still_produces_reverse_signal(self):
-        # V2 DIFFERENCE from V1: when k=0, v1 returned all zeros; v2 computes L- normally.
+        # Current WDL-SFT semantics: when k=0 and beta>0, both v1 and v2
+        # compute L- so hard all-incorrect groups still produce reverse signal.
         N, T = 3, 4
         torch.manual_seed(0)
         log_prob = torch.randn(N, T) * 0.3 - 1.0
@@ -313,9 +314,8 @@ class TestEdgeCases:
             reward_labels=reward_labels,
             beta=0.1,
         )
-        # v1 skips entire prompt → zero
-        assert torch.isclose(out_v1["total_loss"], torch.tensor(0.0), atol=1e-6)
-        # v2 still gives beta * L- (nonzero, since log_prob has finite values)
+        assert out_v1["loss_negative"].abs() > 1e-3
+        assert not torch.isclose(out_v1["total_loss"], torch.tensor(0.0), atol=1e-4)
         assert out_v2["loss_negative"].abs() > 1e-3
         assert not torch.isclose(out_v2["total_loss"], torch.tensor(0.0), atol=1e-4)
 

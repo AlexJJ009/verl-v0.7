@@ -97,6 +97,63 @@ Evidence: <path, step, metric, error class, or tmux name>
 Next action: <what the queue did or what decision is needed>
 ```
 
+## Training Result Release Gate
+
+Follow
+`docs/joint_training/constraints/experiment_tracking/training_result_release_gate_policy.md`
+before writing training results to the local registry or uploading W&B runs.
+
+The generic shell monitor records terminal run evidence through
+`scripts/training_result_release_gate.py`:
+
+- `success_complete`: the run reached the configured final checkpoint and has
+  metrics evidence;
+- `failed`: the launched run stopped before the configured final checkpoint.
+
+The monitor also exposes a default-off automation hook:
+`TRAINING_RELEASE_SUCCESS_HOOK`. When set, the hook runs only after the monitor
+records `success_complete` and the gate check passes for that run. The hook
+receives `RUN_PREFIX`, `RUN_NAME`, `CHECKPOINT_DIR`, `METRICS_PATH`,
+`OBSERVED_STEP`, `FINAL_STEP`, and `WANDB_PROJECT`. It must still perform its
+own release-gate check before importing DB rows or uploading W&B.
+
+For code-task queues, `monitor_code_task_queue_notify.sh` sets this hook by
+default to `scripts/code_task_training_release_hook.sh`. Therefore a successful
+code-task run should automatically:
+
+1. re-check the release gate for the exact timestamped run name;
+2. import the run, metrics JSONL, checkpoint artifact, and validation sample
+   artifact into `/data-1/experiment_registry/experiment_registry.sqlite`;
+3. sync the corresponding `/data-1/wandb_runs/<RUN_PREFIX>/wandb/offline-run-*`
+   directory to W&B cloud with `--mark-synced`;
+4. verify the registry row exists and verify W&B left a `.wandb.synced` /
+   `.synced` marker or equivalent explicit evidence. If ordinary `wandb sync`
+   creates a remote run but fails on missing artifact staging files, the hook
+   should use the artifact-free recovery helper and still require the synced
+   marker before reporting success.
+
+Hook failures are logged under
+`recipe/on_policy_wdl_sft/code_task/release_logs/` and in the monitor log.
+For production code-task queues, the release hook is strict by default: a
+completed training run is not considered fully released until DB import and W&B
+sync are both verified. A release-hook failure does not erase the training
+checkpoint, but it must be reported as an incomplete experiment release and
+fixed before the result is treated as published.
+
+Before any database import or W&B cloud upload, check the exact run name:
+
+```bash
+python3 scripts/training_result_release_gate.py check --run-name <RUN_NAME>
+```
+
+If the gate blocks, do not import or upload the failed attempt. Inspect it only
+as local diagnostic evidence, then wait for a later successful full-flow rerun.
+Only the later successful run is releasable.
+
+For recurring release work, invoke the project skill
+`.claude/skills/training-release-gate/SKILL.md`; it requires separate DB-import
+and W&B-sync subagents to run the same gate check before acting.
+
 ## Automatic Actions Allowed
 
 These are mechanical and may be done by the Monitor Agent after collecting

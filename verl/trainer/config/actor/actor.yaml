@@ -94,6 +94,51 @@ calculate_entropy: false
 # Whether to use KL loss instead of KL reward penalty. True for GRPO
 use_kl_loss: false
 
+# Independent KL regularization for joint submodels
+submodel_kl:
+
+  # Target class for this configuration
+  _target_: verl.workers.config.SubmodelKLPairConfig
+
+  # Master switch for all submodel KL regularization
+  enabled: false
+
+  # KL regularization for joint submodel 1
+  model1:
+
+    # Target class for this configuration
+    _target_: verl.workers.config.SubmodelKLConfig
+
+    # Whether to enable model1 KL
+    enabled: false
+
+    # Fixed KL coefficient for model1
+    coef: 0.0
+
+    # KL type: "kl"(k1), "mse"(k2), "low_var_kl"(k3), "abs", or "full"
+    kl_type: low_var_kl
+
+    # Optional model1 reference path; null means resolve from Stage2 start model
+    ref_path: null
+
+  # KL regularization for joint submodel 2
+  model2:
+
+    # Target class for this configuration
+    _target_: verl.workers.config.SubmodelKLConfig
+
+    # Whether to enable model2 KL
+    enabled: false
+
+    # Fixed KL coefficient for model2
+    coef: 0.0
+
+    # KL type: "kl"(k1), "mse"(k2), "low_var_kl"(k3), "abs", or "full"
+    kl_type: low_var_kl
+
+    # Optional model2 reference path; null means resolve from Stage2 handoff model
+    ref_path: null
+
 # Whether to enable PrefixGrouper shared-prefix forward
 use_prefix_grouper: false
 
@@ -258,4 +303,3 @@ router_replay:
   # File path to load recorded routing decisions for replay
   # Required when mode is 'replay'
   replay_file: null
-

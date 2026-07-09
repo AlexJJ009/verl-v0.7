@@ -1,5 +1,88 @@
 # Code Task Training Queue Runlog
 
+## 2026-06-24 DeepCoder Instruct2507 R8K official offline eval
+
+Formal queue:
+`recipe/on_policy_wdl_sft/code_task/run_code_deepcoder_instruct2507_r8k_offline_n3_queue.sh`.
+
+Failure recorded for case
+`deepcoder_i2507_r8k_beta0_step120/bigcodebench`.
+
+- Symptom: the queue failed during BigCodeBench official local scoring, after
+  generation/conversion had already produced reusable eval artifacts. This was
+  not a CUDA OOM diagnosis.
+- Diagnostic evidence:
+  - BigCodeBench official local evaluator failed under
+    `CODE_OFFICIAL_EVAL_PARALLEL=8`.
+  - The scorer error pattern was `BrokenProcessPool` with child process
+    SIGTERM.
+  - A selected 33-task window, `BigCodeBench/340-350`, reproduced the failure.
+  - Re-running with BigCodeBench scorer parallelism `1` passed the original
+    `1037/3420` stopping point, then failed again around `BigCodeBench/348`.
+    That task asks the model to stop processes by name; the generated samples
+    used `os.kill` / `pkill`, which can terminate the local scorer process
+    tree if not blocked before official eval.
+- Interpretation: this is a BigCodeBench official scorer parallelism/process
+  pool stability issue, not evidence that the checkpoint, vLLM generation, code
+  extraction, or source benchmark JSONL is invalid.
+- Avoidance rule for future official offline eval queues:
+  - sanitize copied BigCodeBench official samples before scoring: block
+    generated process-control code (`os.kill`, `os.killpg`, `pkill`,
+    `killall`) by replacing it with a safe failing stub and record
+    `bigcodebench_unsafe_samples_report.json`. Sanitized samples must remain
+    failed samples, not pass credits;
+  - after sanitizer is in place, BigCodeBench may use the normal official
+    scorer parallelism, e.g. `BIGCODEBENCH_OFFICIAL_EVAL_PARALLEL=8` inherited
+    from `CODE_OFFICIAL_EVAL_PARALLEL=8`. Use `1` or `2` only as a deliberate
+    fallback when diagnosing a fresh scorer failure;
+  - keep `SKIP_COMPLETED=1` for resumed queue runs, so already completed
+    HumanEval+/MBPP+ cases are not regenerated or rescored while recovering
+    BigCodeBench;
+  - keep BigCodeBench parallelism configurable through
+    `BIGCODEBENCH_OFFICIAL_EVAL_PARALLEL`, because its scorer can fail for
+    different reasons than EvalPlus or LiveCodeBench.
+- Recovery rule after this failure:
+  - do not regenerate if the case already has intact `raw_generations` and
+    converted official sample files;
+  - resume/retry from the BigCodeBench scoring stage using those artifacts, so
+    the queue can continue from BigCodeBench rather than repeating
+    merge/model2 extraction/vLLM generation.
+- Key evidence paths:
+  - Queue script:
+    `recipe/on_policy_wdl_sft/code_task/run_code_deepcoder_instruct2507_r8k_offline_n3_queue.sh`.
+  - Queue logs:
+    `recipe/on_policy_wdl_sft/code_task/eval_logs/run_code_deepcoder_instruct2507_r8k_offline_n3_queue.log`,
+    `recipe/on_policy_wdl_sft/code_task/eval_logs/run_code_deepcoder_instruct2507_r8k_offline_n3_resume_queue.log`,
+    and
+    `recipe/on_policy_wdl_sft/code_task/eval_logs/run_code_deepcoder_instruct2507_r8k_offline_n3_resume2_queue.log`.
+  - Status TSVs:
+    `recipe/on_policy_wdl_sft/code_task/eval_logs/run_code_deepcoder_instruct2507_r8k_offline_n3_status.tsv`,
+    `recipe/on_policy_wdl_sft/code_task/eval_logs/run_code_deepcoder_instruct2507_r8k_offline_n3_resume_status.tsv`,
+    and
+    `recipe/on_policy_wdl_sft/code_task/eval_logs/run_code_deepcoder_instruct2507_r8k_offline_n3_resume2_status.tsv`.
+  - Failed/scored case log:
+    `recipe/on_policy_wdl_sft/code_task/eval_logs/deepcoder_i2507_r8k_beta0_step120_bigcodebench_n3.log`.
+  - Reusable artifacts:
+    `/data-1/eval_outputs/code_task/deepcoder_instruct2507_r8k_unified_n3/deepcoder_i2507_r8k_beta0_step120/humaneval/official_summary.json`,
+    `/data-1/eval_outputs/code_task/deepcoder_instruct2507_r8k_unified_n3/deepcoder_i2507_r8k_beta0_step120/mbpp/official_summary.json`,
+    `/data-1/eval_outputs/code_task/deepcoder_instruct2507_r8k_unified_n3/deepcoder_i2507_r8k_beta0_step120/bigcodebench/raw_generations_n3.jsonl`,
+    and
+    `/data-1/eval_outputs/code_task/deepcoder_instruct2507_r8k_unified_n3/deepcoder_i2507_r8k_beta0_step120/bigcodebench/bigcodebench_samples_n3.jsonl`.
+- Acceptance standard for declaring the recovery complete:
+  - the resumed queue log shows sanitizer-enabled BigCodeBench scoring. Normal
+    recovered runs may use `bigcodebench_parallel=8`; `1` or `2` should be
+    treated as a fallback/debug setting rather than the default;
+  - the BigCodeBench case directory contains `official_summary.json` plus
+    `bigcodebench_unsafe_samples_report.json`;
+  - the unsafe-sample report records any blocked `os.kill` / `pkill` /
+    `killall` samples, and those rows are counted as safe failures;
+  - the status TSV records completed HumanEval+/MBPP+ cases as
+    `skipped-completed` when resuming with `SKIP_COMPLETED=1`;
+  - final summary files are written under
+    `/data-1/eval_outputs/code_task/deepcoder_instruct2507_r8k_unified_n3/`
+    only after all selected benchmark cases have their own
+    `official_summary.json`.
+
 ## 2026-06-09 DeepCoder Stage1 queue
 
 Started by Codex at local time `2026-06-09 10:00`.

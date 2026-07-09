@@ -155,9 +155,12 @@ Documentation in `docs/joint_training/` was created during the parent branch's j
 | `constraints/` | Development rules and boundaries | Still applicable |
 | `constraints/principles/workspace_artifact_hygiene.md` | **Workspace artifact hygiene** — mandatory rules for keeping repo root and `/data-1` clean when agents run tests, dry-runs, generated code, benchmark harnesses, or cleanup work | ACTIVE |
 | `constraints/experiment_tracking/training_script_index_policy.md` | **Training script index policy** — shared rule that every branch keeps its own script index and updates it when runnable training/monitor scripts are created or used | ACTIVE |
+| `constraints/experiment_tracking/training_result_release_gate_policy.md` | **Training result release gate** — mandatory rule that failed or incomplete training attempts are local diagnostic evidence only; DB import and W&B cloud sync require a later successful full-flow run and a passing release-gate check | ACTIVE |
 | `plans/active/README.md` | Active plan index | ACTIVE |
 | `plans/active/boxed_matched_stage1_stage2_chain.md` | **Boxed matched Stage1 -> Stage2 chain** — current execution plan: boxed-prompt beta `0.0` Stage1 -> fixed Model2 merge -> beta `0.0` Stage2, then the same matched chain for beta `0.1` | ACTIVE |
 | `plans/active/plateau_handoff_stage1_stage2.md` | **Plateau handoff Stage1 -> Stage2** — new experiment plan: take Model2 from early Stage1 plateau checkpoints (primary: step 60) and run short matched-beta Stage2 (primary: 40 steps) to preserve early Stage2 gains while avoiding late collapse | ACTIVE |
+| `plans/active/kodcode_instruct2507_ctx8k_stage2_step60.md` | **KodCode Instruct2507 CTX8K Stage2 step60** — design-only matched-beta code-task plan: Stage1 step60 -> Stage2 40 steps, effective step100, compared against same-budget Stage1 step100 and official offline eval | ACTIVE DESIGN |
+| `plans/active/kodcode_instruct2507_ctx8k_stage2_p40_submodel_kl_ablation.md` | **KodCode Instruct2507 CTX8K Stage2 P40 submodel KL ablation** — formal per-model KL experiment design: inherit the existing P40 beta `0.1`, `fusion_lambda=0.8`, effective step100 no-KL baseline, then compare model1-only, model2-only, and both-on KL | ACTIVE DESIGN |
 | `plans/active/code_task_extension_on_policy_wdl_sft.md` | **Code task extension for On-Policy WDL-SFT** — research plan for extending Stage1 -> Stage2 to code tasks; implementation gated on executable reward, sandbox/dependency, data conversion, and offline code eval validation | ACTIVE |
 | `plans/active/code_task_scripts_implementation_plan.md` | **Code task script implementation plan** — concrete development plan for code-task data conversion, reward smoke, Stage1/Stage2 wrappers, queue/monitor, offline eval, Meituan-ready env overrides, and shared main/reviewer checks | ACTIVE |
 | `reports/deepcoder_preview_code_task_transfer_design.md` | **DeepCoder-Preview code-task transfer design** — experiment-design document for replacing KodCode with DeepCoder-Preview; not a `/goal` execution plan | ACTIVE DESIGN |
@@ -198,7 +201,9 @@ Before launching any training, monitoring, checkpoint transfer, or large file op
 
 5. **Training script index must stay current**: Follow `docs/joint_training/constraints/experiment_tracking/training_script_index_policy.md`. Whenever you create a runnable training/monitor script or use one for a real run, update this branch's own `docs/joint_training/guides/training_script_index.md`. Keep the index branch-local and factual; put full launch commands, monitor commands, and run playbooks in the relevant guide/workflow instead.
 
-6. **Keep the workspace clean**: Follow `docs/joint_training/constraints/principles/workspace_artifact_hygiene.md` before running generated code, benchmark samples, dry-runs, smoke tests, cleanup work, or any script that may write files. Never use repo root as scratch space; route scratch to `/data-1/tmp/verl_agent_scratch/...`, preserve W&B staging by default, and classify `/data-1/tmp` / `/data-1/ray_tmp` as runtime temp requiring live-process checks before cleanup.
+6. **Training result release gate**: Follow `docs/joint_training/constraints/experiment_tracking/training_result_release_gate_policy.md`. Failed or incomplete training attempts must not be written to the local registry or uploaded to W&B cloud. A DB import or W&B sync must first pass `python3 scripts/training_result_release_gate.py check --run-name <RUN_NAME>`.
+
+7. **Keep the workspace clean**: Follow `docs/joint_training/constraints/principles/workspace_artifact_hygiene.md` before running generated code, benchmark samples, dry-runs, smoke tests, cleanup work, or any script that may write files. Never use repo root as scratch space; route scratch to `/data-1/tmp/verl_agent_scratch/...`, preserve W&B staging by default, and classify `/data-1/tmp` / `/data-1/ray_tmp` as runtime temp requiring live-process checks before cleanup.
 
 ## Agent Guidelines
 
@@ -213,6 +218,8 @@ Before launching any training, monitoring, checkpoint transfer, or large file op
 - Boxed matched chain monitor: `recipe/on_policy_wdl_sft/staged_v1/monitor_boxed_matched_chain_notify.sh`
 - Boxed matched Stage1 -> Stage2 chain plan: `docs/joint_training/plans/active/boxed_matched_stage1_stage2_chain.md`
 - Plateau handoff Stage1 -> Stage2 plan: `docs/joint_training/plans/active/plateau_handoff_stage1_stage2.md`
+- KodCode Instruct2507 CTX8K Stage2 step60 plan: `docs/joint_training/plans/active/kodcode_instruct2507_ctx8k_stage2_step60.md`
+- KodCode Instruct2507 CTX8K Stage2 P40 submodel KL ablation: `docs/joint_training/plans/active/kodcode_instruct2507_ctx8k_stage2_p40_submodel_kl_ablation.md`
 - Code task extension plan: `docs/joint_training/plans/active/code_task_extension_on_policy_wdl_sft.md`
 - Code task script implementation plan: `docs/joint_training/plans/active/code_task_scripts_implementation_plan.md`
 - DeepCoder-Preview code-task transfer design: `docs/joint_training/reports/deepcoder_preview_code_task_transfer_design.md`
@@ -228,6 +235,7 @@ Before launching any training, monitoring, checkpoint transfer, or large file op
 - Single-model ablation scripts: `recipe/on_policy_wdl_sft/ablation_single_model/`
 - Staged v1 scripts: `recipe/on_policy_wdl_sft/staged_v1/`
 - Training script index policy: `docs/joint_training/constraints/experiment_tracking/training_script_index_policy.md`
+- Training result release gate policy: `docs/joint_training/constraints/experiment_tracking/training_result_release_gate_policy.md`
 - Workspace artifact hygiene policy: `docs/joint_training/constraints/principles/workspace_artifact_hygiene.md`
 - Training script index: `docs/joint_training/guides/training_script_index.md`
 - HF model-weight upload playbook: `docs/joint_training/guides/hf_model_weight_upload_playbook.md`

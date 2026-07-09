@@ -5,10 +5,19 @@
 #   s1-code-onpolicy-sft-beta-01
 #   s1-code-onpolicy-sft-beta-0-retention
 #   s1-code-onpolicy-sft-beta-01-retention
+#   s1-code-deepcoder-beta-0-retention
+#   s1-code-deepcoder-beta-01-retention
+#   s1-code-deepcoder-instruct2507-r8k-beta-0
+#   s1-code-deepcoder-instruct2507-r8k-beta-01
+#   s1-code-kodcode-qwen3-1p7b-coldstart-ctx8k-beta-0
+#   s1-code-kodcode-qwen3-1p7b-coldstart-ctx8k-beta-01
 #   s2-code-smoke-beta0-beta0
 #   s2-code-pilot-beta0-beta0
 #   s2-code-retention-beta0-beta0
 #   s2-code-retention-beta01-beta01
+#   s2-code-kodcode-instruct2507-ctx8k-p60-beta0-beta0
+#   s2-code-kodcode-instruct2507-ctx8k-p60-beta01-beta01
+#   s2-code-kodcode-qwen3-1p7b-coldstart-ctx8k-p40-common
 #
 # Smoke example:
 #   EXPERIMENT=s1-code-smoke-beta-0 SMOKE=1 DRY_RUN=1 bash platform/hope_code_task/jupyter.sh

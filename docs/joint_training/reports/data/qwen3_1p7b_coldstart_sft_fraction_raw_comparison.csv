@@ -1,0 +1,13 @@
+run_label,run_display,fraction_pct,benchmark,benchmark_display,primary_metric,pass1,base_pass1,plus_pass1,extraction_fail,extraction_total,extraction_fail_rate,official_complete,conversion_complete
+raw_base,Raw base,0,humaneval,HumanEval+,plus,0.0,0.0,0.0,164,164,1.0,True,True
+raw_base,Raw base,0,mbpp,MBPP+,plus,0.0,0.0,0.0,378,378,1.0,True,True
+raw_base,Raw base,0,livecodebench,LiveCodeBench,pass@1,0.0,,,880,880,1.0,True,True
+frac25,SFT 25%,25,humaneval,HumanEval+,plus,0.4451219512195122,0.4634146341463415,0.4451219512195122,1,164,0.006097560975609756,True,True
+frac25,SFT 25%,25,mbpp,MBPP+,plus,0.4973544973544973,0.5555555555555556,0.4973544973544973,2,378,0.005291005291005291,True,True
+frac25,SFT 25%,25,livecodebench,LiveCodeBench,pass@1,0.07272727272727272,,,36,880,0.04090909090909091,True,True
+frac50,SFT 50%,50,humaneval,HumanEval+,plus,0.4695121951219512,0.524390243902439,0.4695121951219512,0,164,0.0,True,True
+frac50,SFT 50%,50,mbpp,MBPP+,plus,0.5343915343915344,0.6296296296296297,0.5343915343915344,2,378,0.005291005291005291,True,True
+frac50,SFT 50%,50,livecodebench,LiveCodeBench,pass@1,0.06477272727272727,,,34,880,0.038636363636363635,True,True
+frac100,SFT 100%,100,humaneval,HumanEval+,plus,0.4878048780487805,0.5365853658536586,0.4878048780487805,2,164,0.012195121951219513,True,True
+frac100,SFT 100%,100,mbpp,MBPP+,plus,0.5158730158730159,0.5952380952380952,0.5158730158730159,2,378,0.005291005291005291,True,True
+frac100,SFT 100%,100,livecodebench,LiveCodeBench,pass@1,0.0625,,,24,880,0.02727272727272727,True,True

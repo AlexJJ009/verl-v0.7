@@ -10,6 +10,7 @@ the run log. It is idempotent and scoped to the branch project
 from __future__ import annotations
 
 import argparse
+import subprocess
 import datetime as dt
 import hashlib
 import json
@@ -37,6 +38,11 @@ PROJECT_KEY = "verl_feature_on_policy_wdl_sft"
 BRANCH = "feature/on-policy-wdl-sft"
 GIT_COMMIT = "b91e9257dbad7ddf10f02ac7142e86baefe5a28c"
 IMPORTER = "import_wdl_group_adv_is_v1"
+RELEASE_GATE_SCRIPT = Path("/data-1/verl07/verl/scripts/training_result_release_gate.py")
+
+
+def check_release_gate() -> None:
+    subprocess.check_call([sys.executable, str(RELEASE_GATE_SCRIPT), "check", "--run-name", RUN_NAME])
 
 
 def read_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -636,6 +642,7 @@ def main() -> None:
     parser.add_argument("--db", default="/data-1/experiment_registry/experiment_registry.sqlite")
     parser.add_argument("--repo", default="/data-1/verl07/verl")
     args = parser.parse_args()
+    check_release_gate()
 
     repo = Path(args.repo).resolve()
     run_dir = repo / "recipe/on_policy_wdl_sft/group_advantage_is"

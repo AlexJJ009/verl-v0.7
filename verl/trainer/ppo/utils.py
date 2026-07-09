@@ -73,7 +73,73 @@ def need_reference_policy(
     config: DictConfig,
 ) -> bool:
     """Given the config, do we need ref policy."""
-    return config.algorithm.use_kl_in_reward or config.actor_rollout_ref.actor.use_kl_loss
+    return (
+        config.algorithm.use_kl_in_reward
+        or config.actor_rollout_ref.actor.use_kl_loss
+        or is_submodel_kl_enabled(config)
+    )
+
+
+def _conf_get(config, key: str, default=None):
+    if config is None:
+        return default
+    if hasattr(config, "get"):
+        return config.get(key, default)
+    return getattr(config, key, default)
+
+
+def is_submodel_kl_enabled(config: DictConfig) -> bool:
+    """Return true when per-submodel KL requires reference log-prob computation."""
+    actor = _conf_get(_conf_get(config, "actor_rollout_ref"), "actor")
+    submodel_kl = _conf_get(actor, "submodel_kl")
+    if not _conf_get(submodel_kl, "enabled", False):
+        return False
+
+    for name in ("model1", "model2"):
+        model_cfg = _conf_get(submodel_kl, name)
+        if _conf_get(model_cfg, "enabled", False) and float(_conf_get(model_cfg, "coef", 0.0) or 0.0) > 0.0:
+            return True
+    return False
+
+
+def validate_submodel_kl_reference_paths(
+    config: DictConfig,
+    *,
+    strict: bool = False,
+    path_exists=None,
+    compatible=None,
+) -> None:
+    """Validate enabled per-submodel KL reference paths.
+
+    The training wrappers may leave ``ref_path`` empty while they resolve the
+    default Stage2-start reference from launch provenance. In strict mode, used
+    after that resolution step, every effective submodel KL must have a present
+    and compatible reference path.
+    """
+    actor = _conf_get(_conf_get(config, "actor_rollout_ref"), "actor")
+    submodel_kl = _conf_get(actor, "submodel_kl")
+    if not _conf_get(submodel_kl, "enabled", False):
+        return
+
+    if path_exists is None:
+        import os
+
+        path_exists = os.path.exists
+
+    for name in ("model1", "model2"):
+        model_cfg = _conf_get(submodel_kl, name)
+        if not (
+            _conf_get(model_cfg, "enabled", False)
+            and float(_conf_get(model_cfg, "coef", 0.0) or 0.0) > 0.0
+        ):
+            continue
+        ref_path = _conf_get(model_cfg, "ref_path")
+        if strict and not ref_path:
+            raise ValueError(f"{name} submodel KL is enabled but {name}.ref_path is missing")
+        if ref_path and not path_exists(ref_path):
+            raise ValueError(f"{name} submodel KL reference path does not exist: {ref_path}")
+        if ref_path and compatible is not None and not compatible(name, ref_path):
+            raise ValueError(f"{name} submodel KL reference path is incompatible: {ref_path}")
 
 
 def need_reward_model(
