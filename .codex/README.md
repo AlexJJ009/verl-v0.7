@@ -13,5 +13,5 @@ Resource sync mode: `symlink`.
 Refresh command:
 
 ```bash
-python3 /data-1/agent-tools/sync_agent_context.py sync . --direction bidirectional
+python3 /root/buaa/local_data1/agent-tools/sync_agent_context.py sync . --direction bidirectional
 ```
