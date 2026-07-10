@@ -11,6 +11,7 @@
 #   docker run --rm --gpus all --ipc=host \
 #     -v /data-1/verl07/verl:/workspace/verl \
 #     -v /data-1:/data-1 \
+#     -v /data-2:/data-2 \
 #     verl-harness bash
 # ==============================================================================
 
@@ -155,6 +156,21 @@ RUN uv pip install \
     qwen_vl_utils \
     nvtx \
     matplotlib
+
+# Runtime dependencies imported by the local EvalPlus/BigCodeBench scorers.
+RUN uv pip install \
+    appdirs \
+    "e2b<=1.11.1" \
+    fire \
+    gradio-client \
+    multipledispatch \
+    pqdm \
+    rich \
+    tempdir \
+    termcolor \
+    tree-sitter \
+    tree-sitter-python \
+    wget
 
 # TRL (no-deps to avoid conflicts)
 RUN uv pip install --no-deps "trl<=0.9.6"

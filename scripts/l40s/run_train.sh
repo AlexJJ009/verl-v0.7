@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_HOST=${REPO_HOST:-/data-1/verl07/verl}
+REPO_CONTAINER=${REPO_CONTAINER:-/workspace/verl}
+DOCKER_IMAGE=${DOCKER_IMAGE:-verl-harness:latest}
+
+env_args=()
+while IFS='=' read -r name _; do
+    case "$name" in
+        HOME|HOSTNAME|PATH|PWD|PYTHONPATH|SHELL|SHLVL|USER|VIRTUAL_ENV|_) continue ;;
+    esac
+    env_args+=(--env "$name")
+done < <(env)
+
+exec docker run --rm --gpus all --ipc=host --network=host --shm-size=64g \
+    "${env_args[@]}" \
+    -v /data-1:/data-1 \
+    -v /data-2:/data-2 \
+    -v "${REPO_HOST}:${REPO_CONTAINER}" \
+    -w "${REPO_CONTAINER}" \
+    "${DOCKER_IMAGE}" \
+    "$@"
