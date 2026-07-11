@@ -1,0 +1,36 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+import subprocess
+
+
+ROOT = Path(__file__).resolve().parents[2]
+MANIFEST = ROOT / "recipe/on_policy_wdl_sft/experiment_manifest/stage123.yaml"
+
+
+def rendered():
+    output = subprocess.check_output(["python3", str(ROOT / "scripts/experiment_manifest.py"), "render", str(MANIFEST), "--format", "json"], text=True)
+    return json.loads(output)
+
+
+def test_manifest_is_the_expected_shared_contract():
+    report = rendered()
+    queue_records = [(item["run_prefix"], item["final_step"], item["train_file"], item["tmux_name"]) for item in report["runs"]]
+    monitor_records = [(item["run_prefix"], item["final_step"], item["train_file"], item["tmux_name"]) for item in report["runs"]]
+    assert queue_records == monitor_records
+
+
+def test_stage123_monitor_has_no_hardcoded_run_arrays_after_migration():
+    monitor = (ROOT / "recipe/on_policy_wdl_sft/code_task/monitor_code_task_qwen3_1p7b_stage123_notify.sh").read_text()
+    assert "RUN_PREFIXES=(" not in monitor
+    assert "FINAL_STEPS=(" not in monitor
+    assert "TRAIN_FILES=(" not in monitor
+    assert "experiment_manifest.py" in monitor
+
+
+def test_stage123_queue_reads_manifest():
+    queue = (ROOT / "recipe/on_policy_wdl_sft/code_task/run_code_task_qwen3_1p7b_stage123_queue.sh").read_text()
+    assert "experiment_manifest.py" in queue
+    assert "STAGE123_FRACTIONS" not in queue
+    assert "STAGE123_TRIGGERS" not in queue

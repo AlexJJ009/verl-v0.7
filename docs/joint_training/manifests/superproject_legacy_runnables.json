@@ -1,0 +1,9 @@
+{
+  "baseline_commit": "6a86aa27591178f9acf774fe107b1219e099af99",
+  "paths": {
+    "scripts/training_queue_monitor.sh": "54b2f01ae3943bb8702f5bb482f72cfe810a00fbffe9e1ed363efba071fd788e",
+    "tests/special_e2e/run_transferqueue.sh": "6849f9668133ff41a7bb347e705695e9fd2926d02e2ed1f8182747e21c0ae363",
+    "verl/experimental/transfer_queue/run_qwen3-8b_transferqueue.sh": "676ee1ce93132155e78d7da95ce74275700bb87fd2c20a27fa08e0b3279ee985"
+  },
+  "schema_version": 1
+}

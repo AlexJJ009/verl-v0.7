@@ -1,0 +1,185 @@
+{
+  "allowed_paths": [
+    "on_policy_wdl_sft/code_task/monitor_code_task_qwen3_1p7b_stage123_notify.sh",
+    "on_policy_wdl_sft/code_task/qwen3_1p7b_stage123_resource_profile.sh",
+    "on_policy_wdl_sft/code_task/run_code_task_qwen3_1p7b_stage123_queue.sh",
+    "on_policy_wdl_sft/code_task/run_s1_code_qwen3_1p7b_stage123_common.sh",
+    "on_policy_wdl_sft/code_task/run_s2_code_qwen3_1p7b_stage123_common.sh",
+    "on_policy_wdl_sft/code_task/run_s3_code_qwen3_1p7b_stage123_common.sh",
+    "on_policy_wdl_sft/code_task/stage123_gpu_idle_watchdog.py",
+    "on_policy_wdl_sft/code_task/stage123_preflight.py"
+  ],
+  "baseline_aggregate_sha256": "5f74f013ace79d8e15771b64f782c6b1b4515e754e8caa13ab7ae088c6a270a2",
+  "baseline_commit": "763aab506cd38bc7ff9fccfd9a079840620c37c5",
+  "entries": [
+    {
+      "allowed_milestone": 2,
+      "baseline": {
+        "head_blob": null,
+        "index_blob": null,
+        "mode": 448,
+        "sha256": "95d94c6c98fd7a509a26ab36a04933251e8083ed06cf56fbcddaad4db3f54eaa",
+        "size": 2426,
+        "status": "??",
+        "type": "file"
+      },
+      "changed": true,
+      "ownership": "experiment-execution-reliability-goal",
+      "path": "on_policy_wdl_sft/code_task/monitor_code_task_qwen3_1p7b_stage123_notify.sh",
+      "result": {
+        "mode": 448,
+        "sha256": "8bac9b16c6d6f1ce37fb4bcf503d16a56295bd0c3c12115be438471dac77b43d",
+        "size": 2595,
+        "type": "file"
+      }
+    },
+    {
+      "allowed_milestone": 2,
+      "baseline": {
+        "head_blob": null,
+        "index_blob": null,
+        "mode": 448,
+        "sha256": "a8875fdf0567a5a663206613c461896ac5da7001a040d479d206da48837f850e",
+        "size": 6274,
+        "status": "??",
+        "type": "file"
+      },
+      "changed": true,
+      "ownership": "experiment-execution-reliability-goal",
+      "path": "on_policy_wdl_sft/code_task/qwen3_1p7b_stage123_resource_profile.sh",
+      "result": {
+        "mode": 448,
+        "sha256": "db3686a50978cf7a87061991b9a542a354d94af2324f3ae36da7618772a525b4",
+        "size": 6215,
+        "type": "file"
+      }
+    },
+    {
+      "allowed_milestone": 2,
+      "baseline": {
+        "head_blob": null,
+        "index_blob": null,
+        "mode": 448,
+        "sha256": "b12649954076b6e13c41bc9b2a9a9a6bb856ab3d32d674d4e02db7b33f502e80",
+        "size": 11171,
+        "status": "??",
+        "type": "file"
+      },
+      "changed": true,
+      "ownership": "experiment-execution-reliability-goal",
+      "path": "on_policy_wdl_sft/code_task/run_code_task_qwen3_1p7b_stage123_queue.sh",
+      "result": {
+        "mode": 448,
+        "sha256": "15a307589fed3974d412266593af32967c24225f58ae9201c33a12ef0ca8d2f1",
+        "size": 15073,
+        "type": "file"
+      }
+    },
+    {
+      "allowed_milestone": 2,
+      "baseline": {
+        "head_blob": null,
+        "index_blob": null,
+        "mode": 448,
+        "sha256": "2ca2fbf579125237615b54cd4048cbbf174fc2761036e612519132126c2932ac",
+        "size": 998,
+        "status": "??",
+        "type": "file"
+      },
+      "changed": true,
+      "ownership": "experiment-execution-reliability-goal",
+      "path": "on_policy_wdl_sft/code_task/run_s1_code_qwen3_1p7b_stage123_common.sh",
+      "result": {
+        "mode": 448,
+        "sha256": "4c804b0d7a33852f2b72c1c0e6ea78b987d23d2f41e7d7f9c1dae49b4b5ba357",
+        "size": 1150,
+        "type": "file"
+      }
+    },
+    {
+      "allowed_milestone": 2,
+      "baseline": {
+        "head_blob": null,
+        "index_blob": null,
+        "mode": 448,
+        "sha256": "17930d9cc1ba7d5a2ea2a0e6eb81ed8ddb3547c20ef0711a8c880b20c895e576",
+        "size": 366,
+        "status": "??",
+        "type": "file"
+      },
+      "changed": true,
+      "ownership": "experiment-execution-reliability-goal",
+      "path": "on_policy_wdl_sft/code_task/run_s2_code_qwen3_1p7b_stage123_common.sh",
+      "result": {
+        "mode": 448,
+        "sha256": "961536c43d3e731a955d73bb2afad2fa22711288ba482a9d58a79e557cd6a734",
+        "size": 518,
+        "type": "file"
+      }
+    },
+    {
+      "allowed_milestone": 2,
+      "baseline": {
+        "head_blob": null,
+        "index_blob": null,
+        "mode": 448,
+        "sha256": "30ce438840abf9b7d5091d179a6ef52b661fc268e05fd51b5f7b7b166b6aebc2",
+        "size": 1467,
+        "status": "??",
+        "type": "file"
+      },
+      "changed": true,
+      "ownership": "experiment-execution-reliability-goal",
+      "path": "on_policy_wdl_sft/code_task/run_s3_code_qwen3_1p7b_stage123_common.sh",
+      "result": {
+        "mode": 448,
+        "sha256": "8b3dc4142070c2d97247f51db8631e86dcd0522a9b5d6d519205d6b3ba2feb5f",
+        "size": 2253,
+        "type": "file"
+      }
+    },
+    {
+      "allowed_milestone": 2,
+      "baseline": {
+        "head_blob": null,
+        "index_blob": null,
+        "mode": 448,
+        "sha256": "e79c673f8e19aa5084723de5b42e322b023b15d9396986acf46449bdd6eed017",
+        "size": 3601,
+        "status": "??",
+        "type": "file"
+      },
+      "changed": false,
+      "ownership": "experiment-execution-reliability-goal",
+      "path": "on_policy_wdl_sft/code_task/stage123_gpu_idle_watchdog.py",
+      "result": {
+        "mode": 448,
+        "sha256": "e79c673f8e19aa5084723de5b42e322b023b15d9396986acf46449bdd6eed017",
+        "size": 3601,
+        "type": "file"
+      }
+    },
+    {
+      "allowed_milestone": 2,
+      "baseline": {
+        "head_blob": null,
+        "index_blob": null,
+        "mode": 448,
+        "sha256": "7ce033717b63201ed635823fbeef1392196e4272669e322fb4b3e3f6618e6c6a",
+        "size": 6369,
+        "status": "??",
+        "type": "file"
+      },
+      "changed": false,
+      "ownership": "experiment-execution-reliability-goal",
+      "path": "on_policy_wdl_sft/code_task/stage123_preflight.py",
+      "result": {
+        "mode": 448,
+        "sha256": "7ce033717b63201ed635823fbeef1392196e4272669e322fb4b3e3f6618e6c6a",
+        "size": 6369,
+        "type": "file"
+      }
+    }
+  ],
+  "schema_version": 1
+}
