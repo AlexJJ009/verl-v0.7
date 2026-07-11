@@ -1,0 +1,5 @@
+{"phase_active":true,"timestamp_s":0,"utilization_pct":[0,0,0,0,0,0,0,0]}
+{"phase_active":true,"timestamp_s":20,"utilization_pct":[0,0,0,0,0,0,0,0]}
+{"phase_active":true,"timestamp_s":40,"utilization_pct":[45,42,44,43,45,41,42,44]}
+{"phase_active":true,"timestamp_s":60,"utilization_pct":[0,0,0,0,0,0,0,0]}
+{"phase_active":false,"timestamp_s":80,"utilization_pct":[0,0,0,0,0,0,0,0]}

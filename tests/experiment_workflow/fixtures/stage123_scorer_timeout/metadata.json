@@ -1,0 +1,6 @@
+{
+  "docker_image_id": "sha256:fixture-verl-harness",
+  "phase": "stage2",
+  "profile_hash": "f1bb99873e16bc2398e40cfe2b7597633f8ced2085827e6ad7cef308c5cae817",
+  "run": "STAGE123-FIXTURE-S2"
+}

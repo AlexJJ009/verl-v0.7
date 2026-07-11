@@ -1,0 +1,10 @@
+{"event":"scorer_start","timestamp_s":0}
+{"event":"score_submitted","item_id":"he-1","timestamp_s":1}
+{"event":"score_completed","item_id":"he-1","score":1.0,"timestamp_s":4}
+{"event":"score_submitted","item_id":"mbpp-1","timestamp_s":5}
+{"event":"score_completed","item_id":"mbpp-1","score":0.0,"timestamp_s":8}
+{"event":"score_submitted","item_id":"lcb-1","timestamp_s":9}
+{"event":"score_timeout","item_id":"lcb-1","data_source":"LiveCodeBench","timestamp_s":39}
+{"event":"score_submitted","item_id":"lcb-2","timestamp_s":40}
+{"event":"score_timeout","item_id":"lcb-2","data_source":"LiveCodeBench","timestamp_s":70}
+{"event":"scorer_end","timestamp_s":71}
