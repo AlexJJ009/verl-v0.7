@@ -1,0 +1,20 @@
+{
+  "hard": {
+    "max_response_length": 8192,
+    "max_validation_elapsed_seconds": 1800,
+    "require_complete_validation_metrics": true,
+    "required_datasets": [
+      "HumanEval+",
+      "MBPP+",
+      "LiveCodeBench"
+    ],
+    "required_profile_hash": "f1bb99873e16bc2398e40cfe2b7597633f8ced2085827e6ad7cef308c5cae817"
+  },
+  "schema_version": 1,
+  "soft": {
+    "max_gpu_wait_fraction": 0.6,
+    "max_invalid_score_rate": 0.15,
+    "max_peak_rss_gib": 220,
+    "max_timeout_rate": 0.1
+  }
+}

@@ -1,0 +1,609 @@
+{
+  "contract": {
+    "formal_validation_scope": "full",
+    "gpu_idle_threshold_pct": 2,
+    "max_response_length": 8192,
+    "measured_repetitions": 3,
+    "rss_sample_interval_seconds": 1,
+    "validation_datasets": [
+      "HumanEval+",
+      "MBPP+",
+      "LiveCodeBench"
+    ],
+    "warmup_repetitions": 1
+  },
+  "phases": [
+    {
+      "datasets": [
+        {
+          "name": "HumanEval+",
+          "row_ids": [
+            "he-01",
+            "he-02",
+            "he-03",
+            "he-04",
+            "he-05",
+            "he-06",
+            "he-07",
+            "he-08",
+            "he-09",
+            "he-10",
+            "he-11",
+            "he-12",
+            "he-13",
+            "he-14",
+            "he-15",
+            "he-16"
+          ]
+        },
+        {
+          "name": "MBPP+",
+          "row_ids": [
+            "mbpp-01",
+            "mbpp-02",
+            "mbpp-03",
+            "mbpp-04",
+            "mbpp-05",
+            "mbpp-06",
+            "mbpp-07",
+            "mbpp-08",
+            "mbpp-09",
+            "mbpp-10",
+            "mbpp-11",
+            "mbpp-12",
+            "mbpp-13",
+            "mbpp-14",
+            "mbpp-15",
+            "mbpp-16"
+          ]
+        },
+        {
+          "name": "LiveCodeBench",
+          "row_ids": [
+            "lcb-01",
+            "lcb-02",
+            "lcb-03",
+            "lcb-04",
+            "lcb-05",
+            "lcb-06",
+            "lcb-07",
+            "lcb-08",
+            "lcb-09",
+            "lcb-10",
+            "lcb-11",
+            "lcb-12",
+            "lcb-13",
+            "lcb-14",
+            "lcb-15",
+            "lcb-16",
+            "lcb-17",
+            "lcb-18",
+            "lcb-19",
+            "lcb-20",
+            "lcb-21",
+            "lcb-22",
+            "lcb-23",
+            "lcb-24",
+            "lcb-25",
+            "lcb-26",
+            "lcb-27",
+            "lcb-28",
+            "lcb-29",
+            "lcb-30",
+            "lcb-31",
+            "lcb-32"
+          ]
+        }
+      ],
+      "model_source": "/fixture/stage1/model",
+      "model_topology": "single_model_on_policy_sft",
+      "phase": "stage1",
+      "profile_hash": "f1bb99873e16bc2398e40cfe2b7597633f8ced2085827e6ad7cef308c5cae817",
+      "repetitions": [
+        {
+          "complete_validation_metrics": true,
+          "completed": 63,
+          "gpu_wait_fraction": 0.3,
+          "peak_rss_gib": 120,
+          "repetition": 0,
+          "rollout_latency_seconds": 80,
+          "rollout_tokens_per_second": 950,
+          "score_distribution": {
+            "negative": 0,
+            "partial": 0,
+            "positive": 61,
+            "zero": 2
+          },
+          "scorer_latencies_seconds": [
+            2.0,
+            3.0,
+            5.0,
+            10.0,
+            25.0
+          ],
+          "submitted": 64,
+          "timeouts": 1,
+          "valid_scores": 61,
+          "validation_elapsed_seconds": 420,
+          "warmup": true
+        },
+        {
+          "complete_validation_metrics": true,
+          "completed": 62,
+          "gpu_wait_fraction": 0.31,
+          "peak_rss_gib": 121,
+          "repetition": 1,
+          "rollout_latency_seconds": 81,
+          "rollout_tokens_per_second": 952,
+          "score_distribution": {
+            "negative": 0,
+            "partial": 0,
+            "positive": 60,
+            "zero": 2
+          },
+          "scorer_latencies_seconds": [
+            2.0,
+            3.1,
+            5.0,
+            11.0,
+            25.0
+          ],
+          "submitted": 64,
+          "timeouts": 2,
+          "valid_scores": 60,
+          "validation_elapsed_seconds": 425,
+          "warmup": false
+        },
+        {
+          "complete_validation_metrics": true,
+          "completed": 62,
+          "gpu_wait_fraction": 0.32,
+          "peak_rss_gib": 122,
+          "repetition": 2,
+          "rollout_latency_seconds": 82,
+          "rollout_tokens_per_second": 954,
+          "score_distribution": {
+            "negative": 0,
+            "partial": 0,
+            "positive": 60,
+            "zero": 2
+          },
+          "scorer_latencies_seconds": [
+            2.0,
+            3.2,
+            5.0,
+            12.0,
+            25.0
+          ],
+          "submitted": 64,
+          "timeouts": 2,
+          "valid_scores": 60,
+          "validation_elapsed_seconds": 430,
+          "warmup": false
+        },
+        {
+          "complete_validation_metrics": true,
+          "completed": 62,
+          "gpu_wait_fraction": 0.32999999999999996,
+          "peak_rss_gib": 123,
+          "repetition": 3,
+          "rollout_latency_seconds": 83,
+          "rollout_tokens_per_second": 956,
+          "score_distribution": {
+            "negative": 0,
+            "partial": 0,
+            "positive": 60,
+            "zero": 2
+          },
+          "scorer_latencies_seconds": [
+            2.0,
+            3.3,
+            5.0,
+            13.0,
+            25.0
+          ],
+          "submitted": 64,
+          "timeouts": 2,
+          "valid_scores": 60,
+          "validation_elapsed_seconds": 435,
+          "warmup": false
+        }
+      ]
+    },
+    {
+      "datasets": [
+        {
+          "name": "HumanEval+",
+          "row_ids": [
+            "he-01",
+            "he-02",
+            "he-03",
+            "he-04",
+            "he-05",
+            "he-06",
+            "he-07",
+            "he-08",
+            "he-09",
+            "he-10",
+            "he-11",
+            "he-12",
+            "he-13",
+            "he-14",
+            "he-15",
+            "he-16"
+          ]
+        },
+        {
+          "name": "MBPP+",
+          "row_ids": [
+            "mbpp-01",
+            "mbpp-02",
+            "mbpp-03",
+            "mbpp-04",
+            "mbpp-05",
+            "mbpp-06",
+            "mbpp-07",
+            "mbpp-08",
+            "mbpp-09",
+            "mbpp-10",
+            "mbpp-11",
+            "mbpp-12",
+            "mbpp-13",
+            "mbpp-14",
+            "mbpp-15",
+            "mbpp-16"
+          ]
+        },
+        {
+          "name": "LiveCodeBench",
+          "row_ids": [
+            "lcb-01",
+            "lcb-02",
+            "lcb-03",
+            "lcb-04",
+            "lcb-05",
+            "lcb-06",
+            "lcb-07",
+            "lcb-08",
+            "lcb-09",
+            "lcb-10",
+            "lcb-11",
+            "lcb-12",
+            "lcb-13",
+            "lcb-14",
+            "lcb-15",
+            "lcb-16",
+            "lcb-17",
+            "lcb-18",
+            "lcb-19",
+            "lcb-20",
+            "lcb-21",
+            "lcb-22",
+            "lcb-23",
+            "lcb-24",
+            "lcb-25",
+            "lcb-26",
+            "lcb-27",
+            "lcb-28",
+            "lcb-29",
+            "lcb-30",
+            "lcb-31",
+            "lcb-32"
+          ]
+        }
+      ],
+      "fixed_model2_source": "/fixture/stage1/fixed_model2",
+      "model_source": "/fixture/stage2/model",
+      "model_topology": "fixed_model2_rollout_joint_fused_loss",
+      "phase": "stage2",
+      "profile_hash": "f1bb99873e16bc2398e40cfe2b7597633f8ced2085827e6ad7cef308c5cae817",
+      "repetitions": [
+        {
+          "complete_validation_metrics": true,
+          "completed": 63,
+          "gpu_wait_fraction": 0.35,
+          "peak_rss_gib": 130,
+          "repetition": 0,
+          "rollout_latency_seconds": 90,
+          "rollout_tokens_per_second": 900,
+          "score_distribution": {
+            "negative": 0,
+            "partial": 0,
+            "positive": 61,
+            "zero": 2
+          },
+          "scorer_latencies_seconds": [
+            2.2,
+            3.0,
+            6.0,
+            10.0,
+            26.0
+          ],
+          "submitted": 64,
+          "timeouts": 1,
+          "valid_scores": 61,
+          "validation_elapsed_seconds": 460,
+          "warmup": true
+        },
+        {
+          "complete_validation_metrics": true,
+          "completed": 61,
+          "gpu_wait_fraction": 0.36,
+          "peak_rss_gib": 131,
+          "repetition": 1,
+          "rollout_latency_seconds": 91,
+          "rollout_tokens_per_second": 902,
+          "score_distribution": {
+            "negative": 0,
+            "partial": 0,
+            "positive": 58,
+            "zero": 3
+          },
+          "scorer_latencies_seconds": [
+            2.2,
+            3.1,
+            6.0,
+            11.0,
+            26.0
+          ],
+          "submitted": 64,
+          "timeouts": 3,
+          "valid_scores": 58,
+          "validation_elapsed_seconds": 465,
+          "warmup": false
+        },
+        {
+          "complete_validation_metrics": true,
+          "completed": 61,
+          "gpu_wait_fraction": 0.37,
+          "peak_rss_gib": 132,
+          "repetition": 2,
+          "rollout_latency_seconds": 92,
+          "rollout_tokens_per_second": 904,
+          "score_distribution": {
+            "negative": 0,
+            "partial": 0,
+            "positive": 58,
+            "zero": 3
+          },
+          "scorer_latencies_seconds": [
+            2.2,
+            3.2,
+            6.0,
+            12.0,
+            26.0
+          ],
+          "submitted": 64,
+          "timeouts": 3,
+          "valid_scores": 58,
+          "validation_elapsed_seconds": 470,
+          "warmup": false
+        },
+        {
+          "complete_validation_metrics": true,
+          "completed": 61,
+          "gpu_wait_fraction": 0.38,
+          "peak_rss_gib": 133,
+          "repetition": 3,
+          "rollout_latency_seconds": 93,
+          "rollout_tokens_per_second": 906,
+          "score_distribution": {
+            "negative": 0,
+            "partial": 0,
+            "positive": 58,
+            "zero": 3
+          },
+          "scorer_latencies_seconds": [
+            2.2,
+            3.3,
+            6.0,
+            13.0,
+            26.0
+          ],
+          "submitted": 64,
+          "timeouts": 3,
+          "valid_scores": 58,
+          "validation_elapsed_seconds": 475,
+          "warmup": false
+        }
+      ]
+    },
+    {
+      "datasets": [
+        {
+          "name": "HumanEval+",
+          "row_ids": [
+            "he-01",
+            "he-02",
+            "he-03",
+            "he-04",
+            "he-05",
+            "he-06",
+            "he-07",
+            "he-08",
+            "he-09",
+            "he-10",
+            "he-11",
+            "he-12",
+            "he-13",
+            "he-14",
+            "he-15",
+            "he-16"
+          ]
+        },
+        {
+          "name": "MBPP+",
+          "row_ids": [
+            "mbpp-01",
+            "mbpp-02",
+            "mbpp-03",
+            "mbpp-04",
+            "mbpp-05",
+            "mbpp-06",
+            "mbpp-07",
+            "mbpp-08",
+            "mbpp-09",
+            "mbpp-10",
+            "mbpp-11",
+            "mbpp-12",
+            "mbpp-13",
+            "mbpp-14",
+            "mbpp-15",
+            "mbpp-16"
+          ]
+        },
+        {
+          "name": "LiveCodeBench",
+          "row_ids": [
+            "lcb-01",
+            "lcb-02",
+            "lcb-03",
+            "lcb-04",
+            "lcb-05",
+            "lcb-06",
+            "lcb-07",
+            "lcb-08",
+            "lcb-09",
+            "lcb-10",
+            "lcb-11",
+            "lcb-12",
+            "lcb-13",
+            "lcb-14",
+            "lcb-15",
+            "lcb-16",
+            "lcb-17",
+            "lcb-18",
+            "lcb-19",
+            "lcb-20",
+            "lcb-21",
+            "lcb-22",
+            "lcb-23",
+            "lcb-24",
+            "lcb-25",
+            "lcb-26",
+            "lcb-27",
+            "lcb-28",
+            "lcb-29",
+            "lcb-30",
+            "lcb-31",
+            "lcb-32"
+          ]
+        }
+      ],
+      "model_source": "/fixture/stage3/model",
+      "model_topology": "single_model_on_policy_sft_from_stage2_model2",
+      "phase": "stage3",
+      "profile_hash": "f1bb99873e16bc2398e40cfe2b7597633f8ced2085827e6ad7cef308c5cae817",
+      "repetitions": [
+        {
+          "complete_validation_metrics": true,
+          "completed": 63,
+          "gpu_wait_fraction": 0.4,
+          "peak_rss_gib": 140,
+          "repetition": 0,
+          "rollout_latency_seconds": 100,
+          "rollout_tokens_per_second": 850,
+          "score_distribution": {
+            "negative": 0,
+            "partial": 0,
+            "positive": 61,
+            "zero": 2
+          },
+          "scorer_latencies_seconds": [
+            2.4,
+            3.0,
+            7.0,
+            10.0,
+            27.0
+          ],
+          "submitted": 64,
+          "timeouts": 1,
+          "valid_scores": 61,
+          "validation_elapsed_seconds": 500,
+          "warmup": true
+        },
+        {
+          "complete_validation_metrics": true,
+          "completed": 60,
+          "gpu_wait_fraction": 0.41000000000000003,
+          "peak_rss_gib": 141,
+          "repetition": 1,
+          "rollout_latency_seconds": 101,
+          "rollout_tokens_per_second": 852,
+          "score_distribution": {
+            "negative": 0,
+            "partial": 0,
+            "positive": 56,
+            "zero": 4
+          },
+          "scorer_latencies_seconds": [
+            2.4,
+            3.1,
+            7.0,
+            11.0,
+            27.0
+          ],
+          "submitted": 64,
+          "timeouts": 4,
+          "valid_scores": 56,
+          "validation_elapsed_seconds": 505,
+          "warmup": false
+        },
+        {
+          "complete_validation_metrics": true,
+          "completed": 60,
+          "gpu_wait_fraction": 0.42000000000000004,
+          "peak_rss_gib": 142,
+          "repetition": 2,
+          "rollout_latency_seconds": 102,
+          "rollout_tokens_per_second": 854,
+          "score_distribution": {
+            "negative": 0,
+            "partial": 0,
+            "positive": 56,
+            "zero": 4
+          },
+          "scorer_latencies_seconds": [
+            2.4,
+            3.2,
+            7.0,
+            12.0,
+            27.0
+          ],
+          "submitted": 64,
+          "timeouts": 4,
+          "valid_scores": 56,
+          "validation_elapsed_seconds": 510,
+          "warmup": false
+        },
+        {
+          "complete_validation_metrics": true,
+          "completed": 60,
+          "gpu_wait_fraction": 0.43000000000000005,
+          "peak_rss_gib": 143,
+          "repetition": 3,
+          "rollout_latency_seconds": 103,
+          "rollout_tokens_per_second": 856,
+          "score_distribution": {
+            "negative": 0,
+            "partial": 0,
+            "positive": 56,
+            "zero": 4
+          },
+          "scorer_latencies_seconds": [
+            2.4,
+            3.3,
+            7.0,
+            13.0,
+            27.0
+          ],
+          "submitted": 64,
+          "timeouts": 4,
+          "valid_scores": 56,
+          "validation_elapsed_seconds": 515,
+          "warmup": false
+        }
+      ]
+    }
+  ]
+}
