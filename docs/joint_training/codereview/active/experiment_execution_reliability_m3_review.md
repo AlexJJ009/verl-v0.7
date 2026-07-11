@@ -24,3 +24,9 @@ container ownership.
 The next independent review must inspect the replacement commits and rerun the fast,
 full, deadline, notification, and end-to-end gates. This document records the rejected
 review; it is not an acceptance statement.
+
+The first replacement review also rejected a state-dependent full gate: queue and
+monitor used different scratch roots, so a stale normalized manifest could mask the
+defect. The subsequent replacement clears one explicit scratch root and passes it to
+both queue and monitor. A later independent review must test a previously nonexistent
+scratch path rather than relying on the default directory.
