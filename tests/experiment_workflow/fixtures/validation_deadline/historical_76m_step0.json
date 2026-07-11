@@ -1,0 +1,12 @@
+{
+  "run_id": "CODE-S2-QWEN3-1P7B-STAGE123-FRAC25_P40_S220_S340-BETA01-LAMBDA08-V1_1783777744",
+  "validation_ready_epoch_s": 0,
+  "observed_epoch_s": 4560,
+  "deadline_seconds": 1800,
+  "first_training_step": 0,
+  "complete_validation_metrics": false,
+  "release_gate_status": "blocked",
+  "sqlite_rows": 0,
+  "wandb_sync_markers": 0,
+  "residual_runtime_ownership": []
+}

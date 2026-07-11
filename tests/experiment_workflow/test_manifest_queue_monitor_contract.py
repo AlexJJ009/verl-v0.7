@@ -34,3 +34,17 @@ def test_stage123_queue_reads_manifest():
     assert "experiment_manifest.py" in queue
     assert "STAGE123_FRACTIONS" not in queue
     assert "STAGE123_TRIGGERS" not in queue
+
+
+def test_stage123_queue_enforces_validation_hard_wall():
+    queue = (ROOT / "recipe/on_policy_wdl_sft/code_task/run_code_task_qwen3_1p7b_stage123_queue.sh").read_text()
+    assert "validation batch [0-9]+/[0-9]+ start:" in queue
+    assert "deadline_seconds':1800" in queue
+    assert "validation_deadline_controller.py" in queue
+    assert "return 124" in queue
+
+
+def test_stage123_monitor_uses_event_policy_not_legacy_tmux_started_notifications():
+    monitor = (ROOT / "recipe/on_policy_wdl_sft/code_task/monitor_code_task_qwen3_1p7b_stage123_notify.sh").read_text()
+    assert "stage123_manifest_monitor.py" in monitor
+    assert "training_queue_monitor.sh" not in monitor
