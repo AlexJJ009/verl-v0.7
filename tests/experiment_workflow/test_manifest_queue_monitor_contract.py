@@ -42,9 +42,19 @@ def test_stage123_queue_enforces_validation_hard_wall():
     assert "deadline_seconds':1800" in queue
     assert "validation_deadline_controller.py" in queue
     assert "return 124" in queue
+    assert "DOCKER_CONTAINER_NAME" in queue
+    assert "docker inspect" in queue
 
 
 def test_stage123_monitor_uses_event_policy_not_legacy_tmux_started_notifications():
     monitor = (ROOT / "recipe/on_policy_wdl_sft/code_task/monitor_code_task_qwen3_1p7b_stage123_notify.sh").read_text()
     assert "stage123_manifest_monitor.py" in monitor
     assert "training_queue_monitor.sh" not in monitor
+    assert "jq " not in monitor
+    assert "jq " not in (ROOT / "recipe/on_policy_wdl_sft/code_task/run_code_task_qwen3_1p7b_stage123_queue.sh").read_text()
+
+
+def test_l40s_launcher_accepts_explicit_container_ownership_name():
+    launcher = (ROOT / "scripts/l40s/run_train.sh").read_text()
+    assert "DOCKER_CONTAINER_NAME" in launcher
+    assert 'name_args=(--name "$DOCKER_CONTAINER_NAME")' in launcher

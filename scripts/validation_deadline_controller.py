@@ -79,12 +79,13 @@ def cleanup(ownership: dict, grace_seconds: float = 10.0) -> dict:
     elif gpu_pids:
         live_gpu_pids = sorted(gpu_pids)
     command_failures = [item for item in actions if item.get("returncode", 0) != 0 and not (item["kind"] in {"tmux", "docker"} and "not found" in (item.get("stderr", "") + item.get("stdout", "")).lower())]
-    released = not residual_pids and not live_gpu_pids and not command_failures
-    return {"actions": actions, "residual_pids": residual_pids, "live_run_gpu_pids": live_gpu_pids, "cleanup_failures": command_failures, "resources_released": released}
+    attribution_proven = bool(ownership.get("docker_containers")) and bool(ownership.get("container_init_pid"))
+    released = attribution_proven and not residual_pids and not live_gpu_pids and not command_failures
+    return {"actions": actions, "residual_pids": residual_pids, "live_run_gpu_pids": live_gpu_pids, "cleanup_failures": command_failures, "ownership_attribution_proven": attribution_proven, "resources_released": released}
 
 
 def evaluate(ownership: dict, now_s: float) -> dict:
-    complete = bool(ownership.get("complete_validation_metrics") or int(ownership.get("first_training_step", 0)) >= 1)
+    complete = bool(ownership.get("complete_validation_metrics"))
     deadline = float(ownership["validation_ready_epoch_s"]) + float(ownership.get("deadline_seconds", 1800))
     return {"complete": complete, "deadline_epoch_s": deadline, "timed_out": not complete and now_s >= deadline}
 

@@ -40,7 +40,7 @@ def main() -> int:
             metrics=[] if ckpt is None else list(Path('/data-1/code/verl/recipe/on_policy_wdl_sft').glob(f'**/metrics/OnPolicyWDLSFT-CodeTask/{ckpt.name}.jsonl'))
             deadline=Path('/data-2/experiment_registry/validation_deadlines')/f'{prefix}.deadline.json'
             if active: seen_active.add(prefix)
-            state={'run_id':prefix,'training_step':step,'complete_validation_metrics':bool(metrics),'local_paths':f'checkpoint={ckpt}; deadline={deadline}'}
+            state={'run_id':prefix,'training_step':step if active else 0,'complete_validation_metrics':bool(metrics) if active else False,'local_paths':f'checkpoint={ckpt}; deadline={deadline}'}
             if prefix in seen_active and not active and step < int(run['final_step']):
                 state.update({'terminal_failure':True,'cleanup_evidence':deadline.is_file(),'background':'Stage123 run stopped before final step','evidence':deadline.read_text() if deadline.is_file() else f'step={step}','cost':'GPU queue stopped','recommendation':'Inspect local deadline and training logs'})
             emit(args.policy,args.ledger,args.sender,state,scratch)

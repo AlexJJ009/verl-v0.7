@@ -18,6 +18,7 @@ def test_completion_before_deadline_and_active_state():
     assert m.evaluate({**base,'complete_validation_metrics':True},200)['complete']
     assert not m.evaluate(base,200)['timed_out']
     assert m.evaluate(base,1901)['timed_out']
+    assert m.evaluate({**base,'first_training_step':1,'complete_validation_metrics':False},1901)['timed_out']
 
 def spawn(code: str):
     return subprocess.Popen(['python3','-c',code],start_new_session=True)
@@ -29,7 +30,7 @@ def test_graceful_and_forced_process_group_cleanup():
 def test_orphan_cleanup_and_idempotence(monkeypatch):
     m=tool(); child=spawn('import time; time.sleep(60)')
     monkeypatch.setattr(m,'command',lambda args:{'command':args,'returncode':0,'stdout':'','stderr':''})
-    own={'descendant_pids':[child.pid],'gpu_pids':[],'tmux_sessions':[],'docker_containers':[]}
+    own={'descendant_pids':[child.pid],'gpu_pids':[],'tmux_sessions':[],'docker_containers':['fixture'],'container_init_pid':child.pid}
     first=m.cleanup(own,.01); child.wait(timeout=2); second=m.cleanup(own,.01)
     assert first['resources_released'] and second['resources_released']
 

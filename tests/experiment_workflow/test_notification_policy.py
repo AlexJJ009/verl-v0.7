@@ -29,3 +29,7 @@ def test_wxpusher_adapter_supports_exactly_reviewed_events():
     text=(ROOT/'scripts/wxpusher_event_sender.sh').read_text()
     assert '--title "$title" --body "$body"' in text
     assert all(event in text for event in ('run_started','run_failed','user_decision_required'))
+
+def test_inactive_historical_checkpoint_cannot_become_started():
+    text=(ROOT/'scripts/stage123_manifest_monitor.py').read_text()
+    assert "'training_step':step if active else 0" in text

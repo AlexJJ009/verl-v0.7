@@ -6,6 +6,10 @@ REPO_CONTAINER=${REPO_CONTAINER:-/workspace/verl}
 DOCKER_IMAGE=${DOCKER_IMAGE:-verl-harness:latest}
 
 env_args=()
+name_args=()
+if [ -n "${DOCKER_CONTAINER_NAME:-}" ]; then
+    name_args=(--name "$DOCKER_CONTAINER_NAME")
+fi
 while IFS='=' read -r name _; do
     case "$name" in
         HOME|HOSTNAME|PATH|PWD|PYTHONPATH|SHELL|SHLVL|USER|VIRTUAL_ENV|_) continue ;;
@@ -14,6 +18,7 @@ while IFS='=' read -r name _; do
 done < <(env)
 
 exec docker run --rm --gpus all --ipc=host --network=host --shm-size=64g \
+    "${name_args[@]}" \
     "${env_args[@]}" \
     -v /data-1:/data-1 \
     -v /data-2:/data-2 \
