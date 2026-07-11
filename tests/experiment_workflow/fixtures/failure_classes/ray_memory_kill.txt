@@ -1,0 +1,1 @@
+Killed due to the node running low on memory

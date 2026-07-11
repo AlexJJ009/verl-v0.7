@@ -1,0 +1,1 @@
+run stopped before configured final checkpoint

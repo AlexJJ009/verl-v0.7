@@ -15,7 +15,7 @@ FIXTURES = ROOT / "tests/experiment_workflow/fixtures/failure_classes"
 
 
 def test_primary_failure_classes():
-    paths = sorted(FIXTURES.glob("*.log"))
+    paths = sorted(FIXTURES.glob("*.txt"))
     assert len(paths) == 8
     for path in paths:
         expected = path.stem
