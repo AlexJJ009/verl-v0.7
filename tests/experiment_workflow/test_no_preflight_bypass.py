@@ -10,6 +10,10 @@ import subprocess
 
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def write_canonical_json(path: Path, value: dict) -> None:
+    path.write_text(json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n")
 MANIFEST = ROOT / "recipe/on_policy_wdl_sft/experiment_manifest/stage123.yaml"
 
 
@@ -50,7 +54,7 @@ def deployability_fixture(tmp_path: Path):
         "prediction_contract_sha256": hashlib.sha256(contract.read_bytes()).hexdigest(),
     }
     deployability_receipt = tmp_path / "deployability_receipt.json"
-    deployability_receipt.write_text(json.dumps(receipt, sort_keys=True, separators=(",", ":")) + "\n")
+    write_canonical_json(deployability_receipt, receipt)
     return normalized, normalized_path, report, policy, preflight_receipt, history, contract, deployability_receipt
 
 
@@ -114,21 +118,55 @@ def test_deployability_receipt_replay_boundaries_fail(tmp_path: Path):
     args = deployability_verify_args(*fixture)
     *_, deployability_receipt = fixture
     data = json.loads(deployability_receipt.read_text())
-    data["queue_identity"] = "other-queue"; deployability_receipt.write_text(json.dumps(data))
+    data["queue_identity"] = "other-queue"; write_canonical_json(deployability_receipt, data)
     failed = subprocess.run(args, text=True, capture_output=True)
     assert failed.returncode != 0
     assert "queue_identity mismatch" in failed.stdout
     data["queue_identity"] = "qwen3_1p7b_stage123_p40"
     data["issued_at"] = (datetime.now(timezone.utc) - timedelta(days=2)).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-    deployability_receipt.write_text(json.dumps(data))
+    write_canonical_json(deployability_receipt, data)
     failed = subprocess.run(args, text=True, capture_output=True)
     assert failed.returncode != 0
     assert "receipt stale" in failed.stdout
-    data["issued_at"] = (datetime.now(timezone.utc) + timedelta(seconds=301)).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-    deployability_receipt.write_text(json.dumps(data))
+    data["issued_at"] = (datetime.now(timezone.utc) + timedelta(seconds=600)).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    write_canonical_json(deployability_receipt, data)
     failed = subprocess.run(args, text=True, capture_output=True)
     assert failed.returncode != 0
     assert "future skew" in failed.stdout
+
+
+def test_deployability_receipt_future_skew_exact_boundary(tmp_path: Path):
+    fixture = deployability_fixture(tmp_path)
+    normalized, normalized_path, report, policy, preflight, history, contract, receipt = fixture
+    module_path = ROOT / "recipe/on_policy_wdl_sft/code_task/stage123_deployability_receipt.py"
+    spec = importlib.util.spec_from_file_location("deployability_receipt", module_path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader
+    spec.loader.exec_module(module)
+    fixed_now = datetime(2026, 7, 12, 0, 0, 0, tzinfo=timezone.utc)
+    data = json.loads(receipt.read_text())
+    data["issued_at"] = "2026-07-12T00:05:00Z"
+    write_canonical_json(receipt, data)
+    args = module.argparse.Namespace(
+        receipt=receipt,
+        normalized_manifest=normalized_path,
+        preflight_receipt=preflight,
+        report=report,
+        policy=policy,
+        history_index=history,
+        prediction_contract=contract,
+        semantic_contract=None,
+        queue_identity="qwen3_1p7b_stage123_p40",
+        profile_hash=normalized["resource_profile"]["sha256"],
+        max_age_seconds=86400,
+        future_skew_seconds=300,
+    )
+    assert module.verify(args, now=fixed_now)["ok"]
+    data["issued_at"] = "2026-07-12T00:05:01Z"
+    write_canonical_json(receipt, data)
+    result = module.verify(args, now=fixed_now)
+    assert not result["ok"]
+    assert "receipt issued_at exceeds future skew" in result["failures"]
 
 
 def test_direct_phase_missing_receipt_fails_before_base_launcher():
