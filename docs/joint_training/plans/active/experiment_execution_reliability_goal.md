@@ -990,7 +990,43 @@ but it is not substituted into prediction or deadline calculations.
 - Then `prediction_contract.json` is generated first with the exact history query,
   selected and excluded run IDs, feature vector, algorithm version, fixed parameters,
   hashes, OOD decision, and predictions; current calibration runs are excluded and the
-  contract hash cannot change within the calibration root.
+  contract hash cannot change within the calibration root. Under outcome schema v2,
+  predictor evidence is the frozen six-run-per-phase trusted-history cohort bound by
+  `history_index` and `prediction_contract`; it is not copied into or relabeled as an
+  acceptance repetition. Every v2 history row must contain
+  `evidence_role="bootstrap_history"`, its canonical queue-native `artifact_root` under
+  `report/bootstrap/<phase>/rep_0..5`, and content hashes for status, resources, metrics,
+  generation, and timeline. Missing/unknown roles, roots outside that exact bootstrap
+  subtree, root/phase/rep mismatches, duplicate roots, acceptance roots, or hashes that
+  do not match files are rejected before cohort selection. A caller-provided role string
+  alone never establishes provenance.
+
+  The v2 assembler accepts one `--root` equal to the queue's `REPORT_ROOT` and resolves
+  only `acceptance/<phase>/rep_0`, `rep_1`, and `rep_2`. Its candidate report records
+  `predictor_repetitions: []`, contract predictor count `0`, and exactly those three
+  acceptance repetitions. It rejects missing/extra acceptance repetitions and any mixed
+  legacy directories (`<phase>/rep0_predictor*`, `<phase>/rep1..3`) within the supplied
+  root. The checker verifies predictor provenance only from the exact bound immutable
+  `history_index` and `prediction_contract`; it rejects nonzero report predictor counts,
+  synthetic predictors, bootstrap-as-acceptance, acceptance-as-history, and any report
+  repetition whose recorded root is not the canonical queue-native acceptance root.
+
+Verification:
+
+```bash
+python3 -m pytest -q \
+  tests/experiment_workflow/test_operational_calibration_assembler.py \
+  tests/experiment_workflow/test_operational_calibration_checker.py \
+  tests/experiment_workflow/test_operational_calibration_runner.py
+```
+
+Expected evidence: queue-native roots assemble without directory renaming; the report
+contains zero predictor repetitions and three acceptance repetitions per phase; exact
+history and prediction-contract bindings remain mandatory. Named fixtures cover zero
+predictor count, exact `rep_0..2` discovery, missing/extra/mixed-legacy roots,
+bootstrap-as-acceptance, acceptance-as-history with a missing role, acceptance with a
+forged bootstrap role, artifact-root mismatch, artifact hash mismatch, and duplicate
+artifact roots; every case except the canonical queue-native layout fails closed.
 
 #### AC-19B - History Selection Is Deterministic
 
@@ -1062,6 +1098,7 @@ python3 scripts/check_code_task_operational_calibration.py \
   --report /data-1/tmp/verl_agent_scratch/experiment_workflow/calibration/report.json \
   --manifest recipe/on_policy_wdl_sft/experiment_manifest/stage123.yaml \
   --contract /data-1/tmp/verl_agent_scratch/experiment_workflow/calibration/prediction_contract.json \
+  --history-index /data-1/tmp/verl_agent_scratch/experiment_workflow/calibration/trusted_history.json \
   --receipt /data-1/tmp/verl_agent_scratch/experiment_workflow/calibration/deployability_receipt.json
 ```
 
@@ -1070,7 +1107,8 @@ Expected evidence: checker exits `0` only for `deployable`; `blocked` and
 is unavailable, sandbox implementation may be accepted but workflow deployment stays
 `PENDING OPERATIONAL CALIBRATION`, not complete.
 Fixtures must reject same-input nondeterminism, current-run leakage, operator-selected
-history, use of fewer than six bootstrap runs, bootstrap-as-deployable, acceptance-run
+history, checker invocation without `--history-index`, use of fewer than six bootstrap
+runs, bootstrap-as-deployable, acceptance-run
 leakage into the history snapshot, semantic/profile mismatch, coverage downgrade, post-hoc
 widening, excessive interval width, upper bound equal to or above 1800, non-overlapping
 intervals, elapsed/RSS point error above 20%, any elapsed/RSS repetition outside its

@@ -101,6 +101,17 @@ root.mkdir(parents=True, exist_ok=True)
     "step": 0,
     "data": {{"timing_s/testing": 109}},
 }}) + "\\n")
+(root / phase / "logs/validation/run").mkdir(parents=True, exist_ok=True)
+(root / phase / "logs/validation/run/0.jsonl").write_text("\\n".join(
+    json.dumps({{
+        "uid": f"{{phase}}-{{i}}",
+        "response_token_count": 100,
+        "response_eos_present": True,
+        "response_finish_reason": "stop",
+        "code_reward_latency_seconds": 1.0,
+        "code_reward_timeout": 0,
+    }}) for i in range(1422)
+) + "\\n")
 (root / f"{{phase}}.validation_timeline.jsonl").write_text("\\n".join([
     json.dumps({{"event":"validation_ready","monotonic_seconds":10}}),
     json.dumps({{"event":"generation_complete","monotonic_seconds":90}}),
@@ -156,6 +167,10 @@ def test_queue_runs_bootstrap_then_freezes_contract_then_acceptance(tmp_path: Pa
     assert first["scorer_hash"]
     assert first["timeout_policy_hash"]
     assert first["max_response_length"] == 8192
+    assert first["outcome_schema_version"] == 2
+    assert len(first["workload_descriptor_sha256"]) == 64
+    assert first["metrics"]["submitted_item_count"] == 1422
+    assert first["metrics"]["response_length_p95_tokens"] == 100
     assert json.loads(contract.read_text())["algorithm_version"] == "stage123_history_conformal_v1"
 
 

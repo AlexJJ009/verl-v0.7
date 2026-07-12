@@ -9,8 +9,33 @@ import sys
 from contextlib import redirect_stdout
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def canonical_sha(value):
+    payload = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n"
+    return hashlib.sha256(payload.encode()).hexdigest()
+
+
+def workload(phase):
+    return {"phase": phase, "outcome_schema_version": 2, "descriptor": phase}
+
+
+def v2_metrics(elapsed, rss):
+    return {
+        "validation_elapsed_seconds": elapsed,
+        "peak_rss_gib": rss,
+        "response_length_p50_tokens": 100,
+        "response_length_p95_tokens": 200,
+        "truncation_rate": 0.0,
+        "scorer_latency_p50_seconds": 1.0,
+        "scorer_latency_p95_seconds": 2.0,
+        "scorer_timeout_rate": 0.0,
+        "submitted_item_count": 1422,
+    }
 
 
 def load():
@@ -22,14 +47,21 @@ def load():
     return m
 
 
-def phase_prediction(elapsed_interval=(90, 120), rss_interval=(90, 120), gpu_interval=(0.30, 0.80)):
+def phase_prediction(phase, elapsed_interval=(90, 120), rss_interval=(90, 120), gpu_interval=(0.30, 0.80)):
     return {
         "status": "deployable",
         "decision": "deployable",
         "cohort_size": 6,
+        "features": workload(phase),
         "predictions": {
             "validation_elapsed_seconds": {"point": 100, "interval": list(elapsed_interval), "loo_coverage": 0.9},
             "peak_rss_gib": {"point": 100, "interval": list(rss_interval), "loo_coverage": 0.9},
+            "response_length_p50_tokens": {"point": 100, "interval": [90, 110], "loo_coverage": 0.9},
+            "response_length_p95_tokens": {"point": 200, "interval": [190, 210], "loo_coverage": 0.9},
+            "scorer_latency_p50_seconds": {"point": 1, "interval": [0.5, 1.5], "loo_coverage": 0.9},
+            "scorer_latency_p95_seconds": {"point": 2, "interval": [1.5, 2.5], "loo_coverage": 0.9},
+            "truncation_rate": {"point": 0, "interval": [0, 0.01]},
+            "scorer_timeout_rate": {"point": 0, "interval": [0, 0.01]},
             "all_gpu_idle_fraction_during_validation": {"interval": list(gpu_interval)},
         },
     }
@@ -40,15 +72,16 @@ def fixture(tmp_path):
         "manifest_sha256": "rendered-manifest",
         "resource_profile": {"sha256": "profile-hash"},
         "calibration_receipt_max_age_seconds": 86400,
+        "calibration_workloads": {phase: workload(phase) for phase in ("stage1", "stage2", "stage3")},
     }
     contract = {
         "decision": "deployable",
-        "phases": [{"phase": name, **phase_prediction()} for name in ("stage1", "stage2", "stage3")],
+        "phases": [{"phase": name, **phase_prediction(name)} for name in ("stage1", "stage2", "stage3")],
     }
     phases = []
     for name in ("stage1", "stage2", "stage3"):
         reps = []
-        for i in range(4):
+        for i in range(3):
             artifacts = {}
             for kind in ("status", "resources", "metrics", "generation", "timeline"):
                 path = tmp_path / f"{name}-{i}-{kind}.json"
@@ -70,14 +103,14 @@ def fixture(tmp_path):
             }
             reps.append(
                 {
-                    "warmup": i == 0,
+                    "warmup": False,
                     "status": {"returncode": 0, "timed_out": False},
-                    "metrics": {"complete_validation_metrics": True, "validation_elapsed_seconds": [100, 105, 110, 115][i]},
+                    "metrics": {"complete_validation_metrics": True, **v2_metrics([105, 110, 115][i], [105, 110, 115][i])},
                     "scorer": scorer,
                     "timeline": {"rollout_elapsed_seconds": 80, "post_generation_elapsed_seconds": 30, "timeline_elapsed_seconds": 110},
                     "resources": {
-                        "peak_rss_gib": [100, 105, 110, 115][i],
-                        "gpu_wait_fraction": [0.50, 0.52, 0.55, 0.58][i],
+                        "peak_rss_gib": [105, 110, 115][i],
+                        "gpu_wait_fraction": [0.52, 0.55, 0.58][i],
                         "measurement_started": True,
                         "measurement_window": "validation_rollout_readiness_to_completion",
                         "gpu_sample_interval_seconds": 0.2,
@@ -90,21 +123,35 @@ def fixture(tmp_path):
             {
                 "phase": name,
                 "profile_hash": "profile-hash",
+                "workload_descriptor_sha256": canonical_sha(workload(name)),
+                "outcome_schema_version": 2,
                 "optimized": True,
                 "predicted": {
                     "validation_elapsed_seconds": 100,
                     "peak_rss_gib": 100,
+                    "response_length_p50_tokens": 100,
+                    "response_length_p95_tokens": 200,
+                    "scorer_latency_p50_seconds": 1,
+                    "scorer_latency_p95_seconds": 2,
+                    "truncation_rate": 0,
+                    "scorer_timeout_rate": 0,
                     "all_gpu_idle_fraction_during_validation": 0.5,
                 },
                 "observed": {
                     "complete_validation_metrics": True,
                     "validation_elapsed_seconds": 110,
                     "peak_rss_gib": 110,
+                    "response_length_p50_tokens": 100,
+                    "response_length_p95_tokens": 200,
+                    "scorer_latency_p50_seconds": 1,
+                    "scorer_latency_p95_seconds": 2,
+                    "truncation_rate": 0,
+                    "scorer_timeout_rate": 0,
                     "all_gpu_idle_fraction_during_validation": 0.55,
                     "maximum_validation_elapsed_seconds": 115,
                 },
-                "predictor_repetitions": [reps[0]],
-                "repetitions": reps[1:],
+                "predictor_repetitions": [],
+                "repetitions": reps,
             }
         )
     datasets = []
@@ -120,7 +167,7 @@ def fixture(tmp_path):
         "contract": {
             "val_max_samples": -1,
             "validation_deadline_seconds": 1800,
-            "predictor_repetitions": {"stage1": 1, "stage2": 1, "stage3": 1},
+            "predictor_repetitions": {"stage1": 0, "stage2": 0, "stage3": 0},
         },
         "input_bindings": {"resource_profile": {"identity": "local-l40s", "sha256": "profile-hash"}},
         "validation_data": {"scope": "full", "datasets": datasets, "total_rows": 1422},
@@ -162,11 +209,11 @@ def test_repetition_and_artifact_tampering_are_blocked(tmp_path):
     m = load()
     manifest, report, contract = fixture(tmp_path)
     patch_dataset_hashes(m, report)
-    report["phases"][0]["predictor_repetitions"][0]["warmup"] = False
+    report["phases"][0]["predictor_repetitions"] = [report["phases"][0]["repetitions"][0]]
     assert not m.check(report, manifest, contract=contract)["ok"]
     manifest, report, contract = fixture(tmp_path)
     patch_dataset_hashes(m, report)
-    Path(report["phases"][0]["predictor_repetitions"][0]["artifacts"]["metrics"]["path"]).write_text("tampered")
+    Path(report["phases"][0]["repetitions"][0]["artifacts"]["metrics"]["path"]).write_text("tampered")
     assert not m.check(report, manifest, contract=contract)["ok"]
 
 
@@ -200,7 +247,7 @@ def test_invalid_resource_measurement_window_is_blocked(tmp_path):
     m = load()
     manifest, report, contract = fixture(tmp_path)
     patch_dataset_hashes(m, report)
-    report["phases"][0]["predictor_repetitions"][0]["resources"]["measurement_started"] = False
+    report["phases"][0]["repetitions"][0]["resources"]["measurement_started"] = False
     assert not m.check(report, manifest, contract=contract)["ok"]
 
 
@@ -208,15 +255,15 @@ def test_coarse_or_incomplete_gpu_sampling_is_blocked(tmp_path):
     m = load()
     manifest, report, contract = fixture(tmp_path)
     patch_dataset_hashes(m, report)
-    report["phases"][0]["predictor_repetitions"][0]["resources"]["gpu_sample_interval_seconds"] = 1
+    report["phases"][0]["repetitions"][0]["resources"]["gpu_sample_interval_seconds"] = 1
     assert not m.check(report, manifest, contract=contract)["ok"]
     _, report, contract = fixture(tmp_path)
     patch_dataset_hashes(m, report)
-    report["phases"][0]["predictor_repetitions"][0]["resources"]["gpu_sample_count"] = 10
+    report["phases"][0]["repetitions"][0]["resources"]["gpu_sample_count"] = 10
     assert not m.check(report, manifest, contract=contract)["ok"]
     _, report, contract = fixture(tmp_path)
     patch_dataset_hashes(m, report)
-    report["phases"][0]["predictor_repetitions"][0]["resources"]["measurement_window"] = "process_start_to_exit"
+    report["phases"][0]["repetitions"][0]["resources"]["measurement_window"] = "process_start_to_exit"
     assert not m.check(report, manifest, contract=contract)["ok"]
     _, report, contract = fixture(tmp_path)
     patch_dataset_hashes(m, report)
@@ -236,6 +283,46 @@ def test_elapsed_rss_all_values_and_median_must_fit_contract_interval(tmp_path):
     result = m.check(report, manifest, contract=contract)
     assert not result["ok"]
     assert any("validation_elapsed_seconds acceptance value outside prediction interval" in failure for failure in result["failures"])
+
+
+def test_v2_continuous_outcome_point_error_and_interval_are_blocked(tmp_path):
+    m = load()
+    for metric in ("response_length_p50_tokens", "response_length_p95_tokens", "scorer_latency_p50_seconds", "scorer_latency_p95_seconds"):
+        manifest, report, contract = fixture(tmp_path)
+        patch_dataset_hashes(m, report)
+        for rep in report["phases"][0]["repetitions"]:
+            rep["metrics"][metric] = contract["phases"][0]["predictions"][metric]["point"] * 1.25
+        result = m.check(report, manifest, contract=contract)
+        assert not result["ok"]
+        assert any(metric in failure for failure in result["failures"])
+
+
+@pytest.mark.parametrize(
+    ("metric", "value", "message"),
+    [("truncation_rate", 0.02, "truncation rate exceeds 1%"), ("scorer_timeout_rate", 0.11, "scorer timeout rate exceeds 10%")],
+)
+def test_v2_rate_thresholds_are_blocked(tmp_path, metric, value, message):
+    m = load()
+    manifest, report, contract = fixture(tmp_path)
+    patch_dataset_hashes(m, report)
+    contract["phases"][0]["predictions"][metric]["interval"] = [0, value]
+    for rep in report["phases"][0]["repetitions"]:
+        rep["metrics"][metric] = value
+    result = m.check(report, manifest, contract=contract)
+    assert not result["ok"]
+    assert any(message in failure for failure in result["failures"])
+
+
+def test_missing_v2_metric_and_workload_binding_are_blocked(tmp_path):
+    m = load()
+    manifest, report, contract = fixture(tmp_path)
+    patch_dataset_hashes(m, report)
+    del report["phases"][0]["repetitions"][0]["metrics"]["response_length_p95_tokens"]
+    assert not m.check(report, manifest, contract=contract)["ok"]
+    manifest, report, contract = fixture(tmp_path)
+    patch_dataset_hashes(m, report)
+    report["phases"][0]["workload_descriptor_sha256"] = "bad"
+    assert not m.check(report, manifest, contract=contract)["ok"]
 
 
 def test_gpu_idle_uses_measured_interval_overlap(tmp_path):
@@ -284,6 +371,7 @@ def test_cli_writes_canonical_receipt_and_detects_preflight_tamper(tmp_path):
             "scorer_hash": "scorer",
             "timeout_policy_hash": "timeout",
             "max_response_length": 8192,
+            "calibration_workloads": {phase: workload(phase) for phase in ("stage1", "stage2", "stage3")},
         }
     )
     manifest_path = tmp_path / "manifest.json"
@@ -298,10 +386,20 @@ def test_cli_writes_canonical_receipt_and_detects_preflight_tamper(tmp_path):
         for index, (elapsed, rss, idle) in enumerate(
             zip([100, 100, 100, 100, 100, 100], [100, 100, 100, 100, 100, 100], [0.08, 0.20, 0.31, 0.44, 0.58, 0.70])
         ):
+            artifact_root = tmp_path / "history-artifacts" / "bootstrap" / phase / f"rep_{index}"
+            artifact_root.mkdir(parents=True)
+            bindings = {}
+            for kind in ("status", "resources", "metrics", "generation", "timeline"):
+                path = artifact_root / f"{phase}.{kind}.json"
+                path.write_text(json.dumps({"phase": phase, "rep": index, "kind": kind}) + "\n")
+                bindings[kind] = {"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
             history_runs.append(
                 {
                     "run_id": f"{phase}-{index}",
                     "phase": phase,
+                    "evidence_role": "bootstrap_history",
+                    "artifact_root": str(artifact_root),
+                    "artifact_bindings": bindings,
                     "completed_at": f"2026-07-{index + 1:02d}T00:00:00Z",
                     "release_gate_passed": True,
                     "content_addressed": True,
@@ -313,11 +411,9 @@ def test_cli_writes_canonical_receipt_and_detects_preflight_tamper(tmp_path):
                     "scorer_hash": "scorer",
                     "timeout_policy_hash": "timeout",
                     "max_response_length": 8192,
-                    "metrics": {
-                        "validation_elapsed_seconds": elapsed,
-                        "peak_rss_gib": rss,
-                        "all_gpu_idle_fraction_during_validation": idle,
-                    },
+                    "workload_descriptor_sha256": canonical_sha(workload(phase)),
+                    "outcome_schema_version": 2,
+                    "metrics": {**v2_metrics(elapsed, rss), "all_gpu_idle_fraction_during_validation": idle},
                 }
             )
     history_path.write_text(json.dumps({"cutoff_utc": "2026-07-20T00:00:00Z", "runs": history_runs}, sort_keys=True) + "\n")

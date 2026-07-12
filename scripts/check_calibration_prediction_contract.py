@@ -21,6 +21,9 @@ from pathlib import Path
 from statistics import median
 from typing import Any
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from calibration_outcomes import CONTINUOUS_OUTCOMES, RATE_OUTCOMES
+
 
 ALGORITHM_VERSION = "stage123_history_conformal_v1"
 PHASES = ("stage1", "stage2", "stage3")
@@ -42,12 +45,10 @@ EXACT_MATCH_FIELDS = (
     "scorer_hash",
     "timeout_policy_hash",
     "max_response_length",
+    "workload_descriptor_sha256",
+    "outcome_schema_version",
 )
-METRIC_FIELDS = (
-    "validation_elapsed_seconds",
-    "peak_rss_gib",
-    "all_gpu_idle_fraction_during_validation",
-)
+METRIC_FIELDS = (*CONTINUOUS_OUTCOMES, *RATE_OUTCOMES, "all_gpu_idle_fraction_during_validation")
 
 
 class ContractError(ValueError):
@@ -139,6 +140,9 @@ def _metric_value(run: dict[str, Any], metric: str) -> float:
 
 
 def _phase_manifest(manifest: dict[str, Any], phase: str) -> dict[str, Any]:
+    workloads = manifest.get("calibration_workloads")
+    if isinstance(workloads, dict) and isinstance(workloads.get(phase), dict):
+        return workloads[phase]
     phases = manifest.get("phases")
     if isinstance(phases, dict) and isinstance(phases.get(phase), dict):
         return phases[phase]
@@ -182,6 +186,8 @@ def _expected_match_values(manifest: dict[str, Any], phase: str) -> dict[str, An
         or phase_doc.get("max_response_length")
         or resource_profile.get("max_response_length")
         or manifest.get("MAX_RESPONSE_LENGTH"),
+        "workload_descriptor_sha256": canonical_json_sha256(phase_doc),
+        "outcome_schema_version": phase_doc.get("outcome_schema_version"),
     }
     missing = [key for key, value in values.items() if value is None]
     if missing:
@@ -216,6 +222,7 @@ def validate_history_snapshot(history_index: dict[str, Any]) -> None:
     if not isinstance(runs, list):
         raise ContractError("history index must contain a runs list")
     seen: set[str] = set()
+    seen_roots: set[str] = set()
     for run in runs:
         if not isinstance(run, dict):
             raise ContractError("history run entries must be objects")
@@ -226,8 +233,39 @@ def validate_history_snapshot(history_index: dict[str, Any]) -> None:
             raise ContractError(f"duplicate history run_id: {run_id}")
         seen.add(run_id)
         _utc_second(run.get("completed_at"))
-        if run.get("evidence_role") in {"current_calibration", "predictor", "acceptance"}:
-            raise ContractError(f"{run_id}: current calibration run leaked into history snapshot")
+        if run.get("evidence_role") != "bootstrap_history":
+            raise ContractError(f"{run_id}: history evidence_role must be bootstrap_history")
+        phase = run.get("phase")
+        artifact_root = Path(str(run.get("artifact_root", "")))
+        parts = artifact_root.parts
+        if len(parts) < 3 or parts[-3:-1] != ("bootstrap", phase) or not parts[-1].startswith("rep_"):
+            raise ContractError(f"{run_id}: invalid bootstrap artifact_root")
+        try:
+            rep = int(parts[-1].removeprefix("rep_"))
+        except ValueError as exc:
+            raise ContractError(f"{run_id}: invalid bootstrap repetition root") from exc
+        if rep not in range(6):
+            raise ContractError(f"{run_id}: bootstrap root/phase/repetition mismatch")
+        root_text = str(artifact_root.resolve())
+        if root_text in seen_roots:
+            raise ContractError(f"{run_id}: duplicate bootstrap artifact_root")
+        seen_roots.add(root_text)
+        bindings = run.get("artifact_bindings")
+        if not isinstance(bindings, dict):
+            raise ContractError(f"{run_id}: missing artifact bindings")
+        expected_names = {"status", "resources", "metrics", "generation", "timeline"}
+        if set(bindings) != expected_names:
+            raise ContractError(f"{run_id}: incomplete artifact bindings")
+        for name, binding in bindings.items():
+            if not isinstance(binding, dict):
+                raise ContractError(f"{run_id}: invalid {name} artifact binding")
+            path = Path(str(binding.get("path", "")))
+            try:
+                path.resolve().relative_to(artifact_root.resolve())
+            except ValueError as exc:
+                raise ContractError(f"{run_id}: {name} artifact escapes artifact_root") from exc
+            if not path.is_file() or file_sha256(path) != binding.get("sha256"):
+                raise ContractError(f"{run_id}: {name} artifact hash mismatch")
 
 
 def select_cohort(
@@ -318,6 +356,14 @@ def gpu_idle_interval(values: list[float]) -> dict[str, Any]:
     return {"interval": [lower, upper], "raw_min": _floor6(min(values)), "raw_max": _ceil6(max(values))}
 
 
+def rate_interval(values: list[float], submitted_count: int) -> dict[str, Any]:
+    if submitted_count <= 0 or any(value < 0 or value > 1 for value in values):
+        raise ContractError("rate values/count are invalid")
+    margin = 1.0 / submitted_count
+    lower, upper = _round_interval(min(values) - margin, min(1.0, max(values) + margin))
+    return {"interval": [lower, upper], "raw_min": _floor6(min(values)), "raw_max": _ceil6(max(values)), "margin": _ceil6(margin)}
+
+
 def _width_ratio(interval: list[float]) -> float:
     midpoint = (interval[0] + interval[1]) / 2.0
     if midpoint <= 0:
@@ -333,35 +379,36 @@ def predict_for_cohort(cohort: list[dict[str, Any]]) -> dict[str, Any]:
             "failures": [f"fewer than {MIN_COHORT_SIZE} eligible prior runs"],
             "predictions": {},
         }
-    elapsed_values = [_metric_value(run, "validation_elapsed_seconds") for run in cohort]
-    rss_values = [_metric_value(run, "peak_rss_gib") for run in cohort]
+    continuous_values = {metric: [_metric_value(run, metric) for run in cohort] for metric in CONTINUOUS_OUTCOMES}
+    rate_values = {metric: [_metric_value(run, metric) for run in cohort] for metric in RATE_OUTCOMES}
     idle_values = [_metric_value(run, "all_gpu_idle_fraction_during_validation") for run in cohort]
-    elapsed = conformal_interval(elapsed_values)
-    rss = conformal_interval(rss_values)
+    submitted_counts = {int(_metric_value(run, "submitted_item_count")) for run in cohort}
+    if len(submitted_counts) != 1:
+        raise ContractError("cohort submitted item counts differ")
+    submitted_count = submitted_counts.pop()
+    continuous = {metric: conformal_interval(values) for metric, values in continuous_values.items()}
+    rates = {metric: rate_interval(values, submitted_count) for metric, values in rate_values.items()}
     idle = gpu_idle_interval(idle_values)
-    elapsed_coverage = _floor6(leave_one_out_coverage(elapsed_values))
-    rss_coverage = _floor6(leave_one_out_coverage(rss_values))
-    predictions = {
-        "validation_elapsed_seconds": {**elapsed, "loo_coverage": elapsed_coverage},
-        "peak_rss_gib": {**rss, "loo_coverage": rss_coverage},
-        "all_gpu_idle_fraction_during_validation": idle,
-    }
+    coverage = {metric: _floor6(leave_one_out_coverage(values)) for metric, values in continuous_values.items()}
+    predictions = {metric: {**doc, "loo_coverage": coverage[metric]} for metric, doc in continuous.items()}
+    predictions.update(rates)
+    predictions["all_gpu_idle_fraction_during_validation"] = idle
     failures: list[str] = []
     status = "deployable"
     decision = "deployable"
-    if elapsed["interval"][1] >= ELAPSED_HARD_UPPER_SECONDS:
+    if continuous["validation_elapsed_seconds"]["interval"][1] >= ELAPSED_HARD_UPPER_SECONDS:
         failures.append("elapsed upper bound is at or above 1800 seconds")
         status = "runtime_risk"
         decision = "blocked"
     elif (
-        _width_ratio(elapsed["interval"]) > ELAPSED_WIDTH_LIMIT
-        or _width_ratio(rss["interval"]) > RSS_WIDTH_LIMIT
+        any(_width_ratio(continuous[metric]["interval"]) > (RSS_WIDTH_LIMIT if metric == "peak_rss_gib" else ELAPSED_WIDTH_LIMIT) for metric in CONTINUOUS_OUTCOMES)
+        or any(doc["interval"][1] - doc["interval"][0] > 0.25 for doc in rates.values())
         or idle["interval"][1] - idle["interval"][0] > GPU_IDLE_WIDTH_LIMIT
     ):
         failures.append("noninformative prediction interval")
         status = "noninformative"
         decision = "inconclusive"
-    elif min(elapsed_coverage, rss_coverage) < LOO_COVERAGE_MIN:
+    elif min(coverage.values()) < LOO_COVERAGE_MIN:
         failures.append("leave-one-run-out empirical coverage below 0.80")
         status = "insufficient_coverage"
         decision = "inconclusive"
@@ -389,7 +436,7 @@ def build_prediction_contract(
                 "eligible_run_ids": [run["run_id"] for run in cohort],
                 "excluded_run_ids": excluded,
                 "cohort_size": len(cohort),
-                "features": _phase_manifest(manifest, phase).get("features", {}),
+                "features": _phase_manifest(manifest, phase),
                 "predictions": prediction["predictions"],
             }
         )

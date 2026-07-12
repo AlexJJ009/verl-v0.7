@@ -161,30 +161,38 @@ def test_load_rep_preserves_resource_measurement_contract(tmp_path, monkeypatch)
 
 def test_aggregate_phase_uses_frozen_contract_and_preserves_acceptance_raw_values(monkeypatch):
     module = load()
+    outcome_metrics = {
+        "response_length_p50_tokens": 100,
+        "response_length_p95_tokens": 200,
+        "truncation_rate": 0.0,
+        "scorer_latency_p50_seconds": 1.0,
+        "scorer_latency_p95_seconds": 2.0,
+        "scorer_timeout_rate": 0.0,
+    }
     reps = {
         "predictor": {
             "warmup": True,
-            "metrics": {"validation_elapsed_seconds": 999, "complete_validation_metrics": True},
+            "metrics": {"validation_elapsed_seconds": 999, "complete_validation_metrics": True, **outcome_metrics},
             "resources": {"peak_rss_gib": 999, "gpu_wait_fraction": 0.99},
         },
         "r1": {
             "warmup": False,
-            "metrics": {"validation_elapsed_seconds": 100, "complete_validation_metrics": True},
+            "metrics": {"validation_elapsed_seconds": 100, "complete_validation_metrics": True, **outcome_metrics},
             "resources": {"peak_rss_gib": 100, "gpu_wait_fraction": 0.52},
         },
         "r2": {
             "warmup": False,
-            "metrics": {"validation_elapsed_seconds": 110, "complete_validation_metrics": True},
+            "metrics": {"validation_elapsed_seconds": 110, "complete_validation_metrics": True, **outcome_metrics},
             "resources": {"peak_rss_gib": 130, "gpu_wait_fraction": 0.55},
         },
         "r3": {
             "warmup": False,
-            "metrics": {"validation_elapsed_seconds": 120, "complete_validation_metrics": True},
+            "metrics": {"validation_elapsed_seconds": 120, "complete_validation_metrics": True, **outcome_metrics},
             "resources": {"peak_rss_gib": 110, "gpu_wait_fraction": 0.58},
         },
     }
 
-    def fake_load_rep(root, phase, warmup):
+    def fake_load_rep(root, phase, warmup, workload=None):
         return reps[root.name]
 
     monkeypatch.setattr(module, "load_rep", fake_load_rep)
@@ -203,9 +211,16 @@ def test_aggregate_phase_uses_frozen_contract_and_preserves_acceptance_raw_value
             "predictions": {
                 "validation_elapsed_seconds": {"point": 111, "interval": [90, 130]},
                 "peak_rss_gib": {"point": 112, "interval": [90, 140]},
+                "response_length_p50_tokens": {"point": 100, "interval": [90, 110]},
+                "response_length_p95_tokens": {"point": 200, "interval": [190, 210]},
+                "scorer_latency_p50_seconds": {"point": 1, "interval": [0.5, 1.5]},
+                "scorer_latency_p95_seconds": {"point": 2, "interval": [1.5, 2.5]},
+                "truncation_rate": {"point": 0, "interval": [0, 0.01]},
+                "scorer_timeout_rate": {"point": 0, "interval": [0, 0.01]},
                 "all_gpu_idle_fraction_during_validation": {"interval": [0.5, 0.6]},
             },
         },
+        {"phase": "stage1", "outcome_schema_version": 2},
     )
     assert result["predicted"]["validation_elapsed_seconds"] == 111
     assert result["observed"]["validation_elapsed_seconds"] == 110
@@ -213,3 +228,31 @@ def test_aggregate_phase_uses_frozen_contract_and_preserves_acceptance_raw_value
     assert result["acceptance_repetition_values"]["peak_rss_gib"] == [100, 130, 110]
     assert result["acceptance_aggregate"]["method"] == "median_of_three_valid_repetitions"
     assert result["prediction_intervals"]["all_gpu_idle_fraction_during_validation"] == [0.5, 0.6]
+    assert result["outcome_schema_version"] == 2
+    assert result["workload_descriptor_sha256"]
+
+
+def test_queue_native_layout_has_zero_predictors_and_exact_acceptance_roots(tmp_path):
+    module = load()
+    for phase in module.PHASES:
+        for index in range(3):
+            (tmp_path / "acceptance" / phase / f"rep_{index}").mkdir(parents=True)
+    predictors, measured = module.resolve_queue_roots(tmp_path)
+    assert predictors == {phase: [] for phase in module.PHASES}
+    assert [path.name for path in measured["stage2"]] == ["rep_0", "rep_1", "rep_2"]
+
+
+@pytest.mark.parametrize("mutation", ["missing", "extra", "legacy"])
+def test_queue_native_layout_rejects_missing_extra_and_legacy_roots(tmp_path, mutation):
+    module = load()
+    for phase in module.PHASES:
+        for index in range(3):
+            (tmp_path / "acceptance" / phase / f"rep_{index}").mkdir(parents=True)
+    if mutation == "missing":
+        (tmp_path / "acceptance/stage1/rep_2").rmdir()
+    elif mutation == "extra":
+        (tmp_path / "acceptance/stage2/rep_3").mkdir()
+    else:
+        (tmp_path / "stage3/rep0_predictor").mkdir(parents=True)
+    with pytest.raises(ValueError):
+        module.resolve_queue_roots(tmp_path)

@@ -17,17 +17,15 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from check_calibration_prediction_contract import (
     canonical_json_bytes,
+    canonical_json_sha256,
     verify_prediction_contract,
 )
+from calibration_outcomes import CONTINUOUS_OUTCOMES, RATE_OUTCOMES
 
 
 PHASES = ("stage1", "stage2", "stage3")
-METRICS = (
-    "validation_elapsed_seconds",
-    "peak_rss_gib",
-    "all_gpu_idle_fraction_during_validation",
-)
-POINT_ERROR_METRICS = ("validation_elapsed_seconds", "peak_rss_gib")
+METRICS = (*CONTINUOUS_OUTCOMES, *RATE_OUTCOMES, "all_gpu_idle_fraction_during_validation")
+POINT_ERROR_METRICS = CONTINUOUS_OUTCOMES
 VALIDATION_DATASETS = {
     "HumanEval+": {"rows": 164, "sha256": "e317c71511c7b6b3df98ef88bf409644bc000e11a0621a57cdc944ccb82a9fab"},
     "MBPP+": {"rows": 378, "sha256": "3221e7f53c88bfbd91d788fb7bcb37168fb088fa504fddf12b9126c2147312d2"},
@@ -90,8 +88,10 @@ def metric_value(rep: dict[str, Any], metric: str) -> float | None:
         value = rep.get("metrics", {}).get(metric)
     elif metric == "peak_rss_gib":
         value = rep.get("resources", {}).get(metric)
-    else:
+    elif metric == "all_gpu_idle_fraction_during_validation":
         value = rep.get("resources", {}).get("gpu_wait_fraction")
+    else:
+        value = rep.get("metrics", {}).get(metric)
     if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value):
         return float(value)
     return None
@@ -314,20 +314,27 @@ def check(
 
     for phase in phases:
         name = phase.get("phase", "unknown")
+        workload = manifest.get("calibration_workloads", {}).get(name)
+        if not isinstance(workload, dict):
+            failures.append(f"{name}: missing calibration workload descriptor")
+        else:
+            expected_workload_hash = canonical_json_sha256(workload)
+            if phase.get("workload_descriptor_sha256") != expected_workload_hash:
+                failures.append(f"{name}: workload descriptor hash mismatch")
+            if phase.get("outcome_schema_version") != workload.get("outcome_schema_version"):
+                failures.append(f"{name}: outcome schema version mismatch")
         observed = phase.get("observed", {})
         predicted = phase.get("predicted", {})
         predictors = phase.get("predictor_repetitions", [])
         reps = phase.get("repetitions", [])
         expected_predictors = report.get("contract", {}).get("predictor_repetitions", {}).get(name)
-        if len(predictors) != expected_predictors or expected_predictors not in (1, 3):
+        if len(predictors) != expected_predictors or expected_predictors != 0:
             failures.append(f"{name}: predictor repetition count mismatch")
-        if any(r.get("warmup") is not True for r in predictors):
-            failures.append(f"{name}: predictor marker mismatch")
         if len(reps) != 3:
             failures.append(f"{name}: expected three measured repetitions")
         elif any(r.get("warmup") is not False for r in reps):
             failures.append(f"{name}: measured repetition marker mismatch")
-        for index, rep in enumerate([*predictors, *reps]):
+        for index, rep in enumerate(reps):
             validate_repetition(rep, name, index, failures)
         if observed.get("complete_validation_metrics") is not True:
             failures.append(f"{name}: incomplete validation metrics")
@@ -349,6 +356,12 @@ def check(
         if cphase is None and contract is not None:
             failures.append(f"{name}: missing prediction contract phase")
         elif cphase is not None:
+            if workload is not None:
+                contract_workload = cphase.get("features")
+                if not isinstance(contract_workload, dict) or canonical_json_sha256(contract_workload) != canonical_json_sha256(workload):
+                    failures.append(f"{name}: prediction contract workload descriptor mismatch")
+                if not isinstance(contract_workload, dict) or contract_workload.get("outcome_schema_version") != workload.get("outcome_schema_version"):
+                    failures.append(f"{name}: prediction contract outcome schema mismatch")
             if cphase.get("decision") == "blocked":
                 failures.append(f"{name}: prediction contract phase is blocked")
             elif cphase.get("decision") == "inconclusive":
@@ -382,6 +395,21 @@ def check(
                 measured_interval = measured_idle_interval(idle_values)
                 if not intervals_overlap(pred_interval, measured_interval):
                     failures.append(f"{name}: GPU idle measured interval does not overlap prediction interval")
+            for metric in RATE_OUTCOMES:
+                pred_interval = predictions.get(metric, {}).get("interval")
+                raw_values = values_by_metric.get(metric)
+                if not isinstance(pred_interval, list) or len(pred_interval) != 2:
+                    failures.append(f"{name}: missing {metric} prediction interval")
+                    continue
+                if raw_values:
+                    aggregate = sum(raw_values) / len(raw_values)
+                    for value in [*raw_values, aggregate]:
+                        if not interval_contains(pred_interval, value):
+                            failures.append(f"{name}: {metric} acceptance value outside prediction interval")
+                    if metric == "truncation_rate" and aggregate > 0.01:
+                        failures.append(f"{name}: truncation rate exceeds 1%")
+                    if metric == "scorer_timeout_rate" and aggregate > 0.10:
+                        failures.append(f"{name}: scorer timeout rate exceeds 10%")
         if phase.get("optimized") is not True:
             failures.append(f"{name}: optimization/safety budget not met")
 
@@ -433,7 +461,7 @@ def main() -> int:
     p.add_argument("--report", type=Path, required=True)
     p.add_argument("--manifest", type=Path, required=True)
     p.add_argument("--contract", type=Path, help="frozen prediction contract")
-    p.add_argument("--history-index", type=Path, help="immutable trusted history snapshot")
+    p.add_argument("--history-index", type=Path, required=True, help="immutable trusted history snapshot")
     p.add_argument("--policy", type=Path, help="reviewed calibration/admission policy")
     p.add_argument("--preflight-receipt", type=Path, help="AC-24 preflight receipt")
     p.add_argument("--semantic-contract", type=Path, help="optional sampled-decoding semantic contract")

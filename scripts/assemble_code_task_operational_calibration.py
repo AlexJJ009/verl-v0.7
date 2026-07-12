@@ -14,6 +14,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from calibration_timing import load_validation_timing
+from calibration_outcomes import CONTINUOUS_OUTCOMES, RATE_OUTCOMES, load_generation_outcomes
+from check_calibration_prediction_contract import canonical_json_sha256
 
 
 PHASES = ("stage1", "stage2", "stage3")
@@ -152,7 +154,7 @@ def load_validation_timeline(root: Path, phase: str, trainer_elapsed_seconds: fl
     return path, load_validation_timing(path, trainer_elapsed_seconds)
 
 
-def load_rep(root: Path, phase: str, warmup: bool) -> dict:
+def load_rep(root: Path, phase: str, warmup: bool, workload: dict | None = None) -> dict:
     status_path = root / f"{phase}.status.json"
     resources_path = root / f"{phase}.resources.json"
     status = json.loads(status_path.read_text())
@@ -165,6 +167,7 @@ def load_rep(root: Path, phase: str, warmup: bool) -> dict:
         raise ValueError(f"{timeline_path}: canonical validation timeline is required")
     validation_elapsed_seconds = timeline["validation_elapsed_seconds"]
     generation_path, scorer = load_scorer_evidence(root, phase, validation_elapsed_seconds)
+    outcomes = load_generation_outcomes(generation_path, workload) if workload is not None else {}
     if status.get("returncode") != 0 or status.get("timed_out") is not False:
         raise ValueError(f"{status_path}: repetition did not pass")
     if resources.get("peak_rss_gib") is None or resources.get("gpu_wait_fraction") is None:
@@ -176,6 +179,7 @@ def load_rep(root: Path, phase: str, warmup: bool) -> dict:
         "metrics": {
             "validation_elapsed_seconds": validation_elapsed_seconds,
             "trainer_validation_elapsed_seconds": metrics["timing_s/testing"],
+            **outcomes,
             "complete_validation_metrics": True,
             **{key: metrics[key] for key in CORE_METRICS},
         },
@@ -231,6 +235,29 @@ def optional_file_binding(path: Path | None) -> dict | None:
     return {"path": str(path), "sha256": sha256(path)}
 
 
+def resolve_queue_roots(root: Path) -> tuple[dict[str, list[Path]], dict[str, list[Path]]]:
+    legacy_roots = [
+        path
+        for phase in PHASES
+        for path in (root / phase).glob("rep*")
+        if path.name.startswith("rep0_predictor") or path.name in {"rep1", "rep2", "rep3"}
+    ]
+    if legacy_roots:
+        raise ValueError(f"legacy calibration layout is forbidden: {legacy_roots[0]}")
+    predictor_roots = {phase: [] for phase in PHASES}
+    measured_roots = {
+        phase: [root / "acceptance" / phase / f"rep_{index}" for index in range(3)]
+        for phase in PHASES
+    }
+    for phase, roots in measured_roots.items():
+        parent = root / "acceptance" / phase
+        extras = sorted(path for path in parent.glob("rep_*") if path not in roots)
+        missing = [path for path in roots if not path.is_dir()]
+        if missing or extras:
+            raise ValueError(f"{phase}: expected exactly acceptance rep_0..2; missing={missing} extra={extras}")
+    return predictor_roots, measured_roots
+
+
 def phase_prediction(contract: dict, phase: str) -> dict:
     for item in contract.get("phases", []):
         if item.get("phase") == phase:
@@ -261,44 +288,37 @@ def aggregate_phase(
     measured_roots: list[Path],
     provenance: dict,
     prediction_contract_phase: dict,
+    workload: dict | None = None,
 ) -> dict:
-    predictors = [load_rep(root, name, True) for root in predictor_roots]
-    measured = [load_rep(root, name, False) for root in measured_roots]
+    predictors = [load_rep(root, name, True, workload) for root in predictor_roots]
+    measured = [load_rep(root, name, False, workload) for root in measured_roots]
     predictions = prediction_contract_phase.get("predictions", {})
     predicted = {
         metric: predictions.get(metric, {}).get("point")
-        for metric in (
-            "validation_elapsed_seconds",
-            "peak_rss_gib",
-            "all_gpu_idle_fraction_during_validation",
-        )
+        for metric in (*CONTINUOUS_OUTCOMES, *RATE_OUTCOMES, "all_gpu_idle_fraction_during_validation")
     }
     observed = {
         "validation_elapsed_seconds": median_metric(measured, "validation_elapsed_seconds"),
         "peak_rss_gib": median_metric(measured, "peak_rss_gib"),
         "all_gpu_idle_fraction_during_validation": median_metric(measured, "all_gpu_idle_fraction_during_validation"),
+        **{metric: median_metric(measured, metric) for metric in (*CONTINUOUS_OUTCOMES[2:], *RATE_OUTCOMES)},
         "complete_validation_metrics": all(r["metrics"]["complete_validation_metrics"] for r in measured),
         "maximum_validation_elapsed_seconds": max(r["metrics"]["validation_elapsed_seconds"] for r in measured),
     }
     errors = {
         key: abs(observed[key] - predicted[key]) / abs(predicted[key])
-        for key in (
-            "validation_elapsed_seconds",
-            "peak_rss_gib",
-        )
+        for key in CONTINUOUS_OUTCOMES
         if predicted.get(key) not in (None, 0)
     }
     raw_acceptance = {
         metric: raw_metric_values(measured, metric)
-        for metric in (
-            "validation_elapsed_seconds",
-            "peak_rss_gib",
-            "all_gpu_idle_fraction_during_validation",
-        )
+        for metric in (*CONTINUOUS_OUTCOMES, *RATE_OUTCOMES, "all_gpu_idle_fraction_during_validation")
     }
     return {
         "phase": name,
         "profile_hash": profile_hash,
+        "workload_descriptor_sha256": canonical_json_sha256(workload) if workload is not None else None,
+        "outcome_schema_version": workload.get("outcome_schema_version") if workload is not None else None,
         "model_provenance": provenance,
         "prediction_contract_phase": {
             "status": prediction_contract_phase.get("status"),
@@ -357,12 +377,7 @@ def main() -> int:
             "LiveCodeBench": args.livecodebench_file,
         }
     )
-    predictor_roots = {
-        "stage1": [args.root / "stage1/rep0_predictor"],
-        "stage2": [args.root / "stage2/rep0_predictor", args.root / "stage2/rep0_predictor_2", args.root / "stage2/rep0_predictor_3"],
-        "stage3": [args.root / "stage3/rep0_predictor", args.root / "stage3/rep0_predictor_2", args.root / "stage3/rep0_predictor_3"],
-    }
-    measured_roots = {phase: [args.root / phase / f"rep{i}" for i in range(1, 4)] for phase in PHASES}
+    predictor_roots, measured_roots = resolve_queue_roots(args.root)
     models = {"stage1": args.stage1_model, "stage2": args.stage2_model, "stage3": args.stage3_model}
     phases = []
     for phase in PHASES:
@@ -375,6 +390,7 @@ def main() -> int:
                 measured_roots[phase],
                 {"path": str(model), "sha256": content_sha256(model), "hash_scheme": "tree-v1" if model.is_dir() else "file-v1"},
                 phase_prediction(prediction_contract, phase),
+                manifest["calibration_workloads"][phase],
             )
         )
     semantic_binding = optional_file_binding(args.semantic_contract)

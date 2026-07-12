@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "processes": [
+    {
+      "args": [
+        "scripts/check_experiment_workflow_fast.sh"
+      ],
+      "autorestart": true,
+      "command": "bash",
+      "error_log": "/data-1/tmp/verl_agent_scratch/experiment_workflow/pm2/experiment-reliability-ci.err.log",
+      "name": "experiment-reliability-ci",
+      "output_log": "/data-1/tmp/verl_agent_scratch/experiment_workflow/pm2/experiment-reliability-ci.out.log"
+    }
+  ],
+  "reboot_restore": {
+    "bootstrap": null,
+    "reboot_restore_available": false,
+    "restore_command": "pm2 resurrect"
+  }
+}

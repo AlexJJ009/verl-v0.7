@@ -117,6 +117,8 @@ from pathlib import Path
 
 sys.path.insert(0, os.environ["CALIBRATION_REPO"] + "/scripts")
 from calibration_timing import load_validation_timing
+from calibration_outcomes import load_generation_outcomes
+from check_calibration_prediction_contract import canonical_json_sha256
 
 report_root = Path(sys.argv[1])
 history_path = Path(sys.argv[2])
@@ -136,8 +138,9 @@ for phase in ("stage1", "stage2", "stage3"):
         status_path = root / f"{phase}.status.json"
         resources_path = root / f"{phase}.resources.json"
         metrics_paths = list((root / phase / "logs/metrics/OnPolicyWDLSFT-CodeTask").glob("*.jsonl"))
+        generation_paths = list((root / phase / "logs/validation").glob("*/*.jsonl"))
         timeline_path = root / f"{phase}.validation_timeline.jsonl"
-        if not status_path.is_file() or not resources_path.is_file() or len(metrics_paths) != 1 or not timeline_path.is_file():
+        if not status_path.is_file() or not resources_path.is_file() or len(metrics_paths) != 1 or len(generation_paths) != 1 or not timeline_path.is_file():
             raise SystemExit(f"missing bootstrap artifacts for {phase} rep {rep}")
         status = json.loads(status_path.read_text())
         resources = json.loads(resources_path.read_text())
@@ -153,6 +156,11 @@ for phase in ("stage1", "stage2", "stage3"):
         except ValueError as exc:
             raise SystemExit(f"invalid bootstrap timing for {phase} rep {rep}: {exc}") from exc
         elapsed = timing["validation_elapsed_seconds"]
+        workload = manifest["calibration_workloads"][phase]
+        try:
+            outcomes = load_generation_outcomes(generation_paths[0], workload)
+        except ValueError as exc:
+            raise SystemExit(f"invalid bootstrap outcomes for {phase} rep {rep}: {exc}") from exc
         peak_rss = resources.get("peak_rss_gib")
         idle = resources.get("all_gpu_idle_fraction_during_validation", resources.get("gpu_wait_fraction"))
         if elapsed is None or peak_rss is None or idle is None:
@@ -161,6 +169,8 @@ for phase in ("stage1", "stage2", "stage3"):
         runs.append({
             "run_id": f"bootstrap-{phase}-{rep}",
             "phase": phase,
+            "evidence_role": "bootstrap_history",
+            "artifact_root": str(root),
             "completed_at": completed,
             "release_gate_passed": True,
             "content_addressed": True,
@@ -172,12 +182,25 @@ for phase in ("stage1", "stage2", "stage3"):
             "scorer_hash": scorer_hash,
             "timeout_policy_hash": timeout_hash,
             "max_response_length": max_response_length,
+            "workload_descriptor_sha256": canonical_json_sha256(workload),
+            "outcome_schema_version": workload["outcome_schema_version"],
+            "artifact_bindings": {
+                name: {"path": str(path), "sha256": __import__("hashlib").sha256(path.read_bytes()).hexdigest()}
+                for name, path in {
+                    "status": status_path,
+                    "resources": resources_path,
+                    "metrics": metrics_paths[0],
+                    "generation": generation_paths[0],
+                    "timeline": timeline_path,
+                }.items()
+            },
             "metrics": {
                 "validation_elapsed_seconds": elapsed,
                 "trainer_validation_elapsed_seconds": timing["trainer_validation_elapsed_seconds"],
                 "pre_readiness_elapsed_seconds": timing["pre_readiness_elapsed_seconds"],
                 "peak_rss_gib": peak_rss,
                 "all_gpu_idle_fraction_during_validation": idle,
+                **outcomes,
             },
         })
 history = {
