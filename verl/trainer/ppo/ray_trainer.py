@@ -296,6 +296,42 @@ def build_validation_generation_samples(
     return samples
 
 
+def build_response_telemetry(
+    response_ids: torch.Tensor,
+    response_attention_mask: torch.Tensor,
+    *,
+    eos_token_id: int | None,
+    max_response_length: int,
+) -> dict[str, list[Any]]:
+    """Build native response-token completion evidence before text decoding."""
+    if response_ids.ndim != 2 or response_attention_mask.shape != response_ids.shape:
+        raise ValueError("response ids and attention mask must have the same rank-2 shape")
+    if max_response_length <= 0:
+        raise ValueError("max_response_length must be positive")
+
+    token_counts: list[int] = []
+    eos_present: list[bool] = []
+    finish_reasons: list[str] = []
+    for ids, mask in zip(response_ids.detach().cpu(), response_attention_mask.detach().cpu(), strict=True):
+        active_ids = ids[mask.bool()]
+        count = int(active_ids.numel())
+        has_eos = bool(eos_token_id is not None and torch.any(active_ids == eos_token_id).item())
+        if has_eos:
+            finish_reason = "stop"
+        elif count == max_response_length:
+            finish_reason = "length"
+        else:
+            finish_reason = "unknown"
+        token_counts.append(count)
+        eos_present.append(has_eos)
+        finish_reasons.append(finish_reason)
+    return {
+        "response_token_count": token_counts,
+        "response_eos_present": eos_present,
+        "response_finish_reason": finish_reasons,
+    }
+
+
 def select_validation_generation_samples(
     samples: list[dict[str, Any]], max_samples: int | None, seed: int = 42
 ) -> list[dict[str, Any]]:
@@ -953,6 +989,15 @@ class RayPPOTrainer:
 
             # Store generated outputs
             output_ids = test_batch.batch["responses"]
+            response_attention_mask = test_batch.batch["attention_mask"][:, -output_ids.shape[-1] :]
+            response_telemetry = build_response_telemetry(
+                output_ids,
+                response_attention_mask,
+                eos_token_id=self.tokenizer.eos_token_id,
+                max_response_length=self.config.data.max_response_length,
+            )
+            for key, values in response_telemetry.items():
+                reward_extra_infos_dict[key].extend(values)
             output_texts = [self.tokenizer.decode(ids, skip_special_tokens=True) for ids in output_ids]
             sample_outputs.extend(output_texts)
 

@@ -1,7 +1,10 @@
 from omegaconf import OmegaConf
+import pytest
+import torch
 
 from verl.trainer.ppo.ray_trainer import (
     RayPPOTrainer,
+    build_response_telemetry,
     build_validation_generation_samples,
 )
 from verl.utils.tracking import ValidationGenerationsLogger
@@ -28,6 +31,30 @@ def test_build_validation_generation_samples_keeps_reward_metadata():
     assert samples[0]["ground_truth"] == "42"
     assert samples[0]["pred"] == "[NO_BOXED]"
     assert samples[1]["verification_method"] == "string_match"
+
+
+def test_build_response_telemetry_uses_native_ids_mask_and_eos():
+    result = build_response_telemetry(
+        torch.tensor([[10, 2, 0, 0], [11, 12, 13, 14], [20, 21, 0, 0]]),
+        torch.tensor([[1, 1, 0, 0], [1, 1, 1, 1], [1, 1, 0, 0]]),
+        eos_token_id=2,
+        max_response_length=4,
+    )
+    assert result == {
+        "response_token_count": [2, 4, 2],
+        "response_eos_present": [True, False, False],
+        "response_finish_reason": ["stop", "length", "unknown"],
+    }
+
+
+def test_build_response_telemetry_rejects_shape_mismatch():
+    with pytest.raises(ValueError, match="same rank-2 shape"):
+        build_response_telemetry(
+            torch.ones(2, 4, dtype=torch.long),
+            torch.ones(2, 3, dtype=torch.long),
+            eos_token_id=2,
+            max_response_length=4,
+        )
 
 
 def test_validation_generations_logger_uses_row_per_sample_table_shape():

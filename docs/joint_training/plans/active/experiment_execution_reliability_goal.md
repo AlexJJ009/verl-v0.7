@@ -498,9 +498,13 @@ The dynamic estimator contract is fixed as `stage123_history_conformal_v1`:
    and derivation algorithm are schema-versioned and hashed.
 
    New run evidence must write one row per submitted validation item with stable dataset
-   UID, response token count, EOS-present boolean, finish reason, response text,
+   UID, `response_token_count`, `response_eos_present`, `response_finish_reason`, response text,
    `code_reward_latency_seconds`, timeout/status, and score. Token count/EOS come from
    the rollout response tensor/mask before decoding, not tokenizer re-encoding. Missing
+   `response_finish_reason` is exactly `stop` when EOS is present, `length` when the
+   non-padding count equals `MAX_RESPONSE_LENGTH` without EOS, and `unknown` otherwise;
+   `unknown` is incomplete telemetry and makes outcome-schema-v2 history ineligible.
+   Missing
    rows, duplicate UIDs, a row count other than the pinned full-validation count,
    missing token/EOS/finish telemetry, or disagreement between runtime and artifact
    counts makes the repetition ineligible. Historical text-only JSONL may be re-encoded
