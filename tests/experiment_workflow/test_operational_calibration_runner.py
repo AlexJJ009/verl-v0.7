@@ -69,6 +69,8 @@ def test_queue_propagates_stage1_identity_from_manifest() -> None:
     assert '${STAGE1_INIT_MODEL_PATH:-' not in text
     assert 'QWEN3_1P7B_MODEL_PATH=$(manifest_get paths.base_model)' in text
     assert 'QWEN3_1P7B_MODEL_PATH="$QWEN3_1P7B_MODEL_PATH"' in text
+    for variable in ("CALIBRATION_HUMANEVAL_PLUS_FILE", "CALIBRATION_MBPP_PLUS_FILE", "CALIBRATION_LIVE_CODE_BENCH_FILE"):
+        assert f'{variable}="${variable}"' in text
 
 
 def test_resource_sampling_starts_at_validation_rollout_readiness() -> None:
@@ -103,7 +105,13 @@ role = os.environ["CALIBRATION_ROLE"]
 rep = os.environ["REP_INDEX"]
 Path({str(log)!r}).parent.mkdir(parents=True, exist_ok=True)
 with open({str(log)!r}, "a") as handle:
-    handle.write(f"{{role}} {{phase}} {{rep}} {{os.environ['QWEN3_1P7B_MODEL_PATH']}}\\n")
+    required = [
+        os.environ["QWEN3_1P7B_MODEL_PATH"],
+        os.environ["CALIBRATION_HUMANEVAL_PLUS_FILE"],
+        os.environ["CALIBRATION_MBPP_PLUS_FILE"],
+        os.environ["CALIBRATION_LIVE_CODE_BENCH_FILE"],
+    ]
+    handle.write(f"{{role}} {{phase}} {{rep}} {{'|'.join(required)}}\\n")
 if {fail_on!r} == f"{{role}}:{{phase}}:{{rep}}":
     raise SystemExit(42)
 root = Path(os.environ["CALIBRATION_ROOT"]) / role / phase / f"rep_{{rep}}"
@@ -285,9 +293,10 @@ def test_queue_runs_bootstrap_then_freezes_contract_then_acceptance(tmp_path: Pa
     )
     assert result.returncode == 0, result.stderr + result.stdout
     lines = log.read_text().splitlines()
-    base_model = yaml.safe_load((ROOT / "recipe/on_policy_wdl_sft/experiment_manifest/stage123.yaml").read_text())["paths"]["base_model"]
-    expected_bootstrap = [f"bootstrap {phase} {rep} {base_model}" for phase in ("stage1", "stage2", "stage3") for rep in range(6)]
-    expected_acceptance = [f"acceptance {phase} {rep} {base_model}" for phase in ("stage1", "stage2", "stage3") for rep in range(3)]
+    manifest = yaml.safe_load((ROOT / "recipe/on_policy_wdl_sft/experiment_manifest/stage123.yaml").read_text())
+    required = "|".join([manifest["paths"]["base_model"], *[item["path"] for item in manifest["calibration_workloads"]["stage1"]["datasets"]]])
+    expected_bootstrap = [f"bootstrap {phase} {rep} {required}" for phase in ("stage1", "stage2", "stage3") for rep in range(6)]
+    expected_acceptance = [f"acceptance {phase} {rep} {required}" for phase in ("stage1", "stage2", "stage3") for rep in range(3)]
     assert lines == expected_bootstrap + expected_acceptance
     history = tmp_path / "history/trusted_history.json"
     contract = tmp_path / "prediction/prediction_contract.json"
@@ -314,8 +323,9 @@ def test_stage12_queue_builds_phase_scoped_history_and_contract(tmp_path: Path) 
     result = subprocess.run(["bash", str(QUEUE)], cwd=ROOT, env=env, text=True, capture_output=True)
     assert result.returncode == 0, result.stderr + result.stdout
     lines = log.read_text().splitlines()
-    base_model = yaml.safe_load((ROOT / "recipe/on_policy_wdl_sft/experiment_manifest/stage123.yaml").read_text())["paths"]["base_model"]
-    assert lines == [f"bootstrap {phase} {rep} {base_model}" for phase in ("stage1", "stage2") for rep in range(6)] + [f"acceptance {phase} {rep} {base_model}" for phase in ("stage1", "stage2") for rep in range(3)]
+    manifest = yaml.safe_load((ROOT / "recipe/on_policy_wdl_sft/experiment_manifest/stage123.yaml").read_text())
+    required = "|".join([manifest["paths"]["base_model"], *[item["path"] for item in manifest["calibration_workloads"]["stage1"]["datasets"]]])
+    assert lines == [f"bootstrap {phase} {rep} {required}" for phase in ("stage1", "stage2") for rep in range(6)] + [f"acceptance {phase} {rep} {required}" for phase in ("stage1", "stage2") for rep in range(3)]
     history = json.loads((tmp_path / "history/trusted_history.json").read_text())
     contract = json.loads((tmp_path / "prediction/prediction_contract.json").read_text())
     assert history["phase_scope"] == ["stage1", "stage2"]
@@ -336,8 +346,9 @@ def test_queue_stops_on_first_failed_calibration_rep(tmp_path: Path) -> None:
         check=False,
     )
     assert result.returncode != 0
-    base_model = yaml.safe_load((ROOT / "recipe/on_policy_wdl_sft/experiment_manifest/stage123.yaml").read_text())["paths"]["base_model"]
-    assert log.read_text().splitlines() == [f"bootstrap stage1 {rep} {base_model}" for rep in range(3)]
+    manifest = yaml.safe_load((ROOT / "recipe/on_policy_wdl_sft/experiment_manifest/stage123.yaml").read_text())
+    required = "|".join([manifest["paths"]["base_model"], *[item["path"] for item in manifest["calibration_workloads"]["stage1"]["datasets"]]])
+    assert log.read_text().splitlines() == [f"bootstrap stage1 {rep} {required}" for rep in range(3)]
     assert not (tmp_path / "prediction/prediction_contract.json").exists()
 
 

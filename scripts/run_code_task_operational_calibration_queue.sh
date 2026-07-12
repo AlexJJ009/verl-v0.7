@@ -50,9 +50,28 @@ print(value)
 PY
 }
 
+manifest_dataset_path() {
+  python3 - "$NORMALIZED_MANIFEST" "$1" <<'PY'
+import json, sys
+manifest = json.load(open(sys.argv[1]))
+matches = {
+    source["path"]
+    for workload in manifest["calibration_workloads"].values()
+    for source in workload["datasets"]
+    if source.get("name") == sys.argv[2]
+}
+if len(matches) != 1:
+    raise SystemExit(f"dataset path mismatch for {sys.argv[2]}: {sorted(matches)}")
+print(matches.pop())
+PY
+}
+
 export STAGE1_INIT_MODEL_PATH=$(manifest_get paths.stage1_init_model)
 export STAGE1_INIT_PROVENANCE_PATH=$(manifest_get paths.stage1_init_provenance)
 export QWEN3_1P7B_MODEL_PATH=$(manifest_get paths.base_model)
+export CALIBRATION_HUMANEVAL_PLUS_FILE=$(manifest_dataset_path HumanEval+)
+export CALIBRATION_MBPP_PLUS_FILE=$(manifest_dataset_path MBPP+)
+export CALIBRATION_LIVE_CODE_BENCH_FILE=$(manifest_dataset_path LiveCodeBench)
 
 algorithm=$(manifest_get calibration_policy.algorithm)
 [ "$algorithm" = stage123_history_conformal_v1 ] || { echo "ERROR: unsupported calibration algorithm: $algorithm" >&2; exit 1; }
@@ -144,6 +163,9 @@ run_missing_rep() {
     STAGE1_INIT_MODEL_PATH="$STAGE1_INIT_MODEL_PATH" \
     STAGE1_INIT_PROVENANCE_PATH="$STAGE1_INIT_PROVENANCE_PATH" \
     QWEN3_1P7B_MODEL_PATH="$QWEN3_1P7B_MODEL_PATH" \
+    CALIBRATION_HUMANEVAL_PLUS_FILE="$CALIBRATION_HUMANEVAL_PLUS_FILE" \
+    CALIBRATION_MBPP_PLUS_FILE="$CALIBRATION_MBPP_PLUS_FILE" \
+    CALIBRATION_LIVE_CODE_BENCH_FILE="$CALIBRATION_LIVE_CODE_BENCH_FILE" \
     "$RUNNER" "$phase"
   wait_for_status "$role" "$phase" "$rep" "$session"
 }
