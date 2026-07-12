@@ -453,7 +453,12 @@ The dynamic estimator contract is fixed as `stage123_history_conformal_v1`:
    `sorted_relative_path_content_sha256_v1`: for a file it is ordinary SHA-256; for a
    directory, sort all regular files by POSIX relative path, then hash for each file
    the 8-byte big-endian path length, UTF-8 path bytes, and the file-content SHA-256
-   bytes. Symlinks and special files are rejected. The manifest schema and renderer
+   bytes. A Hugging Face snapshot may contain relative symlinks only when each resolved
+   target is a regular file under the same `models--*/blobs/` cache root; hash it under
+   the symlink's snapshot-relative path using the resolved target content. Absolute,
+   dangling, directory, special-file, symlink-chain, or cache-root-escaping links are
+   rejected. Symlinks outside this HF snapshot rule and all special files are rejected.
+   The manifest schema and renderer
    reject missing/extra descriptor keys, incorrect order, non-integer counts, and a
    declared artifact hash that does not match the pinned source.
 
