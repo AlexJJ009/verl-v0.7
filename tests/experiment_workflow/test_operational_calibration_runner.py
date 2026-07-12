@@ -35,6 +35,17 @@ def test_controlled_termination_requires_complete_validation_evidence() -> None:
     assert 'CALIBRATION_ALLOW_DEPLOYABLE' in text
     assert 'CODE_TASK_SKIP_DB_IMPORT' in text
     assert 'db_wandb_side_effects_allowed":%s' in text
+    assert "Stage1 init provenance target mismatch" in text
+    assert "Stage1 model artifact hash mismatch" in text
+    assert "Stage1 provenance hash mismatch" in text
+
+
+def test_stage1_phase_requires_bound_format_sft_identity() -> None:
+    text = (ROOT / "recipe/on_policy_wdl_sft/code_task/run_code_task_operational_calibration_phase.sh").read_text()
+    stage1 = text[text.index(" stage1)"):text.index(" stage2)")]
+    assert "STAGE1_INIT_PROVENANCE_PATH" in stage1
+    assert "Stage1 calibration provenance target mismatch" in stage1
+    assert 'INIT_MODEL_PATH="${STAGE1_INIT_MODEL_PATH:?}"' in stage1
 
 
 def test_acceptance_requires_frozen_history_and_matching_prediction_contract() -> None:
@@ -46,6 +57,16 @@ def test_acceptance_requires_frozen_history_and_matching_prediction_contract() -
     assert 'prediction contract history_index_sha256 mismatch' in text
     assert 'prediction contract manifest_sha256 mismatch' in text
     assert 'CALIBRATION_PREDICTION_CONTRACT_SHA256 mismatch' in text
+
+
+def test_queue_propagates_stage1_identity_from_manifest() -> None:
+    text = QUEUE.read_text()
+    assert "manifest_get paths.stage1_init_model" in text
+    assert "manifest_get paths.stage1_init_provenance" in text
+    assert 'STAGE1_INIT_MODEL_PATH="$STAGE1_INIT_MODEL_PATH"' in text
+    assert 'STAGE1_INIT_PROVENANCE_PATH="$STAGE1_INIT_PROVENANCE_PATH"' in text
+    assert 'STAGE1_INIT_MODEL_PATH=$(manifest_get paths.stage1_init_model)' in text
+    assert '${STAGE1_INIT_MODEL_PATH:-' not in text
 
 
 def test_resource_sampling_starts_at_validation_rollout_readiness() -> None:
@@ -195,6 +216,57 @@ def test_direct_runner_requires_preflight_before_side_effects(tmp_path: Path) ->
     assert result.returncode != 0
     assert "CALIBRATION_NORMALIZED_MANIFEST required" in result.stderr
     assert not root.exists()
+
+
+def _stage1_identity_env(tmp_path: Path) -> tuple[dict[str, str], Path, Path, Path]:
+    descriptor_path = ROOT / "recipe/on_policy_wdl_sft/code_task/calibration_workload_descriptor.py"
+    spec = __import__("importlib.util").util.spec_from_file_location("identity_descriptor", descriptor_path)
+    descriptor = __import__("importlib.util").util.module_from_spec(spec); assert spec.loader; spec.loader.exec_module(descriptor)
+    model = tmp_path / "format-sft"; model.mkdir(); (model / "config.json").write_text('{"model_type":"qwen3"}\n'); (model / "weights.bin").write_bytes(b"weights")
+    provenance = model / "format_cold_start_source.json"; provenance.write_text(json.dumps({"target_dir": str(model)}) + "\n")
+    source_manifest = json.loads(subprocess.run(["python3", str(ROOT / "scripts/experiment_manifest.py"), "render", str(ROOT / "recipe/on_policy_wdl_sft/experiment_manifest/stage123.yaml"), "--format", "json"], text=True, capture_output=True, check=True).stdout)
+    source_manifest["paths"]["stage1_init_model"] = str(model); source_manifest["paths"]["stage1_init_provenance"] = str(provenance)
+    source = source_manifest["calibration_workloads"]["stage1"]["model_sources"][0]
+    source["path"] = str(model); source["artifact_sha256"] = descriptor.artifact_sha256(model)
+    source["provenance"]["path"] = str(provenance); source["provenance"]["sha256"] = descriptor.file_sha256(provenance)
+    normalized = tmp_path / "normalized.json"; normalized.write_text(json.dumps(source_manifest, sort_keys=True) + "\n")
+    report = tmp_path / "report.json"; report.write_text('{}\n'); policy = tmp_path / "policy.json"; policy.write_text('{}\n'); budget = tmp_path / "budget.json"; budget.write_text('{"ok":true,"decision":"pass"}\n')
+    receipt = tmp_path / "receipt.json"
+    subprocess.run(["python3", str(ROOT / "scripts/stage123_preflight_receipt.py"), "issue", "--normalized-manifest", str(normalized), "--report", str(report), "--policy", str(policy), "--budget-result", str(budget), "--output", str(receipt)], check=True, capture_output=True, text=True)
+    marker = tmp_path / "tmux-called"; fake_bin = tmp_path / "bin"; fake_bin.mkdir(); tmux = fake_bin / "tmux"; tmux.write_text(f"#!/bin/sh\ntouch {marker}\nexit 1\n"); tmux.chmod(0o700)
+    env = {**os.environ, "PATH": f"{fake_bin}:{os.environ['PATH']}", "ALLOW_CODE_OPERATIONAL_CALIBRATION": "1", "CALIBRATION_ROLE": "bootstrap", "REP_INDEX": "0", "CALIBRATION_ROOT": str(tmp_path / "calibration"), "CALIBRATION_NORMALIZED_MANIFEST": str(normalized), "CALIBRATION_PREFLIGHT_REPORT": str(report), "CALIBRATION_PREFLIGHT_RECEIPT": str(receipt), "CALIBRATION_PREFLIGHT_POLICY": str(policy), "CALIBRATION_EXPECTED_PROFILE_HASH": source_manifest["resource_profile"]["sha256"], "CALIBRATION_PREFLIGHT_RECEIPT_MAX_AGE_SECONDS": "3600", "STAGE1_INIT_MODEL_PATH": str(tmp_path / "attacker-model"), "STAGE1_INIT_PROVENANCE_PATH": str(tmp_path / "attacker.json")}
+    return env, model, provenance, marker
+
+
+def test_stage1_identity_tamper_fails_before_tmux(tmp_path: Path) -> None:
+    env, model, _provenance, marker = _stage1_identity_env(tmp_path)
+    (model / "weights.bin").write_bytes(b"tampered")
+    result = subprocess.run(["bash", str(RUNNER), "stage1"], cwd=ROOT, env=env, text=True, capture_output=True)
+    assert result.returncode != 0 and "Stage1 model artifact hash mismatch" in result.stderr
+    assert not marker.exists()
+
+
+def test_stage1_provenance_tamper_fails_before_tmux(tmp_path: Path) -> None:
+    env, _model, provenance, marker = _stage1_identity_env(tmp_path)
+    provenance.write_text('{"target_dir":"/wrong"}\n')
+    result = subprocess.run(["bash", str(RUNNER), "stage1"], cwd=ROOT, env=env, text=True, capture_output=True)
+    assert result.returncode != 0 and "hash mismatch" in result.stderr
+    assert not marker.exists()
+
+
+def test_stage1_ignores_external_identity_override(tmp_path: Path) -> None:
+    env, _model, _provenance, marker = _stage1_identity_env(tmp_path)
+    result = subprocess.run(["bash", str(RUNNER), "stage1"], cwd=ROOT, env=env, text=True, capture_output=True)
+    assert "attacker-model" not in result.stderr
+    assert marker.exists()
+
+
+def test_stage2_does_not_require_stage1_identity(tmp_path: Path) -> None:
+    env, _model, _provenance, marker = _stage1_identity_env(tmp_path)
+    env.pop("STAGE1_INIT_MODEL_PATH"); env.pop("STAGE1_INIT_PROVENANCE_PATH")
+    result = subprocess.run(["bash", str(RUNNER), "stage2"], cwd=ROOT, env=env, text=True, capture_output=True)
+    assert "Stage1" not in result.stderr
+    assert marker.exists()
 
 
 def test_queue_runs_bootstrap_then_freezes_contract_then_acceptance(tmp_path: Path) -> None:

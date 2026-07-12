@@ -36,6 +36,32 @@ verify_preflight_admission() {
     --max-age-seconds "$CALIBRATION_PREFLIGHT_RECEIPT_MAX_AGE_SECONDS" >/dev/null
 }
 verify_preflight_admission
+if [ "$PHASE" = stage1 ]; then
+  readarray -t stage1_identity < <(python3 - "$CALIBRATION_NORMALIZED_MANIFEST" "$REPO/recipe/on_policy_wdl_sft/code_task/calibration_workload_descriptor.py" <<'PY'
+import importlib.util,json,sys
+from pathlib import Path
+manifest_path=Path(sys.argv[1]); helper_path=Path(sys.argv[2])
+spec=importlib.util.spec_from_file_location('calibration_workload_descriptor', helper_path)
+module=importlib.util.module_from_spec(spec); assert spec.loader; spec.loader.exec_module(module)
+manifest=json.loads(manifest_path.read_text()); workload=manifest['calibration_workloads']['stage1']
+if workload.get('model_provenance_class') != 'sft_checkpoint': raise SystemExit('ERROR: Stage1 provenance class mismatch')
+sources=workload.get('model_sources', [])
+if len(sources) != 1 or sources[0].get('role') != 'rollout' or sources[0].get('state') != 'materialized':
+    raise SystemExit('ERROR: Stage1 model source binding mismatch')
+source=sources[0]; model=Path(source['path']).resolve(); provenance_doc=source.get('provenance', {}); provenance=Path(provenance_doc.get('path','')).resolve()
+if Path(manifest['paths']['stage1_init_model']).resolve() != model: raise SystemExit('ERROR: Stage1 manifest model path mismatch')
+if Path(manifest['paths']['stage1_init_provenance']).resolve() != provenance: raise SystemExit('ERROR: Stage1 manifest provenance path mismatch')
+if module.artifact_sha256(model) != source.get('artifact_sha256'): raise SystemExit('ERROR: Stage1 model artifact hash mismatch')
+if module.file_sha256(provenance) != provenance_doc.get('sha256'): raise SystemExit('ERROR: Stage1 provenance hash mismatch')
+data=json.loads(provenance.read_text())
+if Path(data.get('target_dir','')).resolve() != model: raise SystemExit('ERROR: Stage1 init provenance target mismatch')
+print(model); print(provenance)
+PY
+  )
+  [ "${#stage1_identity[@]}" = 2 ] || { echo 'ERROR: Stage1 identity resolution failed' >&2; exit 1; }
+  STAGE1_INIT_MODEL_PATH=${stage1_identity[0]}
+  STAGE1_INIT_PROVENANCE_PATH=${stage1_identity[1]}
+fi
 verify_acceptance_inputs() {
   local history=${CALIBRATION_HISTORY_INDEX:?CALIBRATION_HISTORY_INDEX required for acceptance}
   local contract=${CALIBRATION_PREDICTION_CONTRACT:?CALIBRATION_PREDICTION_CONTRACT required for acceptance}
@@ -152,6 +178,8 @@ timeout --signal=TERM --kill-after=30s 1800s env DOCKER_CONTAINER_NAME='$CONTAIN
   WANDB_DISABLED='$([ "$CALIBRATION_ROLE" = bootstrap ] && echo true || echo "${WANDB_DISABLED:-false}")' \
   CODE_TASK_SKIP_DB_IMPORT='$([ "$CALIBRATION_ROLE" = bootstrap ] && echo 1 || echo "${CODE_TASK_SKIP_DB_IMPORT:-0}")' \
   QWEN3_1P7B_MODEL_PATH='${QWEN3_1P7B_MODEL_PATH:?}' \
+  STAGE1_INIT_MODEL_PATH='${STAGE1_INIT_MODEL_PATH:-}' \
+  STAGE1_INIT_PROVENANCE_PATH='${STAGE1_INIT_PROVENANCE_PATH:-}' \
   CALIBRATION_HUMANEVAL_PLUS_FILE='${CALIBRATION_HUMANEVAL_PLUS_FILE:?}' \
   CALIBRATION_MBPP_PLUS_FILE='${CALIBRATION_MBPP_PLUS_FILE:?}' \
   CALIBRATION_LIVE_CODE_BENCH_FILE='${CALIBRATION_LIVE_CODE_BENCH_FILE:?}' CALIBRATION_OUTPUT_ROOT='$ROOT/${PHASE}' \

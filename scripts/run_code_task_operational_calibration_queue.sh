@@ -45,6 +45,9 @@ print(value)
 PY
 }
 
+export STAGE1_INIT_MODEL_PATH=$(manifest_get paths.stage1_init_model)
+export STAGE1_INIT_PROVENANCE_PATH=$(manifest_get paths.stage1_init_provenance)
+
 algorithm=$(manifest_get calibration_policy.algorithm)
 [ "$algorithm" = stage123_history_conformal_v1 ] || { echo "ERROR: unsupported calibration algorithm: $algorithm" >&2; exit 1; }
 BOOTSTRAP_REPS=$(manifest_get calibration_policy.bootstrap_repetitions_per_phase)
@@ -132,6 +135,8 @@ run_missing_rep() {
     CALIBRATION_PREDICTION_CONTRACT="$PREDICTION_CONTRACT" \
     CALIBRATION_HISTORY_SHA256="${CALIBRATION_HISTORY_SHA256:-}" \
     CALIBRATION_PREDICTION_CONTRACT_SHA256="${CALIBRATION_PREDICTION_CONTRACT_SHA256:-}" \
+    STAGE1_INIT_MODEL_PATH="$STAGE1_INIT_MODEL_PATH" \
+    STAGE1_INIT_PROVENANCE_PATH="$STAGE1_INIT_PROVENANCE_PATH" \
     "$RUNNER" "$phase"
   wait_for_status "$role" "$phase" "$rep" "$session"
 }
