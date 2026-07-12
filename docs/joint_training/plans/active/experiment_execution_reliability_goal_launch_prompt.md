@@ -9,7 +9,7 @@ Resume and complete the long-running VERL Experiment Execution Reliability Goal.
 ```
 
 Read the entire plan before acting. Treat its `Resume Snapshot - 2026-07-12 (Outcome Schema V2)` and
-AC-01 through AC-29 as the execution contract. Do not restart from Milestone 0 or
+AC-01 through AC-30 as the execution contract. Do not restart from Milestone 0 or
 repeat accepted work unless live verification proves its evidence is stale or invalid.
 
 ## Current Repository State
@@ -105,16 +105,17 @@ from committed code, and a fresh independent CPU acceptance is obtained:
 4. create a completely new calibration root and run exactly one Stage1 probe first;
    unlock the remaining queue only if every hard gate, including truncation `<= 0.01`,
    passes; the old `af1a407f` and `c62b6093_v4` roots remain diagnostic-only;
-5. complete six eligible bootstrap repetitions for Stage1 and Stage2. Stage3 remains
-   fail-closed until the current named Stage2 run actually produces its 20-step model2,
-   model/provenance hashes are recorded, and a regenerated preflight binds that output;
-6. complete six eligible Stage3 bootstrap repetitions, then freeze the immutable history
-   snapshot before acceptance measurements;
-7. generate and verify `prediction_contract.json`;
-8. run exactly three new acceptance repetitions per Stage1/Stage2/Stage3, excluding
-   them from history;
-9. assemble only a `candidate` report; checker alone may issue `deployable` and its
-   canonical receipt;
+5. complete six eligible Stage1/Stage2 bootstrap repetitions, freeze their history,
+   generate their prediction contract, and run three fresh Stage1/Stage2 acceptance
+   repetitions;
+6. checker may issue only AC-30's `stage12_calibrated` limited receipt for
+   `frac25-stage2`, final step 20, with the exact run prefix/train hash/output and
+   provenance paths pinned in AC-30. It is not deployable and cannot release results;
+7. run that authorized Stage2 producer, materialize/hash/provenance-bind model2, and
+   regenerate Stage3 descriptor plus preflight evidence;
+8. complete six Stage3 bootstrap and three fresh Stage3 acceptance repetitions;
+9. assemble the complete three-phase `candidate` report; checker alone may then issue
+   final `deployable` and its canonical receipt;
 10. preserve the 30-minute readiness-to-complete-metrics hard timeout and verified GPU
    cleanup; any timeout, incomplete metric, scorer safety failure, semantic/hash drift,
    interval failure, or stale receipt is blocked with no bypass.
@@ -132,7 +133,7 @@ from committed code, and a fresh independent CPU acceptance is obtained:
 
 Do not mark the Goal complete until:
 
-- every AC-01 through AC-29 is covered by current evidence;
+- every AC-01 through AC-30 is covered by current evidence;
 - real local L40S calibration returns checker-owned `deployable`;
 - both receipts are fresh and exactly hash-matched;
 - fast/full gates pass from committed code;

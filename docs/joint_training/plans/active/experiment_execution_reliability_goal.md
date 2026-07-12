@@ -40,7 +40,7 @@ than maintaining independent run-prefix/final-step/train-file arrays.
 ## Resume Snapshot - 2026-07-12 (Outcome Schema V2)
 
 This section is the authoritative resume point for the next `/goal` run. It updates
-transient execution state without weakening or replacing AC-01 through AC-29.
+transient execution state without weakening or replacing AC-01 through AC-30.
 
 ### Accepted State
 
@@ -180,7 +180,7 @@ diagnostic evidence and must not enter trusted history v2. After the outcome-sch
 implementation and its fresh preflight pass, the Goal must run a new six-repetition
 bootstrap cohort per phase, freeze immutable history, generate the prediction contract,
 run three new acceptance repetitions per phase, obtain checker-owned `deployable`,
-and complete fresh independent AC-01 through AC-29 acceptance.
+and complete fresh independent AC-01 through AC-30 acceptance.
 
 ### Current Blocking Condition
 
@@ -1516,6 +1516,83 @@ calibration/formal queue drift, stale preflight bindings, a missing current Stag
 implemented as side-effect-free committed interfaces: no Docker, tmux, Ray, trainer,
 GPU process, PM2 daemon, or external service contact may start.
 
+### AC-30 - Stage2 Producer Uses a Checker-Owned Limited Receipt
+
+- Given the only authorized producer identity:
+
+  ```text
+  run_id: frac25-stage2
+  run_prefix: CODE-S2-QWEN3-1P7B-STAGE123-FRAC25_P40_S220_S340-BETA01-LAMBDA08-V1
+  final_step: 20
+  train_file_sha256: 160be1866e6c1dc439dcfbd594b54324f000f1f48db1f6a0fc88cf227c628dab
+  expected_output_path: /data-2/model_weights/code_task/qwen3_1p7b_stage123/frac25_p40_s220_s340/stage2_final_model2
+  expected_provenance_path: /data-2/model_weights/code_task/qwen3_1p7b_stage123/frac25_p40_s220_s340/frac25-stage3.provenance.json
+  ```
+
+  plus six eligible Stage1 and Stage2 bootstrap repetitions, three fresh Stage1 and
+  Stage2 acceptance repetitions, a fresh preflight receipt authorizing only materialized
+  Stage1/Stage2 calibration identities, and a candidate report containing no Stage3
+  measurements because the current Stage2 20-step producer output does not yet exist,
+- When the operational calibration checker evaluates the phase-scoped report with
+  `--authorization-scope stage12_producer`, and the dedicated
+  `stage123_stage12_producer_receipt.py` verifier
+  evaluates its canonical receipt for the named producer run,
+- Then checker may issue only decision `stage12_calibrated` with receipt type
+  `code_task_operational_calibration_stage12_producer`, an exact allowlist containing
+  `authorized_run_ids = ["frac25-stage2"]`, `authorized_final_steps =
+  {"frac25-stage2": 20}`, and `phase_scope = ["stage1", "stage2"]`. It binds the exact
+  run prefix, train-file hash, expected output/provenance paths, manifest, separate
+  Stage1 and Stage2 selected-cohort hashes, phase-scoped history index, prediction
+  contract, policy, preflight receipt, workloads, and candidate report. The limited
+  receipt cannot authorize Stage1/Stage3 formal training,
+  another Stage2 run, DB/W&B release, the full deployability verifier, or Goal
+  completion. After Stage2 model2 and provenance are materialized, Stage3 descriptors
+  and preflight evidence are regenerated, Stage3 bootstrap and acceptance execute, and
+  only the existing complete three-phase checker path may issue final `deployable`.
+
+Verification:
+
+```bash
+/data-1/verl07/run_train.sh /opt/venv/bin/python -m pytest -q \
+  tests/experiment_workflow/test_stage12_producer_receipt.py \
+  tests/experiment_workflow/test_operational_calibration_checker.py \
+  tests/experiment_workflow/test_no_preflight_bypass.py \
+  tests/experiment_workflow/test_manifest_release_gate.py
+python3 scripts/check_code_task_operational_calibration.py --help
+python3 recipe/on_policy_wdl_sft/code_task/stage123_stage12_producer_receipt.py --help
+python3 recipe/on_policy_wdl_sft/code_task/stage123_deployability_receipt.py --help
+```
+
+Expected evidence: a new dedicated fixture module covers exact limited schema and
+admission. Fixtures prove valid limited issuance, missing Stage1/Stage2 phase,
+included Stage3 measurement, wrong producer run/final step, stale/mismatched hashes,
+scope escalation, full-verifier misuse, Stage3 admission, release-hook use, and Goal
+completion use all fail closed. The repo-native Docker test harness may provide Python
+dependencies, but fixtures start no nested Docker container, GPU workload, tmux, Ray,
+trainer, PM2, or external-service request.
+
+#### AC-30A - Limited Receipt Schema Is Exact
+
+- Given the exact producer identity above and a Stage1/Stage2-only candidate,
+- When checker writes the limited receipt,
+- Then its type, decision, phase scope, single-run allowlist, final-step map, run prefix,
+  train hash, output/provenance paths, phase cohort hashes, and all input hashes match
+  exactly; any extra/missing phase or producer field is blocked.
+
+#### AC-30B - Limited Receipt Is Rejected Outside Producer Admission
+
+- Given a valid `stage12_calibrated` receipt,
+- When Stage1 admission, Stage3 admission, another Stage2 run, full deployability
+  verifier, release hook, or completion-state checker evaluates it,
+- Then each exits nonzero before side effects with `limited_receipt_scope_mismatch`.
+
+#### AC-30C - Stage3 Regeneration Is Post-Producer Only
+
+- Given `frac25-stage2` has not materialized model2 and provenance with matching hashes,
+- When Stage3 descriptor, preflight, or calibration is requested,
+- Then it fails closed; after materialization, descriptor and preflight are regenerated
+  from the new hashes before any Stage3 bootstrap starts.
+
 ## Required Execution Order
 
 Milestones 0 through 4 are implemented, committed, and independently CPU-accepted at
@@ -1540,13 +1617,16 @@ the commits recorded in the Resume Snapshot. On resume, execute this remaining o
    Only if UID, deadline, telemetry, timeout, truncation (`<= 0.01`), score, memory, and
    cleanup hard gates pass may the remaining Stage1 repetitions and Stage2 calibration
    proceed. A failed probe remains diagnostic and does not unlock the queue.
-8. After the current Stage2 20-step model2 is actually produced and provenance-bound,
-   regenerate/verify the Stage3 descriptor and preflight binding; only then run Stage3
-   calibration. Complete six eligible bootstrap repetitions per phase without reusing
-   `af1a407f`, `c62b6093_v4`, or the legacy 60-step Stage2 model.
-9. Freeze trusted history, generate the prediction contract, run exactly three new
-   acceptance repetitions per phase, and require checker-owned `deployable` evidence.
-10. A fresh independent Reviewer executes every AC-01 through AC-29 command, the PM2
+8. Complete six eligible Stage1/Stage2 bootstrap repetitions, freeze their history,
+   generate their prediction contract, and run three fresh Stage1/Stage2 acceptance
+   repetitions. Checker may issue only AC-30's `stage12_calibrated` limited receipt for
+   the named 20-step Stage2 producer.
+9. Run the authorized Stage2 producer. Materialize/hash/provenance-bind its model2,
+   regenerate Stage3 descriptor and preflight evidence, then complete six Stage3
+   bootstrap and three fresh Stage3 acceptance repetitions.
+10. Assemble the complete three-phase candidate and require the original checker-owned
+    `deployable` receipt. A limited receipt never satisfies this step.
+11. A fresh independent Reviewer executes every AC-01 through AC-30 command, the PM2
    keepalive checks, and the completion-state checker from committed code.
 
 No milestone may start until all required ACs from the previous milestone pass.
@@ -1614,7 +1694,7 @@ The implementer may report local verification but may not mark this goal accepte
 A fresh reviewer must:
 
 1. run all AC verification commands in both repositories;
-2. report AC-01 through AC-29 as `PASS`, `FAIL`, or `WEAKENED`;
+2. report AC-01 through AC-30 as `PASS`, `FAIL`, or `WEAKENED`;
 3. inspect commits and tests for skipped, deleted, loosened, or trivial checks;
 4. confirm acceptance used no real external service;
 5. write the final review under `docs/joint_training/codereview/active/` and move
