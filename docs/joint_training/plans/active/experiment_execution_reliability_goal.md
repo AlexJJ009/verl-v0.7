@@ -107,28 +107,33 @@ trusted history merely because their phase status returned zero.
 
 ### Current Blocking Condition
 
-History assembly correctly failed closed because Stage2's trainer metric
-`timing_s/testing` and the instrumented interval from `validation_ready` to
-`metrics_complete` differ by more than the implementation's one-second consistency
-limit. For Stage2 bootstrap repetition 0, the preserved evidence includes:
+History assembly correctly failed closed because the pre-resume implementation imposed
+an unjustified one-second equality tolerance between two clocks with different start
+semantics. Code tracing establishes that `timing_s/testing` starts immediately before
+calling `_validate()`, whereas `validation_ready` is emitted only after `_validate()`
+has switched joint-model validation weights, entered the dataloader, and materialized
+the first validation batch. Both end after `_validate()` returns, immediately before
+metrics logging. The trainer-wide timer therefore includes a non-negative pre-readiness
+preparation interval that the required readiness-to-complete deadline intentionally
+excludes. For Stage2 bootstrap repetition 0, the preserved evidence includes:
 
 ```text
 timing_s/testing:                  88.79418030567467
 validation_ready -> metrics_complete: approximately 80.58 seconds
 ```
 
-The next Goal must not choose whichever value makes prediction easier, widen the
-tolerance after seeing measurements, or silently discard the eighteen runs. It must:
+The normative contract is now fixed below in AC-05 and AC-19. The Goal must not choose
+whichever value makes prediction easier, introduce a post-hoc equality tolerance, or
+silently discard the eighteen runs. It must:
 
 1. trace the exact start/end semantics of both measurements in code and artifacts;
-2. decide which field represents the plan's normative wall-clock interval from
-   validation rollout readiness to complete validation metrics;
-3. define any allowed consistency relationship and clock precision before rebuilding
-   history;
-4. update this plan first if the acceptance contract needs clarification;
-5. obtain a fresh independent `READY` review for that clarification before changing
+2. use the timeline-derived field as the normative wall-clock interval from validation
+   rollout readiness to complete validation metrics;
+3. enforce the reviewed containment relationship and clock precision below before
+   rebuilding history;
+4. obtain a fresh independent `READY` review for this clarification before changing
    assembler/checker/runner behavior or restarting GPU work;
-6. add regression fixtures for Stage1, Stage2, and Stage3 timing evidence, then rerun
+5. add regression fixtures for Stage1, Stage2, and Stage3 timing evidence, then rerun
    CPU gates and issue a fresh preflight.
 
 After that gate passes, the Goal may either content-address and reuse all complete
@@ -356,6 +361,28 @@ out-of-domain history widens the interval or returns `inconclusive`; it never si
 substitutes greedy decoding or a narrower validation set.
 
 The dynamic estimator contract is fixed as `stage123_history_conformal_v1`:
+
+0. The canonical `validation_elapsed_seconds` is the monotonic wall-clock interval
+   `metrics_complete.monotonic_seconds - validation_ready.monotonic_seconds`. The
+   `validation_ready` event is emitted after first-batch materialization and immediately
+   before validation rollout preparation/dispatch; `metrics_complete` is emitted after
+   `_validate()` has returned complete validation metrics and before external metrics
+   logging. Event timestamps are captured from one process with `time.monotonic()` and
+   retained as the original finite numeric values. Derived durations are computed from
+   those unrounded timestamps and serialized with outward six-decimal rounding wherever
+   they form an acceptance interval or hard-bound comparison. `timing_s/testing` is a
+   required diagnostic whole-`_validate()` timer, not the predictor/deadline target: it
+   starts before validation weight switching and dataloader/first-batch preparation, so
+   it may exceed the canonical interval by any non-negative preparation duration. The
+   evidence is consistent iff events occur exactly once in the order
+   `validation_ready`, `generation_complete`, `metrics_complete`, all timestamps are
+   finite and nondecreasing, the canonical interval is non-negative, and the unrounded
+   `timing_s/testing` is greater than or equal to the unrounded canonical interval.
+   Numerical equality and a fixed absolute-difference tolerance are forbidden because
+   the intervals intentionally have different start points. Missing/duplicate events,
+   clock reversal, non-finite values, or a trainer timer shorter than the canonical
+   interval makes the repetition ineligible and `blocked`; it is never repaired by
+   selecting another timing source.
 
 1. A run is eligible history only when its release gate passed, its calibration
    artifacts remain content-addressed and readable, and its validation dataset hashes,
@@ -745,6 +772,12 @@ quality evidence.
   Each phase also has an
   independent 30-minute hard runtime timeout and must produce complete full-validation
   metrics; any timeout, incomplete metric set, or scorer stall returns `blocked`.
+
+For AC-19 prediction, the 1800-second hard deadline, interval coverage, point error,
+and valid-scores-per-minute denominator, `validation_elapsed_seconds` always means the
+canonical timeline-derived readiness-to-`metrics_complete` interval defined in AC-05.
+`timing_s/testing` remains required diagnostic evidence and must contain that interval,
+but it is not substituted into prediction or deadline calculations.
 
 #### AC-19A - Prediction Contract Is Frozen Before Execution
 
