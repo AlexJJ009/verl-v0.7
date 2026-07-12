@@ -71,6 +71,20 @@ def test_queue_propagates_stage1_identity_from_manifest() -> None:
     assert 'QWEN3_1P7B_MODEL_PATH="$QWEN3_1P7B_MODEL_PATH"' in text
     for variable in ("CALIBRATION_HUMANEVAL_PLUS_FILE", "CALIBRATION_MBPP_PLUS_FILE", "CALIBRATION_LIVE_CODE_BENCH_FILE"):
         assert f'{variable}="${variable}"' in text
+    for variable in (
+        "CALIBRATION_STAGE1_CKPT_DIR",
+        "CALIBRATION_STAGE1_MODEL2",
+        "CALIBRATION_STAGE1_RUN_PREFIX",
+        "CALIBRATION_STAGE1_HANDOFF_STEP",
+        "CALIBRATION_TRAIN_FILE",
+    ):
+        assert f'{variable}="${variable}"' in text
+    assert 'source_path = model2 / "stage1_source.json"' in text
+    assert 'producer["source"]["handoff_step"]' in text
+    assert 're.sub(r"_[0-9]+$", "", checkpoint.name)' in text
+    assert 'Stage2 source run prefix mismatch' in text
+    assert 'producer.get("train_file_sha256")' in text
+    assert 'Stage2 calibration train file hash mismatch' in text
 
 
 def test_resource_sampling_starts_at_validation_rollout_readiness() -> None:
@@ -111,6 +125,14 @@ with open({str(log)!r}, "a") as handle:
         os.environ["CALIBRATION_MBPP_PLUS_FILE"],
         os.environ["CALIBRATION_LIVE_CODE_BENCH_FILE"],
     ]
+    if phase == "stage2":
+        required.extend([
+            os.environ["CALIBRATION_STAGE1_CKPT_DIR"],
+            os.environ["CALIBRATION_STAGE1_MODEL2"],
+            os.environ["CALIBRATION_STAGE1_RUN_PREFIX"],
+            os.environ["CALIBRATION_STAGE1_HANDOFF_STEP"],
+            os.environ["CALIBRATION_TRAIN_FILE"],
+        ])
     handle.write(f"{{role}} {{phase}} {{rep}} {{'|'.join(required)}}\\n")
 if {fail_on!r} == f"{{role}}:{{phase}}:{{rep}}":
     raise SystemExit(42)
@@ -213,6 +235,26 @@ def _queue_env(tmp_path: Path, fake_runner: Path) -> dict[str, str]:
     return env
 
 
+def _expected_queue_log_value(phase: str) -> str:
+    manifest = yaml.safe_load((ROOT / "recipe/on_policy_wdl_sft/experiment_manifest/stage123.yaml").read_text())
+    values = [
+        manifest["paths"]["base_model"],
+        *[item["path"] for item in manifest["calibration_workloads"]["stage1"]["datasets"]],
+    ]
+    if phase == "stage2":
+        model2 = next(item["path"] for item in manifest["calibration_workloads"]["stage2"]["model_sources"] if item["role"] == "model2")
+        source = json.loads((Path(model2) / "stage1_source.json").read_text())
+        producer = next(run for run in manifest["runs"] if run["id"] == "frac25-stage2")
+        values.extend([
+            source["source_checkpoint"],
+            model2,
+            source["stage1_run_prefix"],
+            str(source["handoff_step"]),
+            str(Path(producer["train_file"]).resolve()),
+        ])
+    return "|".join(values)
+
+
 def test_direct_runner_requires_preflight_before_side_effects(tmp_path: Path) -> None:
     root = tmp_path / "calibration"
     env = {
@@ -293,10 +335,8 @@ def test_queue_runs_bootstrap_then_freezes_contract_then_acceptance(tmp_path: Pa
     )
     assert result.returncode == 0, result.stderr + result.stdout
     lines = log.read_text().splitlines()
-    manifest = yaml.safe_load((ROOT / "recipe/on_policy_wdl_sft/experiment_manifest/stage123.yaml").read_text())
-    required = "|".join([manifest["paths"]["base_model"], *[item["path"] for item in manifest["calibration_workloads"]["stage1"]["datasets"]]])
-    expected_bootstrap = [f"bootstrap {phase} {rep} {required}" for phase in ("stage1", "stage2", "stage3") for rep in range(6)]
-    expected_acceptance = [f"acceptance {phase} {rep} {required}" for phase in ("stage1", "stage2", "stage3") for rep in range(3)]
+    expected_bootstrap = [f"bootstrap {phase} {rep} {_expected_queue_log_value(phase)}" for phase in ("stage1", "stage2", "stage3") for rep in range(6)]
+    expected_acceptance = [f"acceptance {phase} {rep} {_expected_queue_log_value(phase)}" for phase in ("stage1", "stage2", "stage3") for rep in range(3)]
     assert lines == expected_bootstrap + expected_acceptance
     history = tmp_path / "history/trusted_history.json"
     contract = tmp_path / "prediction/prediction_contract.json"
@@ -323,9 +363,7 @@ def test_stage12_queue_builds_phase_scoped_history_and_contract(tmp_path: Path) 
     result = subprocess.run(["bash", str(QUEUE)], cwd=ROOT, env=env, text=True, capture_output=True)
     assert result.returncode == 0, result.stderr + result.stdout
     lines = log.read_text().splitlines()
-    manifest = yaml.safe_load((ROOT / "recipe/on_policy_wdl_sft/experiment_manifest/stage123.yaml").read_text())
-    required = "|".join([manifest["paths"]["base_model"], *[item["path"] for item in manifest["calibration_workloads"]["stage1"]["datasets"]]])
-    assert lines == [f"bootstrap {phase} {rep} {required}" for phase in ("stage1", "stage2") for rep in range(6)] + [f"acceptance {phase} {rep} {required}" for phase in ("stage1", "stage2") for rep in range(3)]
+    assert lines == [f"bootstrap {phase} {rep} {_expected_queue_log_value(phase)}" for phase in ("stage1", "stage2") for rep in range(6)] + [f"acceptance {phase} {rep} {_expected_queue_log_value(phase)}" for phase in ("stage1", "stage2") for rep in range(3)]
     history = json.loads((tmp_path / "history/trusted_history.json").read_text())
     contract = json.loads((tmp_path / "prediction/prediction_contract.json").read_text())
     assert history["phase_scope"] == ["stage1", "stage2"]

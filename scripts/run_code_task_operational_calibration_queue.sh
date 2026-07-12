@@ -42,7 +42,7 @@ export CALIBRATION_PREFLIGHT_RECEIPT_MAX_AGE_SECONDS=${CALIBRATION_PREFLIGHT_REC
 
 manifest_get() {
   python3 - "$NORMALIZED_MANIFEST" "$1" <<'PY'
-import json, sys
+import hashlib, json, re, sys
 value = json.load(open(sys.argv[1]))
 for key in sys.argv[2].split("."):
     value = value[key]
@@ -72,6 +72,56 @@ export QWEN3_1P7B_MODEL_PATH=$(manifest_get paths.base_model)
 export CALIBRATION_HUMANEVAL_PLUS_FILE=$(manifest_dataset_path HumanEval+)
 export CALIBRATION_MBPP_PLUS_FILE=$(manifest_dataset_path MBPP+)
 export CALIBRATION_LIVE_CODE_BENCH_FILE=$(manifest_dataset_path LiveCodeBench)
+readarray -t stage2_source < <(python3 - "$NORMALIZED_MANIFEST" <<'PY'
+import hashlib, json, re, sys
+from pathlib import Path
+
+manifest = json.load(open(sys.argv[1]))
+workload = manifest["calibration_workloads"]["stage2"]
+model2_sources = [source for source in workload["model_sources"] if source.get("role") == "model2"]
+if len(model2_sources) != 1 or model2_sources[0].get("state") != "materialized":
+    raise SystemExit("Stage2 calibration requires exactly one materialized model2 source")
+model2 = Path(model2_sources[0]["path"]).resolve()
+source_path = model2 / "stage1_source.json"
+source = json.loads(source_path.read_text())
+if Path(source.get("target_dir", "")).resolve() != model2:
+    raise SystemExit("Stage2 model2 source target mismatch")
+checkpoint = Path(source["source_checkpoint"]).resolve()
+actor = Path(source["actor_dir"]).resolve()
+handoff = int(source["handoff_step"])
+if actor != checkpoint / f"global_step_{handoff}" / "actor" or not actor.is_dir():
+    raise SystemExit("Stage2 source actor/checkpoint mismatch")
+expected_prefix = re.sub(r"_[0-9]+$", "", checkpoint.name)
+if source.get("stage1_run_prefix") != expected_prefix:
+    raise SystemExit("Stage2 source run prefix mismatch")
+producers = [run for run in manifest["runs"] if run.get("id") == "frac25-stage2"]
+if len(producers) != 1:
+    raise SystemExit("Stage2 calibration producer descriptor mismatch")
+producer = producers[0]
+if int(producer["source"]["handoff_step"]) != handoff:
+    raise SystemExit("Stage2 producer handoff mismatch")
+train_file = Path(producer["train_file"]).resolve()
+if not train_file.is_file():
+    raise SystemExit("Stage2 calibration train file missing")
+digest = hashlib.sha256()
+with train_file.open("rb") as handle:
+    for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+        digest.update(chunk)
+if digest.hexdigest() != producer.get("train_file_sha256"):
+    raise SystemExit("Stage2 calibration train file hash mismatch")
+print(checkpoint)
+print(model2)
+print(expected_prefix)
+print(handoff)
+print(train_file)
+PY
+)
+[ "${#stage2_source[@]}" = 5 ] || { echo "ERROR: Stage2 calibration source resolution failed" >&2; exit 1; }
+CALIBRATION_STAGE1_CKPT_DIR=${stage2_source[0]}
+CALIBRATION_STAGE1_MODEL2=${stage2_source[1]}
+CALIBRATION_STAGE1_RUN_PREFIX=${stage2_source[2]}
+CALIBRATION_STAGE1_HANDOFF_STEP=${stage2_source[3]}
+CALIBRATION_TRAIN_FILE=${stage2_source[4]}
 
 algorithm=$(manifest_get calibration_policy.algorithm)
 [ "$algorithm" = stage123_history_conformal_v1 ] || { echo "ERROR: unsupported calibration algorithm: $algorithm" >&2; exit 1; }
@@ -166,6 +216,11 @@ run_missing_rep() {
     CALIBRATION_HUMANEVAL_PLUS_FILE="$CALIBRATION_HUMANEVAL_PLUS_FILE" \
     CALIBRATION_MBPP_PLUS_FILE="$CALIBRATION_MBPP_PLUS_FILE" \
     CALIBRATION_LIVE_CODE_BENCH_FILE="$CALIBRATION_LIVE_CODE_BENCH_FILE" \
+    CALIBRATION_STAGE1_CKPT_DIR="$CALIBRATION_STAGE1_CKPT_DIR" \
+    CALIBRATION_STAGE1_MODEL2="$CALIBRATION_STAGE1_MODEL2" \
+    CALIBRATION_STAGE1_RUN_PREFIX="$CALIBRATION_STAGE1_RUN_PREFIX" \
+    CALIBRATION_STAGE1_HANDOFF_STEP="$CALIBRATION_STAGE1_HANDOFF_STEP" \
+    CALIBRATION_TRAIN_FILE="$CALIBRATION_TRAIN_FILE" \
     "$RUNNER" "$phase"
   wait_for_status "$role" "$phase" "$rep" "$session"
 }
