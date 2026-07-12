@@ -218,6 +218,17 @@ def test_queue_stops_on_first_failed_calibration_rep(tmp_path: Path) -> None:
     assert not (tmp_path / "prediction/prediction_contract.json").exists()
 
 
+def test_queue_rejects_diagnostic_only_calibration_roots(tmp_path: Path) -> None:
+    fake = tmp_path / "fake_runner.py"
+    _fake_runner(fake, tmp_path / "order.log")
+    for name in ("af1a407f", "baaa596b_v2", "7c1ed4e1_v3"):
+        env = _queue_env(tmp_path, fake)
+        env["CALIBRATION_REPORT_ROOT"] = str(tmp_path / name / "report")
+        result = subprocess.run(["bash", str(QUEUE)], cwd=ROOT, env=env, text=True, capture_output=True, check=False)
+        assert result.returncode != 0
+        assert "diagnostic-only calibration root is ineligible" in result.stderr
+
+
 def test_stage1_and_stage3_share_canonical_reward_manager_timeout() -> None:
     script = (ROOT / "recipe/on_policy_wdl_sft/code_task/run_s1_code_base.sh").read_text()
     assert 'export REWARD_TIMEOUT=${REWARD_TIMEOUT:-$CODE_REWARD_MANAGER_TIMEOUT}' in script

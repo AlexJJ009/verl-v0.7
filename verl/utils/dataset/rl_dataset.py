@@ -370,6 +370,11 @@ class RLHFDataset(Dataset):
         # add index for each prompt
         if "extra_info" not in row_dict or row_dict["extra_info"] is None:
             row_dict["extra_info"] = dict()
+        source_uid = row_dict["extra_info"].get("uid")
+        if self.config.get("require_source_uid", False):
+            if not isinstance(source_uid, str) or not source_uid:
+                raise ValueError("extra_info.uid must be a non-empty string when require_source_uid=true")
+            row_dict["source_uid"] = source_uid
         index = row_dict.get("extra_info", {}).get("index", 0)
         tools_kwargs = row_dict.get("extra_info", {}).get("tools_kwargs", {})
         interaction_kwargs = row_dict.get("extra_info", {}).get("interaction_kwargs", {})

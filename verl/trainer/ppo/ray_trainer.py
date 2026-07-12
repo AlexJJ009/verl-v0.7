@@ -838,7 +838,7 @@ class RayPPOTrainer:
             self.validation_generations_logger.log(self.config.trainer.logger, tracking_samples, self.global_steps)
 
     def _get_gen_batch(self, batch: DataProto) -> DataProto:
-        reward_keys = set({"data_source", "reward_model", "extra_info", "uid"}) & batch.non_tensor_batch.keys()
+        reward_keys = set({"data_source", "reward_model", "extra_info", "uid", "source_uid"}) & batch.non_tensor_batch.keys()
 
         # HFRollout (in-process, sync) needs tensor data for model.generate().
         # AgentLoopManager (vLLM/SGLang) uses text prompts from non_tensor_batch.
@@ -886,6 +886,7 @@ class RayPPOTrainer:
         sample_scores = []
         sample_turns = []
         sample_uids = []
+        sample_source_uids = []
         sample_data_sources = []
         validation_timeline_file = os.environ.get("CALIBRATION_VALIDATION_TIMELINE_FILE")
 
@@ -1011,6 +1012,9 @@ class RayPPOTrainer:
             input_texts = [self.tokenizer.decode(ids, skip_special_tokens=True) for ids in input_ids]
             sample_inputs.extend(input_texts)
             sample_uids.extend(test_batch.non_tensor_batch["uid"])
+            if "source_uid" not in test_batch.non_tensor_batch:
+                raise ValueError("validation batch missing required source_uid")
+            sample_source_uids.extend(test_batch.non_tensor_batch["source_uid"])
             sample_data_sources.extend(test_batch.non_tensor_batch.get("data_source", ["unknown"] * len(test_batch)))
 
             # evaluate using reward_function
@@ -1049,7 +1053,7 @@ class RayPPOTrainer:
             ground_truths=sample_gts,
             scores=sample_scores,
             data_sources=sample_data_sources,
-            sample_uids=sample_uids,
+            sample_uids=sample_source_uids,
             reward_extra_infos_dict=reward_extra_infos_dict,
         )
         self._maybe_log_val_generations(samples=validation_generation_samples)
@@ -1065,7 +1069,7 @@ class RayPPOTrainer:
                 reward_extra_infos_dict=reward_extra_infos_dict,
                 dump_path=val_data_dir,
                 data_sources=sample_data_sources,
-                sample_uids=sample_uids,
+                sample_uids=sample_source_uids,
             )
 
         for key_info, lst in reward_extra_infos_dict.items():

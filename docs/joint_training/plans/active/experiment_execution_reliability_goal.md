@@ -610,15 +610,22 @@ The dynamic estimator contract is fixed as `stage123_history_conformal_v1`:
    and derivation algorithm are schema-versioned and hashed.
 
    New run evidence must write one row per submitted validation item with stable dataset
-   UID, `response_token_count`, `response_eos_present`, `response_finish_reason`, response text,
+   `source_uid`, `response_token_count`, `response_eos_present`, `response_finish_reason`, response text,
    `code_reward_latency_seconds`, timeout/status, and score. Token count/EOS come from
    the rollout response tensor/mask before decoding, not tokenizer re-encoding. Missing
    `response_finish_reason` is exactly `stop` when EOS is present, `length` when the
    non-padding count equals `MAX_RESPONSE_LENGTH` without EOS, and `unknown` otherwise;
    `unknown` is incomplete telemetry and makes outcome-schema-v2 history ineligible.
-   The validation JSONL dump must write the same stable `uid` already carried by
-   `build_validation_generation_samples`; retaining UID only in transient tracking
-   samples is insufficient.
+   `RLHFDataset.__getitem__` must copy Parquet `extra_info.uid` into a distinct non-tensor
+   `source_uid`. That field must survive DataProto batching, validation repeat, divisor
+   padding/unpadding, generation, reward scoring, and JSONL dumping without replacement
+   or reordering. The existing `uid` remains a transient random rollout/request-grouping
+   identifier for advantage grouping and validation metric aggregation; it must never be
+   treated as dataset provenance or substituted for `source_uid`.
+   `build_validation_generation_samples` and the validation JSONL dump use `source_uid`
+   for their externally visible `uid` column so existing consumers retain their schema
+   while receiving the stable asset identity. Retaining source identity only in
+   transient tracking samples is insufficient.
    Missing
    rows, duplicate UIDs, a row count other than `submitted_prompt_count`, an observed
    UID sequence that differs from `ordered_eligible_uid_sha256`,
@@ -631,6 +638,14 @@ The dynamic estimator contract is fixed as `stage123_history_conformal_v1`:
    omitted UID; it is diagnostic-only and must not enter trusted history. After this
    contract is implemented and committed, all bootstrap evidence starts from another
    fresh calibration root.
+   The later `7c1ed4e1_v3` root is also diagnostic-only. Stage1 bootstrap repetition 0
+   proved the 1422-to-1379 denominator, native response telemetry, deadline completion,
+   and high GPU utilization, but its JSONL exposed random request UUIDs rather than
+   Parquet source UIDs, so independent ordered source-UID verification failed.
+   Repetition 1 was deliberately terminated immediately after discovery. Neither run
+   nor any partial artifact in that root may enter trusted history or acceptance. The
+   source-UID fix requires new committed code, fresh CPU acceptance, fresh preflight,
+   and another completely new calibration root.
 
    For each continuous outcome
    `validation_elapsed_seconds`, `peak_rss_gib`, `response_length_p50_tokens`,
@@ -1163,6 +1178,41 @@ intervals, elapsed/RSS point error above 20%, any elapsed/RSS repetition outside
 frozen interval, acceptance of the approximately `[0.08,0.70]` bimodal GPU-idle fixture,
 rejection of `[0.02,0.87]`, assembler self-declaration, TTL/skew boundaries, permitted
 same-queue exact-hash receipt reuse, and rejected cross-queue or changed-hash replay.
+
+#### AC-19G - Stable Source UID Is Separate From Rollout Grouping UID
+
+- Given a validation Parquet row with a unique non-empty UTF-8 `extra_info.uid`,
+- When `RLHFDataset.__getitem__`, collation, DataProto repeat, divisor padding/unpadding,
+  rollout generation, reward extraction, tracking-sample construction, and JSONL dump
+  execute,
+- Then `source_uid` equals the original Parquet value with exact order and multiplicity;
+  the externally visible schema-compatible JSONL/tracking `uid` equals `source_uid`;
+  transient random `uid` remains a separate rollout/request-grouping key passed to
+  `process_validation_metrics`; and missing, empty, replaced, reordered, or duplicated
+  source identity fails closed.
+
+Given expected ordered eligible source UIDs and observed JSONL rows, when the sets match
+but order differs, or a verifier derives or hardcodes expected order from the observed
+artifact itself, then verification fails. A transient request UUID may be retained only
+under a separately named diagnostic field such as `request_id`; it is never provenance.
+The diagnostic-only roots `af1a407f`, `baaa596b_v2`, and `7c1ed4e1_v3`, including any
+partial repetition, are explicitly ineligible as trusted-history or acceptance input.
+
+Verification:
+
+```bash
+python3 -m pytest -q \
+  tests/utils/dataset/test_rl_dataset_on_cpu.py \
+  tests/joint_training/regression/test_validation_generation_logging.py \
+  tests/experiment_workflow/test_calibration_outcomes.py \
+  tests/experiment_workflow/test_operational_calibration_runner.py
+```
+
+Expected evidence: fixtures prove missing/empty Parquet UID rejection, exact source UID
+survival across repeat and pad/unpad, transient UID retention for metrics, stable source
+UID emission for tracking/JSONL, ordered-hash rejection despite set equality, rejection
+of observed-artifact-derived expectations, and diagnostic-root exclusion. No test may
+replace ordered comparison with a set-only check or pin the UUIDs produced by one run.
 
 ### AC-20 - Soft Threshold Failure Stops and Requests User Decision
 

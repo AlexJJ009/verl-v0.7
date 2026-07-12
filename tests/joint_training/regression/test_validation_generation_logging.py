@@ -1,12 +1,14 @@
 from omegaconf import OmegaConf
 import pytest
 import torch
+import numpy as np
 
 from verl.trainer.ppo.ray_trainer import (
     RayPPOTrainer,
     build_response_telemetry,
     build_validation_generation_samples,
 )
+from verl.protocol import DataProto, pad_dataproto_to_divisor, unpad_dataproto
 from verl.utils.tracking import ValidationGenerationsLogger
 
 
@@ -114,6 +116,26 @@ def test_dump_generations_writes_stable_uid(tmp_path):
     row = json.loads((tmp_path / "3.jsonl").read_text())
     assert row["uid"] == "he-1"
     assert row["data_source"] == "HumanEval+"
+
+
+def test_source_uid_survives_repeat_pad_and_unpad_in_order():
+    proto = DataProto.from_dict(
+        tensors={"dummy": torch.tensor([[1], [2], [3]])},
+        non_tensors={"uid": np.array(["request-a", "request-b", "request-c"]), "source_uid": np.array(["source-a", "source-b", "source-c"])},
+    )
+    repeated = proto.repeat(repeat_times=2, interleave=True)
+    padded, pad_size = pad_dataproto_to_divisor(repeated, 4)
+    restored = unpad_dataproto(padded, pad_size)
+    assert restored.non_tensor_batch["uid"].tolist() == ["request-a", "request-a", "request-b", "request-b", "request-c", "request-c"]
+    assert restored.non_tensor_batch["source_uid"].tolist() == ["source-a", "source-a", "source-b", "source-b", "source-c", "source-c"]
+
+
+def test_validation_keeps_transient_and_source_uid_routing_separate():
+    source = (Path(__file__).resolve().parents[3] / "verl/trainer/ppo/ray_trainer.py").read_text()
+    assert "sample_uids.extend(test_batch.non_tensor_batch[\"uid\"])" in source
+    assert "sample_source_uids.extend(test_batch.non_tensor_batch[\"source_uid\"])" in source
+    assert "sample_uids=sample_source_uids" in source
+    assert "self._val_metrics_update(data_sources, sample_uids," in source
 
 
 def test_maybe_log_val_generations_prints_subset_and_logs_full_tracking(capsys):

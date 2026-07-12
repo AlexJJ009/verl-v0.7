@@ -232,3 +232,24 @@ def test_rl_dataset_filters_overlong_prompts_with_batch_encoding_chat_template(t
 
     assert len(dataset) == 1
     assert dataset[0]["data_source"] == "short"
+
+
+def test_require_source_uid_materializes_and_rejects_missing(tmp_path):
+    data = [
+        {"prompt": [{"role": "user", "content": "short"}], "data_source": "a", "extra_info": {"uid": "stable-1"}},
+        {"prompt": [{"role": "user", "content": "short"}], "data_source": "b", "extra_info": {}},
+    ]
+    data_file = tmp_path / "source_uid.json"
+    data_file.write_text(json.dumps(data))
+
+    class _Tokenizer:
+        def apply_chat_template(self, messages, add_generation_prompt=True, **kwargs):
+            return [1, 2, 3]
+
+    config = OmegaConf.create(
+        {"prompt_key": "prompt", "max_prompt_length": 8, "filter_overlong_prompts": False, "require_source_uid": True}
+    )
+    dataset = RLHFDataset(data_files=str(data_file), tokenizer=_Tokenizer(), config=config)
+    assert dataset[0]["source_uid"] == "stable-1"
+    with pytest.raises(ValueError, match="extra_info.uid must be a non-empty string"):
+        dataset[1]

@@ -38,6 +38,12 @@ DEADLINE=$(manifest_get calibration_policy.validation_deadline_seconds)
 REPORT_ROOT=${CALIBRATION_REPORT_ROOT:-$(manifest_get calibration_policy.roots.report)}
 HISTORY_ROOT=${CALIBRATION_HISTORY_ROOT:-$(manifest_get calibration_policy.roots.history)}
 PREDICTION_ROOT=${CALIBRATION_PREDICTION_ROOT:-$(manifest_get calibration_policy.roots.prediction)}
+case "$REPORT_ROOT" in
+  */af1a407f/report|*/baaa596b_v2/report|*/7c1ed4e1_v3/report)
+    echo "ERROR: diagnostic-only calibration root is ineligible: $REPORT_ROOT" >&2
+    exit 1
+    ;;
+esac
 HISTORY_INDEX=${CALIBRATION_HISTORY_INDEX:-$HISTORY_ROOT/trusted_history.json}
 PREDICTION_CONTRACT=${CALIBRATION_PREDICTION_CONTRACT:-$PREDICTION_ROOT/prediction_contract.json}
 mkdir -p "$REPORT_ROOT" "$HISTORY_ROOT" "$PREDICTION_ROOT"
