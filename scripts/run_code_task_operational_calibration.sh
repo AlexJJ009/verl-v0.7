@@ -19,6 +19,23 @@ READY="$ROOT/${PHASE}.validation_ready.json"
 GPU_RESOURCES="$ROOT/${PHASE}.gpu_resources.json"
 TIMELINE="$ROOT/${PHASE}.validation_timeline.jsonl"
 [ "${ALLOW_CODE_OPERATIONAL_CALIBRATION:-0}" = 1 ] || { echo 'ERROR: calibration requires ALLOW_CODE_OPERATIONAL_CALIBRATION=1' >&2; exit 1; }
+verify_preflight_admission() {
+  : "${CALIBRATION_NORMALIZED_MANIFEST:?CALIBRATION_NORMALIZED_MANIFEST required}"
+  : "${CALIBRATION_PREFLIGHT_REPORT:?CALIBRATION_PREFLIGHT_REPORT required}"
+  : "${CALIBRATION_PREFLIGHT_RECEIPT:?CALIBRATION_PREFLIGHT_RECEIPT required}"
+  : "${CALIBRATION_PREFLIGHT_POLICY:?CALIBRATION_PREFLIGHT_POLICY required}"
+  : "${CALIBRATION_EXPECTED_PROFILE_HASH:?CALIBRATION_EXPECTED_PROFILE_HASH required}"
+  : "${CALIBRATION_PREFLIGHT_RECEIPT_MAX_AGE_SECONDS:?CALIBRATION_PREFLIGHT_RECEIPT_MAX_AGE_SECONDS required}"
+  python3 "$REPO/scripts/stage123_preflight_receipt.py" verify \
+    --receipt "$CALIBRATION_PREFLIGHT_RECEIPT" \
+    --normalized-manifest "$CALIBRATION_NORMALIZED_MANIFEST" \
+    --report "$CALIBRATION_PREFLIGHT_REPORT" \
+    --policy "$CALIBRATION_PREFLIGHT_POLICY" \
+    --calibration-phase "$PHASE" \
+    --profile-hash "$CALIBRATION_EXPECTED_PROFILE_HASH" \
+    --max-age-seconds "$CALIBRATION_PREFLIGHT_RECEIPT_MAX_AGE_SECONDS" >/dev/null
+}
+verify_preflight_admission
 verify_acceptance_inputs() {
   local history=${CALIBRATION_HISTORY_INDEX:?CALIBRATION_HISTORY_INDEX required for acceptance}
   local contract=${CALIBRATION_PREDICTION_CONTRACT:?CALIBRATION_PREDICTION_CONTRACT required for acceptance}

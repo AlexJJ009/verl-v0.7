@@ -59,7 +59,7 @@ def deployability_fixture(tmp_path: Path):
 
 
 def verify_args(normalized, normalized_path, report, policy, receipt_path):
-    return type("Args", (), {"receipt": receipt_path, "normalized_manifest": normalized_path, "report": report, "policy": policy, "run_id": "frac25-stage2", "profile_hash": normalized["resource_profile"]["sha256"], "max_age_seconds": 3600})
+    return type("Args", (), {"receipt": receipt_path, "normalized_manifest": normalized_path, "report": report, "policy": policy, "run_id": "frac25-stage2", "calibration_phase": None, "profile_hash": normalized["resource_profile"]["sha256"], "max_age_seconds": 3600})
 
 
 def test_valid_receipt_passes(tmp_path: Path):
@@ -77,6 +77,11 @@ def test_pending_stage3_is_not_authorized_by_preflight_receipt(tmp_path: Path):
     result = tool.verify(args)
     assert not result["ok"]
     assert "run_id not authorized by receipt" in result["failures"]
+    args.run_id = None
+    args.calibration_phase = "stage3"
+    result = tool.verify(args)
+    assert not result["ok"]
+    assert "calibration phase not authorized by receipt" in result["failures"]
 
 
 def test_workload_identity_drift_invalidates_preflight_receipt(tmp_path: Path):

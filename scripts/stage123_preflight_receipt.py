@@ -24,7 +24,7 @@ def canonical_sha256(value: object) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
-def authorized_runs(manifest: dict) -> tuple[list[str], dict[str, str]]:
+def authorizations(manifest: dict) -> tuple[list[str], list[str], dict[str, str]]:
     workloads = manifest["calibration_workloads"]
     workload_hashes = {phase: canonical_sha256(workloads[phase]) for phase in ("stage1", "stage2", "stage3")}
     materialized = {
@@ -37,7 +37,8 @@ def authorized_runs(manifest: dict) -> tuple[list[str], dict[str, str]]:
             authorized.append(run["id"])
         elif run["phase"] == "stage3" and materialized["stage3"]:
             authorized.append(run["id"])
-    return authorized, workload_hashes
+    authorized_phases = [phase for phase in ("stage1", "stage2", "stage3") if materialized[phase]]
+    return authorized, authorized_phases, workload_hashes
 
 
 def issue(args) -> dict:
@@ -46,7 +47,7 @@ def issue(args) -> dict:
     budget = json.loads(args.budget_result.read_text())
     if budget.get("ok") is not True or budget.get("decision") != "pass":
         raise ValueError("budget result is not passing")
-    run_ids, workload_hashes = authorized_runs(manifest)
+    run_ids, calibration_phases, workload_hashes = authorizations(manifest)
     return {
         "schema_version": 1,
         "status": "pass",
@@ -58,6 +59,7 @@ def issue(args) -> dict:
         "budget_result_sha256": digest(args.budget_result),
         "profile_sha256": manifest["resource_profile"]["sha256"],
         "authorized_run_ids": run_ids,
+        "authorized_calibration_phases": calibration_phases,
         "workload_descriptor_sha256": workload_hashes,
     }
 
@@ -77,13 +79,17 @@ def verify(args) -> dict:
     for key, value in expected.items():
         if receipt.get(key) != value:
             failures.append(f"{key} mismatch")
-    authorized, workload_hashes = authorized_runs(manifest)
+    authorized, calibration_phases, workload_hashes = authorizations(manifest)
     if receipt.get("authorized_run_ids") != authorized:
         failures.append("authorized_run_ids mismatch")
+    if receipt.get("authorized_calibration_phases") != calibration_phases:
+        failures.append("authorized_calibration_phases mismatch")
     if receipt.get("workload_descriptor_sha256") != workload_hashes:
         failures.append("workload_descriptor_sha256 mismatch")
-    if args.run_id not in receipt.get("authorized_run_ids", []):
+    if args.run_id is not None and args.run_id not in receipt.get("authorized_run_ids", []):
         failures.append("run_id not authorized by receipt")
+    if args.calibration_phase is not None and args.calibration_phase not in receipt.get("authorized_calibration_phases", []):
+        failures.append("calibration phase not authorized by receipt")
     age = (datetime.now(timezone.utc) - parse_time(receipt["generated_at"])).total_seconds()
     if age < 0 or age > args.max_age_seconds:
         failures.append("receipt stale")
@@ -96,7 +102,9 @@ def main() -> int:
     p = sub.add_parser("issue")
     p.add_argument("--normalized-manifest", type=Path, required=True); p.add_argument("--report", type=Path, required=True); p.add_argument("--policy", type=Path, required=True); p.add_argument("--budget-result", type=Path, required=True); p.add_argument("--output", type=Path, required=True)
     p = sub.add_parser("verify")
-    p.add_argument("--receipt", type=Path, required=True); p.add_argument("--normalized-manifest", type=Path, required=True); p.add_argument("--report", type=Path, required=True); p.add_argument("--policy", type=Path, required=True); p.add_argument("--run-id", required=True); p.add_argument("--profile-hash", required=True); p.add_argument("--max-age-seconds", type=int, required=True)
+    p.add_argument("--receipt", type=Path, required=True); p.add_argument("--normalized-manifest", type=Path, required=True); p.add_argument("--report", type=Path, required=True); p.add_argument("--policy", type=Path, required=True)
+    target = p.add_mutually_exclusive_group(required=True); target.add_argument("--run-id"); target.add_argument("--calibration-phase", choices=("stage1", "stage2", "stage3"))
+    p.add_argument("--profile-hash", required=True); p.add_argument("--max-age-seconds", type=int, required=True)
     args = parser.parse_args()
     try:
         if args.command == "issue":

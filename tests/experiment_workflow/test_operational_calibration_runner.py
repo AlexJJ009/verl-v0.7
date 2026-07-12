@@ -149,6 +149,19 @@ def _queue_env(tmp_path: Path, fake_runner: Path) -> dict[str, str]:
         workload["validation_eligibility"]["ordered_eligible_uid_sha256"] = hashlib.sha256(canonical).hexdigest()
     test_manifest = tmp_path / "stage123.test.yaml"
     test_manifest.write_text(yaml.safe_dump(manifest, sort_keys=False))
+    manifest_tool = ROOT / "scripts/experiment_manifest.py"
+    normalized = tmp_path / "stage123.normalized.json"
+    rendered = subprocess.run(["python3", str(manifest_tool), "render", str(test_manifest), "--format", "json"], text=True, capture_output=True, check=True)
+    normalized.write_text(rendered.stdout)
+    report = tmp_path / "machine.json"; report.write_text('{"ok":true}\n')
+    policy = tmp_path / "policy.json"; policy.write_text('{"policy":true}\n')
+    budget = tmp_path / "budget.json"; budget.write_text('{"ok":true,"decision":"pass"}\n')
+    receipt = tmp_path / "preflight-receipt.json"
+    subprocess.run([
+        "python3", str(ROOT / "scripts/stage123_preflight_receipt.py"), "issue",
+        "--normalized-manifest", str(normalized), "--report", str(report), "--policy", str(policy),
+        "--budget-result", str(budget), "--output", str(receipt),
+    ], check=True, capture_output=True, text=True)
     env = os.environ.copy()
     env.update(
         {
@@ -160,9 +173,28 @@ def _queue_env(tmp_path: Path, fake_runner: Path) -> dict[str, str]:
             "CALIBRATION_QUEUE_SCRATCH": str(tmp_path / "scratch"),
             "CALIBRATION_QUEUE_POLL_SECONDS": "0",
             "CALIBRATION_MANIFEST": str(test_manifest),
+            "CALIBRATION_NORMALIZED_MANIFEST": str(normalized),
+            "CALIBRATION_PREFLIGHT_REPORT": str(report),
+            "CALIBRATION_PREFLIGHT_RECEIPT": str(receipt),
+            "CALIBRATION_PREFLIGHT_POLICY": str(policy),
         }
     )
     return env
+
+
+def test_direct_runner_requires_preflight_before_side_effects(tmp_path: Path) -> None:
+    root = tmp_path / "calibration"
+    env = {
+        **os.environ,
+        "CALIBRATION_ROLE": "bootstrap",
+        "REP_INDEX": "0",
+        "CALIBRATION_ROOT": str(root),
+        "ALLOW_CODE_OPERATIONAL_CALIBRATION": "1",
+    }
+    result = subprocess.run(["bash", str(RUNNER), "stage1"], cwd=ROOT, env=env, text=True, capture_output=True)
+    assert result.returncode != 0
+    assert "CALIBRATION_NORMALIZED_MANIFEST required" in result.stderr
+    assert not root.exists()
 
 
 def test_queue_runs_bootstrap_then_freezes_contract_then_acceptance(tmp_path: Path) -> None:
