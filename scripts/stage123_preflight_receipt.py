@@ -19,13 +19,34 @@ def parse_time(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
+def canonical_sha256(value: object) -> str:
+    payload = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(payload).hexdigest()
+
+
+def authorized_runs(manifest: dict) -> tuple[list[str], dict[str, str]]:
+    workloads = manifest["calibration_workloads"]
+    workload_hashes = {phase: canonical_sha256(workloads[phase]) for phase in ("stage1", "stage2", "stage3")}
+    materialized = {
+        phase: all(source.get("state") == "materialized" for source in workloads[phase]["model_sources"])
+        for phase in workloads
+    }
+    authorized = []
+    for run in manifest["runs"]:
+        if run["phase"] == "stage2" and materialized["stage1"] and materialized["stage2"]:
+            authorized.append(run["id"])
+        elif run["phase"] == "stage3" and materialized["stage3"]:
+            authorized.append(run["id"])
+    return authorized, workload_hashes
+
+
 def issue(args) -> dict:
     manifest = json.loads(args.normalized_manifest.read_text())
     report = json.loads(args.report.read_text())
     budget = json.loads(args.budget_result.read_text())
     if budget.get("ok") is not True or budget.get("decision") != "pass":
         raise ValueError("budget result is not passing")
-    run_ids = [item["id"] for item in manifest["runs"]]
+    run_ids, workload_hashes = authorized_runs(manifest)
     return {
         "schema_version": 1,
         "status": "pass",
@@ -36,7 +57,8 @@ def issue(args) -> dict:
         "policy_sha256": digest(args.policy),
         "budget_result_sha256": digest(args.budget_result),
         "profile_sha256": manifest["resource_profile"]["sha256"],
-        "run_ids": run_ids,
+        "authorized_run_ids": run_ids,
+        "workload_descriptor_sha256": workload_hashes,
     }
 
 
@@ -55,7 +77,12 @@ def verify(args) -> dict:
     for key, value in expected.items():
         if receipt.get(key) != value:
             failures.append(f"{key} mismatch")
-    if args.run_id not in receipt.get("run_ids", []):
+    authorized, workload_hashes = authorized_runs(manifest)
+    if receipt.get("authorized_run_ids") != authorized:
+        failures.append("authorized_run_ids mismatch")
+    if receipt.get("workload_descriptor_sha256") != workload_hashes:
+        failures.append("workload_descriptor_sha256 mismatch")
+    if args.run_id not in receipt.get("authorized_run_ids", []):
         failures.append("run_id not authorized by receipt")
     age = (datetime.now(timezone.utc) - parse_time(receipt["generated_at"])).total_seconds()
     if age < 0 or age > args.max_age_seconds:

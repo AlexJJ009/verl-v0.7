@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import math
 from pathlib import Path
@@ -12,6 +13,16 @@ import sys
 
 import jsonschema
 import yaml
+
+
+def _load_workload_hashing():
+    path = ROOT / "recipe/on_policy_wdl_sft/code_task/calibration_workload_descriptor.py"
+    spec = importlib.util.spec_from_file_location("calibration_workload_descriptor", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"cannot load artifact hashing: {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.artifact_sha256, module.file_sha256
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -40,8 +51,9 @@ def normalize(data: dict) -> dict:
         if not item["artifact_dir"].startswith("/data-2/"):
             raise ValueError(f"artifact_dir must use /data-2: {item['id']}")
     workloads = result["calibration_workloads"]
+    artifact_sha256, file_sha256 = _load_workload_hashing()
     expected = {
-        "stage1": ("base_pretrained", ["rollout"], 1),
+        "stage1": ("sft_checkpoint", ["rollout"], 1),
         "stage2": ("fixed_model2_joint_rollout", ["model1", "model2"], 2),
         "stage3": ("stage2_model2_handoff", ["rollout"], 1),
     }
@@ -52,6 +64,37 @@ def normalize(data: dict) -> dict:
             raise ValueError(f"{phase}: calibration workload identity mismatch")
         if [item["role"] for item in workload["model_sources"]] != roles:
             raise ValueError(f"{phase}: calibration model source roles mismatch")
+        for source in workload["model_sources"]:
+            if source["state"] == "pending":
+                if phase != "stage3":
+                    raise ValueError(f"{phase}: pending model source is forbidden")
+                producer = source["producer"]
+                run = next((item for item in result["runs"] if item["id"] == producer["run_id"]), None)
+                if run is None or run["phase"] != "stage2" or run["final_step"] != producer["final_step"]:
+                    raise ValueError("stage3: pending producer identity mismatch")
+                stage3_run = next((item for item in result["runs"] if item["phase"] == "stage3" and item["source"].get("run_id") == run["id"]), None)
+                if stage3_run is None or producer["provenance_path"] != stage3_run["provenance_file"]:
+                    raise ValueError("stage3: pending provenance path mismatch")
+                if source["path"] != producer["output_path"]:
+                    raise ValueError("stage3: pending output path mismatch")
+            elif phase == "stage3":
+                producer = source.get("producer")
+                provenance = source.get("provenance")
+                if not producer or not provenance or producer["final_step"] != 20:
+                    raise ValueError("stage3 materialized source requires current producer binding")
+            elif phase == "stage1":
+                if source["path"] != result["paths"]["stage1_init_model"]:
+                    raise ValueError("stage1: init model path mismatch")
+                provenance = source.get("provenance")
+                if not provenance or provenance["path"] != result["paths"]["stage1_init_provenance"]:
+                    raise ValueError("stage1: init provenance path mismatch")
+            if source["state"] == "materialized":
+                path = Path(source["path"])
+                if artifact_sha256(path) != source["artifact_sha256"]:
+                    raise ValueError(f"{phase}: model artifact hash mismatch: {source['role']}")
+                provenance = source.get("provenance")
+                if provenance is not None and file_sha256(Path(provenance["path"])) != provenance["sha256"]:
+                    raise ValueError(f"{phase}: model provenance hash mismatch: {source['role']}")
         counts = workload["rollout_model_parameter_counts"]
         if len(counts) != count or sum(counts) != workload["rollout_model_parameter_count_sum"]:
             raise ValueError(f"{phase}: calibration parameter counts mismatch")

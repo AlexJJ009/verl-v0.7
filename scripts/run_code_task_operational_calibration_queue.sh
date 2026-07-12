@@ -9,6 +9,19 @@ CONTRACT_TOOL=${CALIBRATION_CONTRACT_TOOL:-$REPO/scripts/check_calibration_predi
 RUNNER=${CALIBRATION_RUNNER:-$REPO/scripts/run_code_task_operational_calibration.sh}
 PHASES=(stage1 stage2 stage3)
 
+if [ "${1:-}" = "--sandbox-dry-run" ]; then
+  scratch=$(mktemp -d /data-1/tmp/verl_agent_scratch/calibration-sandbox.XXXXXX)
+  trap 'rm -rf "$scratch"' EXIT
+  normalized="$scratch/stage123.normalized.json"
+  python3 "$MANIFEST_TOOL" render "$MANIFEST" --format json > "$normalized"
+  python3 - "$normalized" <<'PY'
+import json,sys
+d=json.load(open(sys.argv[1]))
+print(json.dumps({"ok":True,"manifest_sha256":d["manifest_sha256"],"phases":{p:{"model_provenance_class":d["calibration_workloads"][p]["model_provenance_class"],"model_sources":d["calibration_workloads"][p]["model_sources"]} for p in ("stage1","stage2","stage3")}},sort_keys=True))
+PY
+  exit 0
+fi
+
 [ -n "${TMUX:-}" ] || { echo "ERROR: calibration queue must run inside tmux" >&2; exit 1; }
 
 SCRATCH=${CALIBRATION_QUEUE_SCRATCH:-/data-1/tmp/verl_agent_scratch/experiment_workflow/calibration_queue}

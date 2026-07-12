@@ -50,8 +50,69 @@ def test_missing_stage3_source_and_wrong_artifact_mount_are_rejected():
 def test_hash_changes_when_lifecycle_data_changes():
     tool = module(); data = tool.load(MANIFEST)
     first = tool.normalize(data)["manifest_sha256"]
-    data["runs"][0]["final_step"] = 21
+    data["runs"][0]["run_prefix"] += "-CHANGED"
     assert tool.normalize(data)["manifest_sha256"] != first
+
+
+def test_stage3_pending_producer_final_step_drift_is_rejected():
+    tool = module(); data = tool.load(MANIFEST)
+    data["runs"][0]["final_step"] = 21
+    with pytest.raises(ValueError, match="pending producer identity mismatch"):
+        tool.normalize(data)
+
+
+def test_stage1_base_substitution_and_provenance_drift_are_rejected():
+    tool = module(); data = tool.load(MANIFEST)
+    source = data["calibration_workloads"]["stage1"]["model_sources"][0]
+    source["path"] = data["paths"]["base_model"]
+    with pytest.raises(ValueError, match="init model path mismatch"):
+        tool.normalize(data)
+
+    data = tool.load(MANIFEST)
+    data["calibration_workloads"]["stage1"]["model_sources"][0]["provenance"]["sha256"] = "0" * 64
+    with pytest.raises(ValueError, match="model provenance hash mismatch"):
+        tool.normalize(data)
+
+
+def test_legacy_stage2_60_step_model_cannot_replace_pending_stage3_source():
+    tool = module(); data = tool.load(MANIFEST)
+    source = data["calibration_workloads"]["stage3"]["model_sources"][0]
+    source.clear()
+    source.update({
+        "role": "rollout",
+        "state": "materialized",
+        "path": "/data-1/model_weights/code_task/kodcode_qwen3_1p7b_coldstart_fraction_ctx8k_stage2_p40/frac25/beta01/ONPOLICY-SFT-Qwen3-1P7B-COLDSTART-FRAC25-CODE-KODCODE-CTX8K-S1-BETA01-V1/step_40_s2steps60",
+        "artifact_sha256": "516a69cd83677ca132b0fb6a2885fc092956cb65b8925a89040d03b4b7e0c16a",
+        "hash_algorithm": "sorted_relative_path_content_sha256_v1",
+    })
+    with pytest.raises(ValueError, match="stage3 materialized source requires current producer binding"):
+        tool.normalize(data)
+
+
+def test_current_stage2_20_step_materialized_stage3_source_is_accepted(tmp_path):
+    tool = module(); data = tool.load(MANIFEST)
+    model = tmp_path / "stage2_final_model2"
+    model.mkdir()
+    (model / "config.json").write_text((Path(data["paths"]["base_model"]) / "config.json").read_text())
+    (model / "model.safetensors").write_bytes(b"weights")
+    provenance_path = tmp_path / "frac25-stage3.provenance.json"
+    provenance_path.write_text('{"schema_version":1,"run_id":"frac25-stage2","final_step":20}\n')
+    source = data["calibration_workloads"]["stage3"]["model_sources"][0]
+    source.update({
+        "state": "materialized",
+        "path": str(model),
+        "artifact_sha256": tool._load_workload_hashing()[0](model),
+        "hash_algorithm": "sorted_relative_path_content_sha256_v1",
+        "provenance": {
+            "path": str(provenance_path),
+            "sha256": tool._load_workload_hashing()[1](provenance_path),
+            "schema_version": 1,
+            "kind": "stage2_model2_source",
+        },
+    })
+    source["producer"]["output_path"] = str(model)
+    source["producer"]["provenance_path"] = str(provenance_path)
+    assert tool.normalize(data)["calibration_workloads"]["stage3"]["model_sources"][0]["state"] == "materialized"
 
 
 def test_eligibility_denominator_and_phase_identity_are_enforced():

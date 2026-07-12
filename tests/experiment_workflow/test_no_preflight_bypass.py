@@ -67,6 +67,27 @@ def test_valid_receipt_passes(tmp_path: Path):
     assert tool.verify(verify_args(normalized, normalized_path, report, policy, receipt))["ok"]
 
 
+def test_pending_stage3_is_not_authorized_by_preflight_receipt(tmp_path: Path):
+    tool, normalized, normalized_path, report, policy, receipt = receipt_fixture(tmp_path)
+    data = json.loads(receipt.read_text())
+    assert "frac25-stage2" in data["authorized_run_ids"]
+    assert "frac25-stage3" not in data["authorized_run_ids"]
+    args = verify_args(normalized, normalized_path, report, policy, receipt)
+    args.run_id = "frac25-stage3"
+    result = tool.verify(args)
+    assert not result["ok"]
+    assert "run_id not authorized by receipt" in result["failures"]
+
+
+def test_workload_identity_drift_invalidates_preflight_receipt(tmp_path: Path):
+    tool, normalized, normalized_path, report, policy, receipt = receipt_fixture(tmp_path)
+    normalized["calibration_workloads"]["stage1"]["model_sources"][0]["artifact_sha256"] = "0" * 64
+    normalized_path.write_text(json.dumps(normalized))
+    result = tool.verify(verify_args(normalized, normalized_path, report, policy, receipt))
+    assert not result["ok"]
+    assert "workload_descriptor_sha256 mismatch" in result["failures"]
+
+
 def test_stale_and_mismatched_receipts_fail(tmp_path: Path):
     tool, normalized, normalized_path, report, policy, receipt = receipt_fixture(tmp_path)
     data = json.loads(receipt.read_text()); data["generated_at"] = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat(); receipt.write_text(json.dumps(data))
