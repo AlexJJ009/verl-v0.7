@@ -27,6 +27,10 @@ from calibration_outcomes import CONTINUOUS_OUTCOMES, RATE_OUTCOMES
 
 ALGORITHM_VERSION = "stage123_history_conformal_v1"
 PHASES = ("stage1", "stage2", "stage3")
+AUTHORIZATION_SCOPES = {
+    "full": PHASES,
+    "stage12_producer": ("stage1", "stage2"),
+}
 MIN_COHORT_SIZE = 6
 MAX_COHORT_SIZE = 12
 COVERAGE = 0.90
@@ -215,12 +219,40 @@ def _current_run_ids(manifest: dict[str, Any], history_index: dict[str, Any]) ->
     return result
 
 
-def validate_history_snapshot(history_index: dict[str, Any]) -> None:
+def phases_for_authorization_scope(authorization_scope: str) -> tuple[str, ...]:
+    try:
+        return AUTHORIZATION_SCOPES[authorization_scope]
+    except KeyError as exc:
+        raise ContractError(f"unsupported authorization scope: {authorization_scope}") from exc
+
+
+def validate_history_snapshot(
+    history_index: dict[str, Any],
+    *,
+    expected_phases: tuple[str, ...] | None = None,
+) -> None:
     cutoff = history_index.get("cutoff_utc")
     _utc_second(cutoff)
     runs = history_index.get("runs")
     if not isinstance(runs, list):
         raise ContractError("history index must contain a runs list")
+    if expected_phases is not None:
+        phase_scope = history_index.get("phase_scope")
+        if phase_scope != list(expected_phases):
+            raise ContractError(
+                f"history phase_scope mismatch: expected {list(expected_phases)}, got {phase_scope!r}"
+            )
+        run_phases = [run.get("phase") for run in runs if isinstance(run, dict)]
+        if set(run_phases) != set(expected_phases):
+            raise ContractError(
+                f"history run phase set mismatch: expected {list(expected_phases)}, got {sorted(set(run_phases))}"
+            )
+        for phase in expected_phases:
+            count = run_phases.count(phase)
+            if count != MIN_COHORT_SIZE:
+                raise ContractError(
+                    f"history must contain exactly {MIN_COHORT_SIZE} bootstrap runs for {phase}; got {count}"
+                )
     seen: set[str] = set()
     seen_roots: set[str] = set()
     for run in runs:
@@ -421,11 +453,10 @@ def build_prediction_contract(
     *,
     manifest_sha256: str | None = None,
     history_index_sha256: str | None = None,
-    phases: tuple[str, ...] = PHASES,
+    authorization_scope: str = "full",
 ) -> dict[str, Any]:
-    validate_history_snapshot(history_index)
-    if not phases or any(phase not in PHASES for phase in phases) or len(set(phases)) != len(phases):
-        raise ContractError("prediction phases must be a unique non-empty subset of Stage1/2/3")
+    phases = phases_for_authorization_scope(authorization_scope)
+    validate_history_snapshot(history_index, expected_phases=phases)
     phase_results = []
     for phase in phases:
         cohort, excluded = select_cohort(history_index, manifest, phase)
@@ -447,6 +478,7 @@ def build_prediction_contract(
     decision = "blocked" if "blocked" in decisions else "inconclusive" if "inconclusive" in decisions else "deployable"
     return {
         "algorithm_version": ALGORITHM_VERSION,
+        "authorization_scope": authorization_scope,
         "decision": decision,
         "history_query": {
             "cutoff_utc": history_index["cutoff_utc"],
@@ -480,7 +512,7 @@ def verify_prediction_contract(
     *,
     manifest_sha256: str | None = None,
     history_index_sha256: str | None = None,
-    phases: tuple[str, ...] = PHASES,
+    authorization_scope: str = "full",
 ) -> dict[str, Any]:
     failures: list[str] = []
     decision = "deployable"
@@ -490,7 +522,7 @@ def verify_prediction_contract(
             history_index,
             manifest_sha256=manifest_sha256,
             history_index_sha256=history_index_sha256,
-            phases=phases,
+            authorization_scope=authorization_scope,
         )
     except ContractError as exc:
         return {"ok": False, "decision": "blocked", "failures": [str(exc)]}
@@ -520,6 +552,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--contract", type=Path, required=True)
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--history-index", type=Path, required=True)
+    parser.add_argument(
+        "--authorization-scope",
+        choices=tuple(AUTHORIZATION_SCOPES),
+        default="full",
+    )
     parser.add_argument("--write", action="store_true", help="write a missing or stale contract")
     args = parser.parse_args(argv)
 
@@ -533,6 +570,7 @@ def main(argv: list[str] | None = None) -> int:
             history_index,
             manifest_sha256=manifest_hash,
             history_index_sha256=history_hash,
+            authorization_scope=args.authorization_scope,
         )
         if args.write or not args.contract.exists():
             contract_hash = write_contract(args.contract, generated)
@@ -545,6 +583,7 @@ def main(argv: list[str] | None = None) -> int:
             history_index,
             manifest_sha256=manifest_hash,
             history_index_sha256=history_hash,
+            authorization_scope=args.authorization_scope,
         )
         result = copy.deepcopy(result)
         result.pop("expected", None)

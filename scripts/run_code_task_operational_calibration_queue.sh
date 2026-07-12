@@ -7,7 +7,12 @@ MANIFEST=${CALIBRATION_MANIFEST:-$REPO/recipe/on_policy_wdl_sft/experiment_manif
 MANIFEST_TOOL=${CALIBRATION_MANIFEST_TOOL:-$REPO/scripts/experiment_manifest.py}
 CONTRACT_TOOL=${CALIBRATION_CONTRACT_TOOL:-$REPO/scripts/check_calibration_prediction_contract.py}
 RUNNER=${CALIBRATION_RUNNER:-$REPO/scripts/run_code_task_operational_calibration.sh}
-PHASES=(stage1 stage2 stage3)
+CALIBRATION_AUTHORIZATION_SCOPE=${CALIBRATION_AUTHORIZATION_SCOPE:-full}
+case "$CALIBRATION_AUTHORIZATION_SCOPE" in
+  full) PHASES=(stage1 stage2 stage3) ;;
+  stage12_producer) PHASES=(stage1 stage2) ;;
+  *) echo "ERROR: CALIBRATION_AUTHORIZATION_SCOPE must be full or stage12_producer" >&2; exit 1 ;;
+esac
 
 if [ "${1:-}" = "--sandbox-dry-run" ]; then
   scratch=$(mktemp -d /data-1/tmp/verl_agent_scratch/calibration-sandbox.XXXXXX)
@@ -146,7 +151,7 @@ generate_history_snapshot() {
     echo "reuse frozen history snapshot: $HISTORY_INDEX"
     return 0
   fi
-  CALIBRATION_REPO="$REPO" python3 - "$REPORT_ROOT" "$HISTORY_INDEX" "$NORMALIZED_MANIFEST" <<'PY'
+  CALIBRATION_REPO="$REPO" CALIBRATION_PHASES="${PHASES[*]}" python3 - "$REPORT_ROOT" "$HISTORY_INDEX" "$NORMALIZED_MANIFEST" <<'PY'
 import json, os, sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -168,7 +173,10 @@ timeout_hash = semantics["timeout_policy_hash"]
 topology_hashes = semantics["phase_topology_hashes"]
 max_response_length = manifest["resource_profile"]["max_response_length"]
 runs = []
-for phase in ("stage1", "stage2", "stage3"):
+phases = os.environ["CALIBRATION_PHASES"].split()
+if phases not in (["stage1", "stage2"], ["stage1", "stage2", "stage3"]):
+    raise SystemExit(f"invalid CALIBRATION_PHASES: {phases}")
+for phase in phases:
     for rep in range(6):
         root = report_root / "bootstrap" / phase / f"rep_{rep}"
         status_path = root / f"{phase}.status.json"
@@ -243,7 +251,8 @@ history = {
     "schema_version": 1,
     "algorithm": "stage123_history_conformal_v1",
     "cutoff_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-    "source": "six bootstrap repetitions per phase; infrastructure calibration only",
+    "phase_scope": phases,
+    "source": "six bootstrap repetitions per authorized phase; infrastructure calibration only",
     "runs": runs,
 }
 history_path.parent.mkdir(parents=True, exist_ok=True)
@@ -260,13 +269,15 @@ freeze_prediction_contract() {
       --contract "$PREDICTION_CONTRACT" \
       --manifest "$MANIFEST" \
       --history-index "$HISTORY_INDEX" \
+      --authorization-scope "$CALIBRATION_AUTHORIZATION_SCOPE" \
       --write
     chmod a-w "$PREDICTION_CONTRACT" 2>/dev/null || true
   fi
   python3 "$CONTRACT_TOOL" \
     --contract "$PREDICTION_CONTRACT" \
     --manifest "$MANIFEST" \
-    --history-index "$HISTORY_INDEX"
+    --history-index "$HISTORY_INDEX" \
+    --authorization-scope "$CALIBRATION_AUTHORIZATION_SCOPE"
 }
 
 for phase in "${PHASES[@]}"; do

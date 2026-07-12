@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 
 import pytest
@@ -240,6 +241,132 @@ def test_queue_native_layout_has_zero_predictors_and_exact_acceptance_roots(tmp_
     predictors, measured = module.resolve_queue_roots(tmp_path)
     assert predictors == {phase: [] for phase in module.PHASES}
     assert [path.name for path in measured["stage2"]] == ["rep_0", "rep_1", "rep_2"]
+
+
+def test_stage12_layout_does_not_require_stage3(tmp_path):
+    module = load()
+    for phase in ("stage1", "stage2"):
+        for index in range(3):
+            (tmp_path / "acceptance" / phase / f"rep_{index}").mkdir(parents=True)
+    predictors, measured = module.resolve_queue_roots(tmp_path, ("stage1", "stage2"))
+    assert set(predictors) == {"stage1", "stage2"}
+    assert set(measured) == {"stage1", "stage2"}
+
+
+def _assembler_cli_args(tmp_path, *, authorization_scope):
+    paths = {}
+    for name in (
+        "manifest",
+        "humaneval",
+        "mbpp",
+        "lcb",
+        "contract",
+        "history",
+        "policy",
+        "preflight",
+        "stage1_model",
+        "stage2_model",
+    ):
+        path = tmp_path / name
+        path.write_text("{}\n")
+        paths[name] = path
+    return [
+        "--manifest", str(paths["manifest"]),
+        "--root", str(tmp_path / "report"),
+        "--humaneval-plus-file", str(paths["humaneval"]),
+        "--mbpp-plus-file", str(paths["mbpp"]),
+        "--livecodebench-file", str(paths["lcb"]),
+        "--output", str(tmp_path / "candidate.json"),
+        "--contract", str(paths["contract"]),
+        "--history-index", str(paths["history"]),
+        "--policy", str(paths["policy"]),
+        "--preflight-receipt", str(paths["preflight"]),
+        "--queue-identity", "queue",
+        "--profile", "profile",
+        "--image-id", "image",
+        "--stage1-model", str(paths["stage1_model"]),
+        "--stage2-model", str(paths["stage2_model"]),
+        "--authorization-scope", authorization_scope,
+    ]
+
+
+def test_stage12_assembler_cli_succeeds_without_stage3_model(tmp_path, monkeypatch):
+    module = load()
+    monkeypatch.setattr(
+        module,
+        "render_manifest",
+        lambda _: {
+            "manifest_sha256": "manifest",
+            "resource_profile": {"sha256": "profile"},
+            "calibration_workloads": {
+                "stage1": {"phase": "stage1"},
+                "stage2": {"phase": "stage2"},
+            },
+        },
+    )
+    monkeypatch.setattr(
+        module,
+        "load_json",
+        lambda _: {
+            "decision": "deployable",
+            "authorization_scope": "stage12_producer",
+            "phases": [
+                {"phase": "stage1", "decision": "deployable"},
+                {"phase": "stage2", "decision": "deployable"},
+            ],
+        },
+    )
+    monkeypatch.setattr(module, "validation_provenance", lambda _: {"scope": "full"})
+    monkeypatch.setattr(
+        module,
+        "resolve_queue_roots",
+        lambda _root, phases: ({phase: [] for phase in phases}, {phase: [] for phase in phases}),
+    )
+    monkeypatch.setattr(
+        module,
+        "aggregate_phase",
+        lambda phase, *_args: {"phase": phase},
+    )
+    monkeypatch.setattr(module, "sha256", lambda _: "hash")
+    monkeypatch.setattr(module, "content_sha256", lambda _: "model-hash")
+
+    assert module.main(_assembler_cli_args(tmp_path, authorization_scope="stage12_producer")) == 0
+    report = json.loads((tmp_path / "candidate.json").read_text())
+    assert report["authorization_scope"] == "stage12_producer"
+    assert [phase["phase"] for phase in report["phases"]] == ["stage1", "stage2"]
+    assert set(report["contract"]["predictor_repetitions"]) == {"stage1", "stage2"}
+
+
+@pytest.mark.parametrize(
+    "contract_scope,contract_phases",
+    [
+        ("full", ["stage1", "stage2", "stage3"]),
+        ("stage12_producer", ["stage1", "stage2", "stage3"]),
+    ],
+)
+def test_stage12_assembler_rejects_contract_scope_mismatch(
+    tmp_path, monkeypatch, contract_scope, contract_phases
+):
+    module = load()
+    monkeypatch.setattr(module, "render_manifest", lambda _: {})
+    monkeypatch.setattr(
+        module,
+        "load_json",
+        lambda _: {
+            "decision": "deployable",
+            "authorization_scope": contract_scope,
+            "phases": [{"phase": phase} for phase in contract_phases],
+        },
+    )
+    with pytest.raises(ValueError, match="prediction contract .*scope mismatch"):
+        module.main(_assembler_cli_args(tmp_path, authorization_scope="stage12_producer"))
+
+
+def test_full_assembler_cli_requires_stage3_model(tmp_path):
+    module = load()
+    with pytest.raises(SystemExit) as exc:
+        module.main(_assembler_cli_args(tmp_path, authorization_scope="full"))
+    assert exc.value.code == 2
 
 
 @pytest.mark.parametrize("mutation", ["missing", "extra", "legacy"])

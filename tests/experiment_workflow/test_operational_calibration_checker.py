@@ -76,6 +76,7 @@ def fixture(tmp_path):
     }
     contract = {
         "decision": "deployable",
+        "authorization_scope": "full",
         "phases": [{"phase": name, **phase_prediction(name)} for name in ("stage1", "stage2", "stage3")],
     }
     phases = []
@@ -163,6 +164,7 @@ def fixture(tmp_path):
         "evidence_class": "infrastructure_calibration",
         "manifest_sha256": "rendered-manifest",
         "decision": "candidate",
+        "authorization_scope": "full",
         "prediction_contract_decision": "deployable",
         "contract": {
             "val_max_samples": -1,
@@ -193,6 +195,30 @@ def test_deployable_candidate_and_blocked_boundaries(tmp_path):
     report["phases"][0]["observed"]["maximum_validation_elapsed_seconds"] = 1801
     result = m.check(report, manifest, contract=contract)
     assert not result["ok"] and result["decision"] == "blocked"
+
+
+@pytest.mark.parametrize("scope", [None, "stage12_producer"])
+def test_checker_rejects_missing_or_forged_report_scope(tmp_path, scope):
+    m = load()
+    manifest, report, contract = fixture(tmp_path)
+    patch_dataset_hashes(m, report)
+    if scope is None:
+        report.pop("authorization_scope")
+    else:
+        report["authorization_scope"] = scope
+    result = m.check(report, manifest, contract=contract)
+    assert not result["ok"]
+    assert "report authorization_scope mismatch" in result["failures"]
+
+
+def test_checker_rejects_contract_scope_mismatch(tmp_path):
+    m = load()
+    manifest, report, contract = fixture(tmp_path)
+    patch_dataset_hashes(m, report)
+    contract["authorization_scope"] = "stage12_producer"
+    result = m.check(report, manifest, contract=contract)
+    assert not result["ok"]
+    assert "prediction contract authorization_scope mismatch" in result["failures"]
 
 
 def test_failed_result_does_not_create_or_overwrite_receipt(tmp_path, monkeypatch):
@@ -435,7 +461,17 @@ def test_cli_writes_canonical_receipt_and_detects_preflight_tamper(tmp_path):
                     "metrics": {**v2_metrics(elapsed, rss), "all_gpu_idle_fraction_during_validation": idle},
                 }
             )
-    history_path.write_text(json.dumps({"cutoff_utc": "2026-07-20T00:00:00Z", "runs": history_runs}, sort_keys=True) + "\n")
+        history_path.write_text(
+            json.dumps(
+                {
+                    "cutoff_utc": "2026-07-20T00:00:00Z",
+                    "phase_scope": ["stage1", "stage2", "stage3"],
+                    "runs": history_runs,
+                },
+                sort_keys=True,
+            )
+            + "\n"
+        )
     policy_path.write_text('{"policy":"v1"}\n')
     preflight_path.write_text('{"decision":"passed"}\n')
     manifest_path.write_text(json.dumps(manifest, sort_keys=True) + "\n")

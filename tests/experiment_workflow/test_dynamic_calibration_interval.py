@@ -86,7 +86,8 @@ def run(run_id: str, phase: str, day: int, elapsed: float, rss: float, idle: flo
 
 
 def history(runs: list[dict], **extra) -> dict:
-    result = {"cutoff_utc": "2026-07-20T00:00:00Z", "runs": runs}
+    phase_scope = [phase for phase in ("stage1", "stage2", "stage3") if any(row.get("phase") == phase for row in runs)]
+    result = {"cutoff_utc": "2026-07-20T00:00:00Z", "phase_scope": phase_scope, "runs": runs}
     result.update(extra)
     return result
 
@@ -142,15 +143,50 @@ def test_latest_twelve_selection_respects_order_and_cutoff() -> None:
     assert {"run_id": "future", "reason": "after_cutoff"} in excluded
 
 
-def test_fewer_than_six_history_runs_is_inconclusive() -> None:
+def test_fewer_than_six_canonical_bootstrap_runs_is_rejected() -> None:
     module = load()
     rows = []
     for phase in ("stage1", "stage2", "stage3"):
         for index in range(5):
             rows.append(run(f"{phase}-{index}", phase, index + 1, 100, 50, 0.2))
-    contract = module.build_prediction_contract(manifest(), history(rows))
-    assert contract["decision"] == "inconclusive"
-    assert all(phase["status"] == "out_of_domain" for phase in contract["phases"])
+    with pytest.raises(module.ContractError, match="exactly 6 bootstrap runs for stage1"):
+        module.build_prediction_contract(manifest(), history(rows))
+
+
+@pytest.mark.parametrize("phase_scope", [["stage1"], ["stage2"], ["stage1", "stage3"]])
+def test_contract_rejects_unapproved_phase_subsets(phase_scope) -> None:
+    module = load()
+    rows = [row for row in six_phase_runs() if row["phase"] in phase_scope]
+    with pytest.raises(module.ContractError, match="history phase_scope mismatch"):
+        module.build_prediction_contract(manifest(), history(rows))
+
+
+def test_stage12_scope_rejects_history_containing_stage3() -> None:
+    module = load()
+    rows = six_phase_runs()
+    scoped_history = history(rows)
+    scoped_history["phase_scope"] = ["stage1", "stage2"]
+    with pytest.raises(module.ContractError, match="history run phase set mismatch"):
+        module.build_prediction_contract(
+            manifest(), scoped_history, authorization_scope="stage12_producer"
+        )
+
+
+def test_full_scope_rejects_stage12_history() -> None:
+    module = load()
+    rows = [row for row in six_phase_runs() if row["phase"] != "stage3"]
+    with pytest.raises(module.ContractError, match="history phase_scope mismatch"):
+        module.build_prediction_contract(manifest(), history(rows))
+
+
+def test_stage12_scope_has_exact_phase_key_set() -> None:
+    module = load()
+    rows = [row for row in six_phase_runs() if row["phase"] != "stage3"]
+    contract = module.build_prediction_contract(
+        manifest(), history(rows), authorization_scope="stage12_producer"
+    )
+    assert contract["authorization_scope"] == "stage12_producer"
+    assert [phase["phase"] for phase in contract["phases"]] == ["stage1", "stage2"]
 
 
 def test_current_acceptance_run_leakage_is_rejected() -> None:
@@ -307,3 +343,25 @@ def test_cli_generates_and_validates_contract_with_plan_arguments(tmp_path: Path
     )
     assert check_result.returncode == 0, check_result.stderr + check_result.stdout
     assert json.loads(check_result.stdout)["ok"] is True
+
+
+def test_cli_does_not_expose_arbitrary_phase_selection(tmp_path: Path) -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts/check_calibration_prediction_contract.py"),
+            "--contract",
+            str(tmp_path / "contract.json"),
+            "--manifest",
+            str(tmp_path / "manifest.json"),
+            "--history-index",
+            str(tmp_path / "history.json"),
+            "--phases",
+            "stage1",
+        ],
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 2
+    assert "unrecognized arguments: --phases stage1" in result.stderr

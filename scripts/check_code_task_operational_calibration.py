@@ -241,6 +241,9 @@ def check(
     failures: list[str] = []
     inconclusive: list[str] = []
     hashes = hashes or {}
+    expected_authorization_scope = "stage12_producer" if expected_phases == STAGE12_PHASES else "full"
+    if report.get("authorization_scope") != expected_authorization_scope:
+        failures.append("report authorization_scope mismatch")
     if report.get("evidence_class") != "infrastructure_calibration":
         failures.append("wrong evidence class")
     if report.get("decision") != "candidate":
@@ -264,6 +267,8 @@ def check(
         failures.append("semantic contract hash mismatch")
 
     if contract is not None:
+        if contract.get("authorization_scope") != expected_authorization_scope:
+            failures.append("prediction contract authorization_scope mismatch")
         if report.get("prediction_contract_decision") != contract.get("decision"):
             failures.append("prediction contract decision mismatch")
         if history_index is not None:
@@ -273,7 +278,7 @@ def check(
                 history_index,
                 manifest_sha256=hashes.get("manifest"),
                 history_index_sha256=hashes.get("history_index"),
-                phases=expected_phases,
+                authorization_scope=expected_authorization_scope,
             )
             if verification.get("failures"):
                 failures.extend(verification["failures"])

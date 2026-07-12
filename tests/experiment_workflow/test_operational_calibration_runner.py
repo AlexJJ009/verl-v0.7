@@ -305,6 +305,20 @@ def test_queue_runs_bootstrap_then_freezes_contract_then_acceptance(tmp_path: Pa
     assert json.loads(contract.read_text())["algorithm_version"] == "stage123_history_conformal_v1"
 
 
+def test_stage12_queue_builds_phase_scoped_history_and_contract(tmp_path: Path) -> None:
+    log = tmp_path / "order.log"; fake = tmp_path / "fake_runner.py"; _fake_runner(fake, log)
+    env = _queue_env(tmp_path, fake); env["CALIBRATION_AUTHORIZATION_SCOPE"] = "stage12_producer"
+    result = subprocess.run(["bash", str(QUEUE)], cwd=ROOT, env=env, text=True, capture_output=True)
+    assert result.returncode == 0, result.stderr + result.stdout
+    lines = log.read_text().splitlines()
+    assert lines == [f"bootstrap {phase} {rep}" for phase in ("stage1", "stage2") for rep in range(6)] + [f"acceptance {phase} {rep}" for phase in ("stage1", "stage2") for rep in range(3)]
+    history = json.loads((tmp_path / "history/trusted_history.json").read_text())
+    contract = json.loads((tmp_path / "prediction/prediction_contract.json").read_text())
+    assert history["phase_scope"] == ["stage1", "stage2"]
+    assert {run["phase"] for run in history["runs"]} == {"stage1", "stage2"}
+    assert [phase["phase"] for phase in contract["phases"]] == ["stage1", "stage2"]
+
+
 def test_queue_stops_on_first_failed_calibration_rep(tmp_path: Path) -> None:
     log = tmp_path / "order.log"
     fake = tmp_path / "fake_runner.py"

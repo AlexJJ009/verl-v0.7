@@ -235,19 +235,19 @@ def optional_file_binding(path: Path | None) -> dict | None:
     return {"path": str(path), "sha256": sha256(path)}
 
 
-def resolve_queue_roots(root: Path) -> tuple[dict[str, list[Path]], dict[str, list[Path]]]:
+def resolve_queue_roots(root: Path, phases: tuple[str, ...] = PHASES) -> tuple[dict[str, list[Path]], dict[str, list[Path]]]:
     legacy_roots = [
         path
-        for phase in PHASES
+        for phase in phases
         for path in (root / phase).glob("rep*")
         if path.name.startswith("rep0_predictor") or path.name in {"rep1", "rep2", "rep3"}
     ]
     if legacy_roots:
         raise ValueError(f"legacy calibration layout is forbidden: {legacy_roots[0]}")
-    predictor_roots = {phase: [] for phase in PHASES}
+    predictor_roots = {phase: [] for phase in phases}
     measured_roots = {
         phase: [root / "acceptance" / phase / f"rep_{index}" for index in range(3)]
-        for phase in PHASES
+        for phase in phases
     }
     for phase, roots in measured_roots.items():
         parent = root / "acceptance" / phase
@@ -348,7 +348,7 @@ def aggregate_phase(
     }
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--root", type=Path, required=True)
@@ -366,10 +366,18 @@ def main() -> int:
     parser.add_argument("--image-id", required=True)
     parser.add_argument("--stage1-model", type=Path, required=True)
     parser.add_argument("--stage2-model", type=Path, required=True)
-    parser.add_argument("--stage3-model", type=Path, required=True)
-    args = parser.parse_args()
+    parser.add_argument("--stage3-model", type=Path)
+    parser.add_argument("--authorization-scope", choices=("full", "stage12_producer"), default="full")
+    args = parser.parse_args(argv)
+    if args.authorization_scope == "full" and args.stage3_model is None:
+        parser.error("--stage3-model is required for full authorization scope")
     manifest = render_manifest(args.manifest)
     prediction_contract = load_json(args.contract)
+    phases_scope = ("stage1", "stage2") if args.authorization_scope == "stage12_producer" else PHASES
+    if prediction_contract.get("authorization_scope") != args.authorization_scope:
+        raise ValueError("prediction contract authorization_scope mismatch")
+    if [item.get("phase") for item in prediction_contract.get("phases", [])] != list(phases_scope):
+        raise ValueError("prediction contract phase scope mismatch")
     validation_data = validation_provenance(
         {
             "HumanEval+": args.humaneval_plus_file,
@@ -377,10 +385,10 @@ def main() -> int:
             "LiveCodeBench": args.livecodebench_file,
         }
     )
-    predictor_roots, measured_roots = resolve_queue_roots(args.root)
+    predictor_roots, measured_roots = resolve_queue_roots(args.root, phases_scope)
     models = {"stage1": args.stage1_model, "stage2": args.stage2_model, "stage3": args.stage3_model}
     phases = []
-    for phase in PHASES:
+    for phase in phases_scope:
         model = models[phase]
         phases.append(
             aggregate_phase(
@@ -413,12 +421,13 @@ def main() -> int:
         "input_bindings": input_bindings,
         "prediction_contract_sha256": sha256(args.contract),
         "prediction_contract_decision": prediction_contract.get("decision"),
+        "authorization_scope": args.authorization_scope,
         "queue_identity": args.queue_identity,
         "container_image_id": args.image_id,
         "validation_data": validation_data,
         "contract": {
             "warmup_repetitions": 1,
-            "predictor_repetitions": {phase: len(predictor_roots[phase]) for phase in PHASES},
+            "predictor_repetitions": {phase: len(predictor_roots[phase]) for phase in phases_scope},
             "measured_repetitions": 3,
             "max_response_length": 8192,
             "validation_deadline_seconds": 1800,
