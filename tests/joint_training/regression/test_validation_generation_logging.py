@@ -2,6 +2,7 @@ from omegaconf import OmegaConf
 import pytest
 import torch
 import numpy as np
+from pathlib import Path
 
 from verl.trainer.ppo.ray_trainer import (
     RayPPOTrainer,
