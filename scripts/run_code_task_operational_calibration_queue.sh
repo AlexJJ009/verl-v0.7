@@ -100,7 +100,7 @@ if len(producers) != 1:
 producer = producers[0]
 if int(producer["source"]["handoff_step"]) != handoff:
     raise SystemExit("Stage2 producer handoff mismatch")
-train_file = Path(producer["train_file"]).resolve()
+train_file = Path(producer["train_file"])
 if not train_file.is_file():
     raise SystemExit("Stage2 calibration train file missing")
 digest = hashlib.sha256()

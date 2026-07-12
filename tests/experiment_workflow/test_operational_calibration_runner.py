@@ -250,7 +250,7 @@ def _expected_queue_log_value(phase: str) -> str:
             model2,
             source["stage1_run_prefix"],
             str(source["handoff_step"]),
-            str(Path(producer["train_file"]).resolve()),
+            producer["train_file"],
         ])
     return "|".join(values)
 
