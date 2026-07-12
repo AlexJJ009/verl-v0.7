@@ -52,6 +52,7 @@ PY
 
 export STAGE1_INIT_MODEL_PATH=$(manifest_get paths.stage1_init_model)
 export STAGE1_INIT_PROVENANCE_PATH=$(manifest_get paths.stage1_init_provenance)
+export QWEN3_1P7B_MODEL_PATH=$(manifest_get paths.base_model)
 
 algorithm=$(manifest_get calibration_policy.algorithm)
 [ "$algorithm" = stage123_history_conformal_v1 ] || { echo "ERROR: unsupported calibration algorithm: $algorithm" >&2; exit 1; }
@@ -142,6 +143,7 @@ run_missing_rep() {
     CALIBRATION_PREDICTION_CONTRACT_SHA256="${CALIBRATION_PREDICTION_CONTRACT_SHA256:-}" \
     STAGE1_INIT_MODEL_PATH="$STAGE1_INIT_MODEL_PATH" \
     STAGE1_INIT_PROVENANCE_PATH="$STAGE1_INIT_PROVENANCE_PATH" \
+    QWEN3_1P7B_MODEL_PATH="$QWEN3_1P7B_MODEL_PATH" \
     "$RUNNER" "$phase"
   wait_for_status "$role" "$phase" "$rep" "$session"
 }
