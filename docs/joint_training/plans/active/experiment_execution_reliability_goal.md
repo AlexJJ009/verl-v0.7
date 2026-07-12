@@ -1,8 +1,9 @@
 # Experiment Execution Reliability and GPU Utilization Goal
 
-- Status: `IN EXECUTION - INDEPENDENT PLAN REVIEW READY (2026-07-12)`
+- Status: `READY TO RESUME - CPU ACCEPTED; OPERATIONAL CALIBRATION BLOCKED ON ELAPSED-TIME EVIDENCE SEMANTICS (2026-07-12)`
 - Created: 2026-07-11
-- Branch: `feature/on-policy-wdl-sft`
+- Goal branch: `codex/experiment-execution-reliability`
+- Parent experiment branch: `feature/on-policy-wdl-sft`
 - Scope: future Stage1/Stage2/Stage3 experiment families, beginning with Qwen3-1.7B Stage123
 - Execution mode: serial milestones; no implementation before independent plan acceptance
 - External services: forbidden as acceptance evidence; W&B and WxPusher must use local fakes/mocks
@@ -35,6 +36,106 @@ recipe/on_policy_wdl_sft/experiment_manifest/
 
 New queue, monitor, preflight, and release behavior must consume that schema rather
 than maintaining independent run-prefix/final-step/train-file arrays.
+
+## Resume Snapshot - 2026-07-12
+
+This section is the authoritative resume point for the next `/goal` run. It updates
+transient execution state without weakening or replacing AC-01 through AC-27.
+
+### Accepted State
+
+1. The amended plan preserving sampled pass@1 validation and the history-fitted
+   dynamic interval contract received a fresh independent `READY` review.
+2. CPU/sandbox implementation received independent `CPU ACCEPTED` review. The final
+   accepted CPU state includes AC-19F, AC-24, and AC-25; the focused receipt tests,
+   fast/full gates, strict Git isolation, and dual-repository transaction passed.
+3. The independently CPU-accepted implementation baselines are:
+
+   ```text
+   superproject branch: codex/experiment-execution-reliability
+   accepted implementation commit: af1a407fda562f1cef8fd9d4471f73f3de91814e
+   recipe branch:       codex/experiment-execution-reliability
+   accepted recipe commit:         cec05371fe17d42bb80722b5608c3cecbe4785b6
+   ```
+
+   The superproject may contain later plan-only resume commits. At Goal startup,
+   classify every commit after the accepted implementation baseline; do not treat an
+   expected plan-only commit as implementation drift.
+
+4. The recipe-first transaction is complete and the recipe worktree is clean. The
+   only remaining superproject untracked paths are pre-existing user assets recorded
+   by the content-addressed baseline:
+
+   ```text
+   .claude/skills/experiment-registry
+   docs/joint_training/plans/active/qwen3_1p7b_code_stage123_plateau_breakthrough.md
+   ```
+
+5. A passing preflight snapshot was generated under:
+
+   ```text
+   /data-1/tmp/verl_agent_scratch/experiment_workflow/preflight/af1a407f
+   ```
+
+   Its receipt has a one-hour TTL and is historical evidence only when the Goal is
+   resumed. A fresh machine report, budget result, and preflight receipt bound to the
+   then-current commits and hashes are required before any new GPU work.
+
+### Preserved Operational Evidence
+
+The first resumed calibration attempt used the approved sampled/full-validation
+contract and completed all eighteen bootstrap repetitions without runtime timeout,
+fatal termination, CUDA OOM, or leaked DB/W&B release side effects:
+
+| Phase | Successful bootstrap repetitions | Worker elapsed seconds | Median |
+| --- | ---: | --- | ---: |
+| Stage1 | 6 | `1222, 1223, 1252, 1203, 1221, 1216` | `1221.5` |
+| Stage2 | 6 | `285, 336, 326, 276, 283, 264` | `284.0` |
+| Stage3 | 6 | `282, 245, 278, 297, 235, 237` | `261.5` |
+
+Evidence root:
+
+```text
+/data-2/experiment_registry/calibration_runs/af1a407f
+```
+
+The queue stopped before writing `trusted_history.json` or
+`prediction_contract.json`. All GPUs and run-owned containers/tmux sessions were
+released. These bootstrap artifacts are candidates for reuse only after the blocker
+below is resolved and their completeness/content hashes are revalidated; they are not
+trusted history merely because their phase status returned zero.
+
+### Current Blocking Condition
+
+History assembly correctly failed closed because Stage2's trainer metric
+`timing_s/testing` and the instrumented interval from `validation_ready` to
+`metrics_complete` differ by more than the implementation's one-second consistency
+limit. For Stage2 bootstrap repetition 0, the preserved evidence includes:
+
+```text
+timing_s/testing:                  88.79418030567467
+validation_ready -> metrics_complete: approximately 80.58 seconds
+```
+
+The next Goal must not choose whichever value makes prediction easier, widen the
+tolerance after seeing measurements, or silently discard the eighteen runs. It must:
+
+1. trace the exact start/end semantics of both measurements in code and artifacts;
+2. decide which field represents the plan's normative wall-clock interval from
+   validation rollout readiness to complete validation metrics;
+3. define any allowed consistency relationship and clock precision before rebuilding
+   history;
+4. update this plan first if the acceptance contract needs clarification;
+5. obtain a fresh independent `READY` review for that clarification before changing
+   assembler/checker/runner behavior or restarting GPU work;
+6. add regression fixtures for Stage1, Stage2, and Stage3 timing evidence, then rerun
+   CPU gates and issue a fresh preflight.
+
+After that gate passes, the Goal may either content-address and reuse all complete
+bootstrap repetitions or rerun the affected repetitions, according to the reviewed
+contract. It must then freeze immutable history, generate the prediction contract,
+run three new acceptance repetitions per phase, obtain checker-owned `deployable`,
+and complete fresh independent AC-01 through AC-27 acceptance.
 
 ## Non-Negotiable Boundaries
 
@@ -75,7 +176,8 @@ The Goal spans two Git repositories and must treat them as one ordered transacti
 | Superproject `/data-1/code/verl` | `feature/on-policy-wdl-sft` | `6a86aa27591178f9acf774fe107b1219e099af99` | `codex/experiment-execution-reliability` |
 | Submodule `/data-1/code/verl/recipe` | `codex/l40s-readiness` | `763aab506cd38bc7ff9fccfd9a079840620c37c5` | `codex/experiment-execution-reliability` |
 
-Before branch creation, write path/status snapshots for both repositories to:
+At the original Goal baseline, before the Goal branches were created, path/status
+snapshots for both repositories were written to:
 
 ```text
 /data-1/tmp/verl_agent_scratch/experiment_workflow/git_baseline/superproject.json
@@ -796,7 +898,8 @@ protected pre-existing dirty path or an unrecorded commit fails.
 ### AC-22 - Dirty Baselines Are Content-Addressed
 
 - Given both repositories contain tracked and untracked pre-existing user work,
-- When the Goal records its baseline before branch creation,
+- When the original Goal baseline is recorded before Goal-branch creation and that
+  immutable evidence is revalidated on resume,
 - Then every path entry includes repository-relative path, file type, mode, size,
   SHA-256 for file/symlink content, Git status, index blob ID when present, HEAD blob
   ID when present, and an aggregate sorted-manifest hash. Later checks detect content
@@ -937,20 +1040,34 @@ delivery failure is recorded locally but never changes launch/release state.
 
 ## Required Execution Order
 
-1. Milestone 0 establishes fixtures and baseline.
-2. Milestone 1 implements the preflight estimator and budget gate.
-3. Milestone 2 introduces the manifest and migrates Stage123.
-4. Milestone 3 audits principles using the gates now available.
-5. Milestone 4 assembles fast/full integration gates.
-6. Milestone 5 performs approved operational calibration and dual-repository audit.
-7. A fresh reviewer executes every required AC command.
+Milestones 0 through 4 are implemented, committed, and independently CPU-accepted at
+the commits recorded in the Resume Snapshot. On resume, execute this remaining order:
+
+1. Revalidate the recorded commits, dirty-path baseline, preserved calibration evidence,
+   and absence of conflicting run-owned runtime.
+2. Resolve the elapsed-time evidence semantics blocker without GPU work: trace both
+   clocks, make the normative interval and consistency rule unique in this plan, and
+   obtain a fresh independent `READY` review for that amendment.
+3. Add Stage1/Stage2/Stage3 timing regression fixtures, run the focused and fast/full
+   CPU gates, and commit the reviewed change using the repository transaction below.
+4. Generate fresh machine, budget, and preflight evidence bound to the new committed
+   state. Historical receipts must not authorize launch.
+5. Resume Milestone 5 operational calibration. Apply the reviewed eligibility rule to
+   all eighteen preserved bootstrap artifacts; reuse only artifacts that pass it and
+   rerun only repetitions the rule rejects.
+6. Freeze trusted history, generate the prediction contract, run exactly three new
+   acceptance repetitions per phase, and require checker-owned `deployable` evidence.
+7. A fresh independent Reviewer executes every AC-01 through AC-27 command and the
+   completion-state checker from committed code.
 
 No milestone may start until all required ACs from the previous milestone pass.
 
 ## Commit and Workspace Rules
 
-1. Create `codex/experiment-execution-reliability` in both repositories from the
-   recorded baseline commits, while preserving dirty-path snapshots.
+1. Continue on the existing `codex/experiment-execution-reliability` branches at the
+   commits recorded in the Resume Snapshot. Do not create replacement branches. If
+   either HEAD has advanced, audit the intervening commits and amend the snapshot
+   before implementation.
 2. Commit each milestone separately after its local verification passes; commit
    recipe first when affected, then the superproject and submodule pointer.
 3. Stage only declared paths and do not stage or commit unrelated dirty changes.

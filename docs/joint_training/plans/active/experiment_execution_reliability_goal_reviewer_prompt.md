@@ -6,7 +6,8 @@ accept intent in place of executable evidence.
 ## Inputs
 
 - Plan: `docs/joint_training/plans/active/experiment_execution_reliability_goal.md`
-- Branch context: `feature/on-policy-wdl-sft`
+- Goal branch context: `codex/experiment-execution-reliability`
+- Parent experiment branch: `feature/on-policy-wdl-sft`
 - Current runtime family: Qwen3-1.7B Stage123
 - Global playbook: `/root/agent-core/workflows/TEST_ENGINEERING_PLAYBOOK.md`
 - Goal-plan contract: `/data-1/agent-tools/goal_plan/codex/skills/goal-plan/SKILL.md`
@@ -33,7 +34,8 @@ accept intent in place of executable evidence.
 9. Produce a preflight checklist covering test runner, fixtures/mocks, Docker
    fallback, branch/commit isolation, dirty-worktree handling, and reviewer-owned
    final commands.
-10. Verify real-L40S calibration, removal of every automatic override path, guarded
+10. Audit the real-L40S calibration acceptance contract (do not run calibration during
+    plan review), removal of every automatic override path, guarded
     WxPusher user-decision notification, content-addressed dirty baselines, immutable
     dual-repository cutoff, completion states, concrete no-preflight-bypass coverage,
     controlled Stage123 dirty-file adoption, scaled-clock validation cleanup/GPU
