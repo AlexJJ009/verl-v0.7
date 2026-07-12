@@ -136,9 +136,12 @@ silently discard the eighteen runs. It must:
 5. add regression fixtures for Stage1, Stage2, and Stage3 timing evidence, then rerun
    CPU gates and issue a fresh preflight.
 
-After that gate passes, the Goal may either content-address and reuse all complete
-bootstrap repetitions or rerun the affected repetitions, according to the reviewed
-contract. It must then freeze immutable history, generate the prediction contract,
+After that gate passed, deterministic audit confirmed that all eighteen bootstrap
+repetitions are complete under the timing contract, but the later outcome-schema audit
+found that they lack native response token/EOS/finish telemetry. They remain immutable
+diagnostic evidence and must not enter trusted history v2. After the outcome-schema-v2
+implementation and its fresh preflight pass, the Goal must run a new six-repetition
+bootstrap cohort per phase, freeze immutable history, generate the prediction contract,
 run three new acceptance repetitions per phase, obtain checker-owned `deployable`,
 and complete fresh independent AC-01 through AC-27 acceptance.
 
@@ -411,8 +414,131 @@ The dynamic estimator contract is fixed as `stage123_history_conformal_v1`:
    history-creation path; it cannot reuse acceptance measurements or weaken hashes.
 4. Features are fixed to phase, log2 parameter count, model provenance class, per-dataset
    row counts and difficulty-stratum counts, response-length p50/p95/truncation rate,
-   scorer-latency p50/p95, scorer-timeout rate, and peak RSS. Feature names, units,
-   missing-value rejection, and ordering are schema-versioned and hashed.
+   scorer-latency p50/p95, scorer-timeout rate, and peak RSS. This list is split to
+   prevent future-information leakage:
+
+   - launch-time exact-match workload descriptors are phase, base-2 `log2` model
+     parameter count rounded to six decimals, model provenance class, per-dataset row
+     counts, and per-dataset difficulty-stratum counts. They must be fully known from
+     pinned model/config/dataset artifacts before the contract is generated;
+   - response-length p50/p95/truncation rate, scorer-latency p50/p95,
+     scorer-timeout rate, and peak RSS are run outcomes. They are stored in every
+     historical repetition and receive frozen cohort predictions/intervals alongside
+     elapsed time; they are never copied from the current acceptance run into its
+     pre-execution feature vector. Acceptance records them after execution and checks
+     them against the already frozen contract.
+
+   The manifest schema adds `calibration_workloads.<phase>` for all three phases. Each
+   object requires:
+
+   ```text
+   phase
+   parameter_counter_version
+   rollout_model_parameter_counts[]
+   rollout_model_parameter_count_sum
+   log2_rollout_model_parameter_count_sum
+   model_provenance_class
+   model_sources[] = {role, path, artifact_sha256, hash_algorithm}
+   datasets[] = {name, path, sha256, row_count, uid_source,
+                 difficulty_resolution, difficulty_mapping_sha256,
+                 difficulty_stratum_counts}
+   tokenizer = {path, config_sha256, tokenizer_sha256}
+   outcome_schema_version = 2
+   ```
+
+   Phase names and ordered source roles are exact-match fields. Stage1 has one
+   `base_pretrained` rollout source; Stage2 has ordered `model1` and fixed `model2`
+   sources with class `fixed_model2_joint_rollout`; Stage3 has one
+   `stage2_model2_handoff` source. `hash_algorithm` is
+   `sorted_relative_path_content_sha256_v1`: for a file it is ordinary SHA-256; for a
+   directory, sort all regular files by POSIX relative path, then hash for each file
+   the 8-byte big-endian path length, UTF-8 path bytes, and the file-content SHA-256
+   bytes. Symlinks and special files are rejected. The manifest schema and renderer
+   reject missing/extra descriptor keys, incorrect order, non-integer counts, and a
+   declared artifact hash that does not match the pinned source.
+
+   `model_parameter_count` is an explicit integer in the manifest, verified before
+   contract generation by a schema-versioned architecture counter over the pinned
+   Hugging Face `config.json`; the counter must account for tied embeddings and every
+   architecture-specific projection exactly and must be covered by a known Qwen3-1.7B
+   fixture. It describes the rollout model actually used by that phase; joint Stage2
+   records both ordered submodel counts and their sum.
+   The first version is `hf_qwen3_config_parameter_count_v1`; it accepts only
+   `model_type=qwen3`, rejects unknown architecture/config keys that affect tensor
+   shapes, uses `tie_word_embeddings` to count a shared LM head exactly once, and emits
+   the ordered component formula plus total in verification evidence. The manifest's
+   base-2 logarithm must equal `round(log2(sum), 6)` using round-half-even.
+   `model_provenance_class` is one of `base_pretrained`, `sft_checkpoint`,
+   `stage1_model2_handoff`, `stage2_model2_handoff`, or
+   `fixed_model2_joint_rollout`, with the exact source artifact SHA-256 recorded
+   separately. Dataset row counts come from Parquet metadata. Difficulty strata must
+   come from an immutable, content-addressed dataset-side mapping keyed by dataset UID;
+   score, reward, elapsed time, or output length from calibration may not define or
+   relabel difficulty. If a dataset has no reviewed mapping, the only permitted value
+   is a declared `unstratified` bucket containing every row, and the contract records
+   `difficulty_resolution: unavailable`; it may establish exact workload identity but
+   may not support a claim about difficulty-conditioned prediction.
+
+   Dataset UID is the UTF-8 string in Parquet `extra_info.uid`. Every row must have a
+   unique non-empty UID. A difficulty mapping is canonical JSON with schema version,
+   dataset name/hash, and a UID-to-stratum object whose keys equal the dataset UID set;
+   its SHA-256 is over canonical JSON bytes. For the permitted `unstratified` fallback,
+   no external mapping file is invented: `difficulty_mapping_sha256` is the SHA-256 of
+   canonical `{schema_version,dataset_name,dataset_sha256,strata:{unstratified:[sorted
+   UIDs]}}`, and the sole count equals Parquet `row_count`.
+
+   Response lengths are token counts of the complete generated response under the
+   pinned rollout tokenizer, excluding padding and including EOS when present. p50 and
+   p95 use nearest-rank order statistics: sort ascending and select one-based rank
+   `ceil(q * N)` for `q=0.50` or `q=0.95`. Truncation means the response consumed exactly
+   `MAX_RESPONSE_LENGTH` non-padding response tokens without EOS. Scorer latency and
+   timeout use the existing per-sample reward telemetry and submitted-item denominator.
+   Peak RSS keeps the readiness-to-completion cgroup sampling contract. Feature and
+   outcome names, units, missing-value rejection, tokenizer/config hashes, ordering,
+   and derivation algorithm are schema-versioned and hashed.
+
+   New run evidence must write one row per submitted validation item with stable dataset
+   UID, response token count, EOS-present boolean, finish reason, response text,
+   `code_reward_latency_seconds`, timeout/status, and score. Token count/EOS come from
+   the rollout response tensor/mask before decoding, not tokenizer re-encoding. Missing
+   rows, duplicate UIDs, a row count other than the pinned full-validation count,
+   missing token/EOS/finish telemetry, or disagreement between runtime and artifact
+   counts makes the repetition ineligible. Historical text-only JSONL may be re-encoded
+   only for diagnostic p50/p95 analysis; it cannot prove EOS/truncation and therefore
+   cannot enter a complete `outcome_schema_version=2` trusted cohort.
+
+   For each continuous outcome
+   `validation_elapsed_seconds`, `peak_rss_gib`, `response_length_p50_tokens`,
+   `response_length_p95_tokens`, `scorer_latency_p50_seconds`, and
+   `scorer_latency_p95_seconds`, point prediction, leave-one-out residual, finite-sample
+   rank, interval construction, outward six-decimal rounding, measured three-run median,
+   at-most-20% point error, per-repetition containment, median containment, overlap, and
+   the 50%-of-midpoint informativeness limit are exactly the elapsed-time algorithm in
+   items 5 and AC-19. Peak RSS retains its stricter 25%-of-midpoint width limit.
+   `truncation_rate` and `scorer_timeout_rate` are bounded rates: their frozen predicted
+   interval is `[max(0,min(raw)-1/N), min(1,max(raw)+1/N)]`, where `N` is the exact full
+   submitted-item count, with outward six-decimal rounding. Each of three acceptance
+   rates and their aggregate submitted-item rate must lie inside that interval;
+   truncation rate above `0.01` or scorer timeout rate above `0.10` is `blocked`.
+   A continuous diagnostic with a non-informative interval is `inconclusive`; a rate
+   interval wider than `0.25` is `inconclusive`. These checks are additional to, and do
+   not replace, elapsed deadline, scorer validity, RSS, and GPU-idle gates. Scorer
+   latency p50/p95 and response p50/p95 both use nearest-rank statistics over all
+   submitted items in a repetition.
+
+   The current `stage123.yaml` lacks a complete descriptor schema and the pre-resume
+   contract emitted empty phase features. That contract is preserved as failed evidence
+   and must not authorize acceptance. After this amendment is independently `READY`,
+   deterministic enrichment may derive diagnostic response-length and scorer summaries
+   from all eighteen raw bootstrap generation/timeline/resource artifacts, provided
+   every input path and content hash is recorded and all eighteen pass the same
+   derivation. Because those artifacts lack original response token count/EOS/finish
+   telemetry, they remain preserved diagnostic evidence but are ineligible for the new
+   complete outcome schema. After instrumentation and CPU gates pass, the Goal must run
+   a new six-repetition bootstrap cohort per phase under the unchanged sampled/full/8K
+   semantics. The Goal must create a new history snapshot, prediction contract,
+   preflight receipt, and calibration root after the implementing commit; it must never
+   mutate or reuse the frozen `af1a407f` contract as an authorization artifact.
 5. Elapsed-time and RSS point predictions use the cohort median. For each historical
    value `y_i`, the leave-one-out residual is exactly
    `r_i = abs(y_i - median(y_j for j != i))`. Residuals are sorted numerically ascending
@@ -1078,19 +1204,21 @@ the commits recorded in the Resume Snapshot. On resume, execute this remaining o
 
 1. Revalidate the recorded commits, dirty-path baseline, preserved calibration evidence,
    and absence of conflicting run-owned runtime.
-2. Resolve the elapsed-time evidence semantics blocker without GPU work: trace both
-   clocks, make the normative interval and consistency rule unique in this plan, and
-   obtain a fresh independent `READY` review for that amendment.
-3. Add Stage1/Stage2/Stage3 timing regression fixtures, run the focused and fast/full
-   CPU gates, and commit the reviewed change using the repository transaction below.
-4. Generate fresh machine, budget, and preflight evidence bound to the new committed
-   state. Historical receipts must not authorize launch.
-5. Resume Milestone 5 operational calibration. Apply the reviewed eligibility rule to
-   all eighteen preserved bootstrap artifacts; reuse only artifacts that pass it and
-   rerun only repetitions the rule rejects.
-6. Freeze trusted history, generate the prediction contract, run exactly three new
+2. Treat the elapsed-time semantics amendment, shared timing parser, Stage1/2/3 timing
+   fixtures, focused/fast/full CPU gates, and commit transaction as completed evidence.
+3. Preserve the first frozen contract as failed diagnostic evidence: it exposed empty
+   launch-time features and non-informative Stage2/Stage3 intervals. Do not mutate or
+   authorize from that contract or its fresh-preflight predecessor.
+4. Implement the independently reviewed `calibration_workloads` descriptor schema,
+   outcome schema v2, native token/EOS/finish telemetry, predictor/checker coverage, and
+   regression fixtures. Run focused and fast/full CPU gates and commit the result.
+5. Generate fresh machine, budget, and preflight evidence bound to that committed state
+   and a completely new calibration root. Historical receipts must not authorize launch.
+6. Run a new six-repetition bootstrap cohort per phase. The eighteen preserved v1
+   repetitions are diagnostic-only and cannot enter trusted outcome-schema-v2 history.
+7. Freeze trusted history, generate the prediction contract, run exactly three new
    acceptance repetitions per phase, and require checker-owned `deployable` evidence.
-7. A fresh independent Reviewer executes every AC-01 through AC-27 command and the
+8. A fresh independent Reviewer executes every AC-01 through AC-27 command and the
    completion-state checker from committed code.
 
 No milestone may start until all required ACs from the previous milestone pass.
