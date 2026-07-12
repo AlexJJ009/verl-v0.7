@@ -110,10 +110,13 @@ generate_history_snapshot() {
     echo "reuse frozen history snapshot: $HISTORY_INDEX"
     return 0
   fi
-  python3 - "$REPORT_ROOT" "$HISTORY_INDEX" "$NORMALIZED_MANIFEST" <<'PY'
+  CALIBRATION_REPO="$REPO" python3 - "$REPORT_ROOT" "$HISTORY_INDEX" "$NORMALIZED_MANIFEST" <<'PY'
 import json, os, sys
 from datetime import datetime, timezone
 from pathlib import Path
+
+sys.path.insert(0, os.environ["CALIBRATION_REPO"] + "/scripts")
+from calibration_timing import load_validation_timing
 
 report_root = Path(sys.argv[1])
 history_path = Path(sys.argv[2])
@@ -144,16 +147,12 @@ for phase in ("stage1", "stage2", "stage3"):
         if len(metric_rows) != 1 or metric_rows[0].get("step") != 0:
             raise SystemExit(f"invalid bootstrap metrics for {phase} rep {rep}")
         metric_data = metric_rows[0].get("data", {})
-        elapsed = metric_data.get("timing_s/testing")
-        timeline = [json.loads(line) for line in timeline_path.read_text().splitlines() if line.strip()]
-        if [item.get("event") for item in timeline] != ["validation_ready", "generation_complete", "metrics_complete"]:
-            raise SystemExit(f"invalid bootstrap timeline for {phase} rep {rep}")
-        times = [item.get("monotonic_seconds") for item in timeline]
-        if any(not isinstance(value, (int, float)) for value in times) or times != sorted(times):
-            raise SystemExit(f"non-monotonic bootstrap timeline for {phase} rep {rep}")
-        timeline_elapsed = times[-1] - times[0]
-        if abs(float(elapsed) - float(timeline_elapsed)) > 1.0:
-            raise SystemExit(f"bootstrap validation elapsed/timeline mismatch for {phase} rep {rep}")
+        trainer_elapsed = metric_data.get("timing_s/testing")
+        try:
+            timing = load_validation_timing(timeline_path, trainer_elapsed)
+        except ValueError as exc:
+            raise SystemExit(f"invalid bootstrap timing for {phase} rep {rep}: {exc}") from exc
+        elapsed = timing["validation_elapsed_seconds"]
         peak_rss = resources.get("peak_rss_gib")
         idle = resources.get("all_gpu_idle_fraction_during_validation", resources.get("gpu_wait_fraction"))
         if elapsed is None or peak_rss is None or idle is None:
@@ -175,6 +174,8 @@ for phase in ("stage1", "stage2", "stage3"):
             "max_response_length": max_response_length,
             "metrics": {
                 "validation_elapsed_seconds": elapsed,
+                "trainer_validation_elapsed_seconds": timing["trainer_validation_elapsed_seconds"],
+                "pre_readiness_elapsed_seconds": timing["pre_readiness_elapsed_seconds"],
                 "peak_rss_gib": peak_rss,
                 "all_gpu_idle_fraction_during_validation": idle,
             },

@@ -9,7 +9,11 @@ import hashlib
 import json
 import statistics
 import subprocess
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from calibration_timing import load_validation_timing
 
 
 PHASES = ("stage1", "stage2", "stage3")
@@ -143,20 +147,9 @@ def load_scorer_evidence(root: Path, phase: str, validation_elapsed_seconds: flo
     }
 
 
-def load_validation_timeline(root: Path, phase: str) -> tuple[Path, dict]:
+def load_validation_timeline(root: Path, phase: str, trainer_elapsed_seconds: float) -> tuple[Path, dict]:
     path = root / f"{phase}.validation_timeline.jsonl"
-    rows = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
-    events = [row.get("event") for row in rows]
-    if events != ["validation_ready", "generation_complete", "metrics_complete"]:
-        raise ValueError(f"{path}: invalid validation timeline event order: {events}")
-    times = [row.get("monotonic_seconds") for row in rows]
-    if any(not isinstance(value, (int, float)) for value in times) or times != sorted(times):
-        raise ValueError(f"{path}: validation timeline is not monotonic")
-    return path, {
-        "rollout_elapsed_seconds": times[1] - times[0],
-        "post_generation_elapsed_seconds": times[2] - times[1],
-        "timeline_elapsed_seconds": times[2] - times[0],
-    }
+    return path, load_validation_timing(path, trainer_elapsed_seconds)
 
 
 def load_rep(root: Path, phase: str, warmup: bool) -> dict:
@@ -165,12 +158,13 @@ def load_rep(root: Path, phase: str, warmup: bool) -> dict:
     status = json.loads(status_path.read_text())
     resources = json.loads(resources_path.read_text())
     metrics_path, metrics = load_metrics(root, phase)
-    generation_path, scorer = load_scorer_evidence(root, phase, metrics["timing_s/testing"])
     timeline_path = root / f"{phase}.validation_timeline.jsonl"
     if timeline_path.is_file():
-        timeline_path, timeline = load_validation_timeline(root, phase)
+        timeline_path, timeline = load_validation_timeline(root, phase, metrics["timing_s/testing"])
     else:
-        timeline = {"status": "unavailable_pre_timeline_instrumentation"}
+        raise ValueError(f"{timeline_path}: canonical validation timeline is required")
+    validation_elapsed_seconds = timeline["validation_elapsed_seconds"]
+    generation_path, scorer = load_scorer_evidence(root, phase, validation_elapsed_seconds)
     if status.get("returncode") != 0 or status.get("timed_out") is not False:
         raise ValueError(f"{status_path}: repetition did not pass")
     if resources.get("peak_rss_gib") is None or resources.get("gpu_wait_fraction") is None:
@@ -180,7 +174,8 @@ def load_rep(root: Path, phase: str, warmup: bool) -> dict:
         "root": str(root),
         "status": status,
         "metrics": {
-            "validation_elapsed_seconds": metrics["timing_s/testing"],
+            "validation_elapsed_seconds": validation_elapsed_seconds,
+            "trainer_validation_elapsed_seconds": metrics["timing_s/testing"],
             "complete_validation_metrics": True,
             **{key: metrics[key] for key in CORE_METRICS},
         },

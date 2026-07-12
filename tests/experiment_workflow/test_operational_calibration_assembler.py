@@ -83,27 +83,51 @@ def test_content_sha256_is_stable_for_model_directories(tmp_path):
     assert module.content_sha256(model) != first
 
 
-def test_validation_timeline_requires_ordered_monotonic_events(tmp_path):
+@pytest.mark.parametrize(
+    ("phase", "trainer_elapsed", "ready", "generated", "complete", "expected_prep"),
+    [
+        ("stage1", 1058.550787596032, 11424107.405553587, 11425162.633636873, 11425165.421732359, 0.534608824),
+        ("stage2", 88.79418030567467, 11431533.714413784, 11431607.524541158, 11431614.295717072, 8.212877017),
+        ("stage3", 119.36518903635442, 11433294.035499893, 11433410.522387052, 11433412.75362399, 0.647064939),
+    ],
+)
+def test_validation_timeline_uses_readiness_to_metrics_interval(
+    tmp_path, phase, trainer_elapsed, ready, generated, complete, expected_prep
+):
     module = load()
     root = tmp_path / "rep"
-    path = root / "stage2.validation_timeline.jsonl"
+    path = root / f"{phase}.validation_timeline.jsonl"
     root.mkdir()
     path.write_text(
         "\n".join(
             [
-                '{"event":"validation_ready","monotonic_seconds":10}',
-                '{"event":"generation_complete","monotonic_seconds":14}',
-                '{"event":"metrics_complete","monotonic_seconds":16}',
+                f'{{"event":"validation_ready","monotonic_seconds":{ready}}}',
+                f'{{"event":"generation_complete","monotonic_seconds":{generated}}}',
+                f'{{"event":"metrics_complete","monotonic_seconds":{complete}}}',
             ]
         )
         + "\n"
     )
-    _, timeline = module.load_validation_timeline(root, "stage2")
-    assert timeline == {
-        "rollout_elapsed_seconds": 4,
-        "post_generation_elapsed_seconds": 2,
-        "timeline_elapsed_seconds": 6,
-    }
+    _, timeline = module.load_validation_timeline(root, phase, trainer_elapsed)
+    assert timeline["validation_elapsed_seconds"] == pytest.approx(complete - ready)
+    assert timeline["timeline_elapsed_seconds"] == pytest.approx(complete - ready)
+    assert timeline["trainer_validation_elapsed_seconds"] == trainer_elapsed
+    assert timeline["pre_readiness_elapsed_seconds"] == pytest.approx(expected_prep, abs=1e-6)
+
+
+def test_validation_timeline_rejects_trainer_timer_shorter_than_canonical_interval(tmp_path):
+    module = load()
+    root = tmp_path / "rep"
+    root.mkdir()
+    (root / "stage2.validation_timeline.jsonl").write_text(
+        '\n'.join([
+            '{"event":"validation_ready","monotonic_seconds":10}',
+            '{"event":"generation_complete","monotonic_seconds":14}',
+            '{"event":"metrics_complete","monotonic_seconds":16}',
+        ]) + '\n'
+    )
+    with pytest.raises(ValueError, match="does not contain canonical validation interval"):
+        module.load_validation_timeline(root, "stage2", 5.99)
 
 
 def test_load_rep_preserves_resource_measurement_contract(tmp_path, monkeypatch):
@@ -118,10 +142,19 @@ def test_load_rep_preserves_resource_measurement_contract(tmp_path, monkeypatch)
         '"measurement_started":true,"measurement_window":"validation_rollout_readiness_to_completion",'
         '"gpu_sample_interval_seconds":0.2,"readiness_wait_seconds":5}'
     )
-    monkeypatch.setattr(module, "load_metrics", lambda *_: (tmp_path / "metrics", {"timing_s/testing": 2, **{k: 0 for k in module.CORE_METRICS}}))
+    (root / "stage2.validation_timeline.jsonl").write_text(
+        '\n'.join([
+            '{"event":"validation_ready","monotonic_seconds":10}',
+            '{"event":"generation_complete","monotonic_seconds":11}',
+            '{"event":"metrics_complete","monotonic_seconds":12}',
+        ]) + '\n'
+    )
+    monkeypatch.setattr(module, "load_metrics", lambda *_: (tmp_path / "metrics", {"timing_s/testing": 2.5, **{k: 0 for k in module.CORE_METRICS}}))
     monkeypatch.setattr(module, "load_scorer_evidence", lambda *_: (tmp_path / "generation", {}))
     monkeypatch.setattr(module, "sha256", lambda _: "hash")
     rep = module.load_rep(root, "stage2", True)
+    assert rep["metrics"]["validation_elapsed_seconds"] == 2
+    assert rep["metrics"]["trainer_validation_elapsed_seconds"] == 2.5
     assert rep["resources"]["measurement_started"] is True
     assert rep["resources"]["gpu_sample_interval_seconds"] == 0.2
 

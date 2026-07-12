@@ -99,7 +99,7 @@ root.mkdir(parents=True, exist_ok=True)
 (root / phase / "logs/metrics/OnPolicyWDLSFT-CodeTask").mkdir(parents=True, exist_ok=True)
 (root / phase / "logs/metrics/OnPolicyWDLSFT-CodeTask/metrics.jsonl").write_text(json.dumps({{
     "step": 0,
-    "data": {{"timing_s/testing": 100}},
+    "data": {{"timing_s/testing": 109}},
 }}) + "\\n")
 (root / f"{{phase}}.validation_timeline.jsonl").write_text("\\n".join([
     json.dumps({{"event":"validation_ready","monotonic_seconds":10}}),
