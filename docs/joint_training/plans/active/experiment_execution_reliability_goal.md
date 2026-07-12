@@ -1,6 +1,6 @@
 # Experiment Execution Reliability and GPU Utilization Goal
 
-- Status: `READY TO RESUME - OUTCOME SCHEMA V2 IMPLEMENTATION IN PROGRESS; FRESH CALIBRATION NOT YET AUTHORIZED (2026-07-12)`
+- Status: `PLAN REVIEW REQUIRED - STAGE1 WORKLOAD IDENTITY MISMATCH; GPU CALIBRATION NOT AUTHORIZED (2026-07-12)`
 - Created: 2026-07-11
 - Goal branch: `codex/experiment-execution-reliability`
 - Parent experiment branch: `feature/on-policy-wdl-sft`
@@ -40,7 +40,7 @@ than maintaining independent run-prefix/final-step/train-file arrays.
 ## Resume Snapshot - 2026-07-12 (Outcome Schema V2)
 
 This section is the authoritative resume point for the next `/goal` run. It updates
-transient execution state without weakening or replacing AC-01 through AC-28.
+transient execution state without weakening or replacing AC-01 through AC-29.
 
 ### Accepted State
 
@@ -180,30 +180,55 @@ diagnostic evidence and must not enter trusted history v2. After the outcome-sch
 implementation and its fresh preflight pass, the Goal must run a new six-repetition
 bootstrap cohort per phase, freeze immutable history, generate the prediction contract,
 run three new acceptance repetitions per phase, obtain checker-owned `deployable`,
-and complete fresh independent AC-01 through AC-28 acceptance.
+and complete fresh independent AC-01 through AC-29 acceptance.
 
 ### Current Blocking Condition
 
-Outcome-schema-v2 implementation is partially complete but not committed or independently
-accepted. The shared outcome extractor and predictor-v2 focused tests pass. The latest
-independent focused command covering checker, assembler, predictor, and outcome tests
-reported `3 failed, 38 passed`: the failures are the assembler's three-argument
-`fake_load_rep` fixture and two checker fixtures that still describe schema v1. Resume
-from the existing worktree and:
+Outcome-schema-v2, validation eligibility, stable source UID routing, and PM2-only CI
+keepalive are committed and received fresh independent `CPU ACCEPTED` review at:
 
-1. upgrade assembler and checker fixtures to include workload descriptors,
-   `workload_descriptor_sha256`, `outcome_schema_version = 2`, and every required v2
-   continuous/rate outcome;
-2. add checker coverage for continuous point error and interval containment, rate
-   containment, `truncation_rate > 0.01`, `scorer_timeout_rate > 0.10`, and missing-v2
-   metric rejection;
-3. reconcile the queue-native `report/acceptance/<phase>/rep_0..2` layout with the
-   assembler's historical `rep0_predictor` / `rep1..3` assumptions without fabricating
-   a predictor run or weakening frozen-contract semantics;
-4. ensure assembled reports bind the exact workload descriptor and outcome schema;
-5. run focused, fast, full, isolation, and transaction gates from committed code;
-6. obtain fresh independent CPU acceptance before generating a new preflight or using
-   any GPU.
+```text
+superproject: c62b60932f2e93d4c0cea6e6fb4181e6db56b3be
+recipe:       7a7a4983b8d6adc568936ca656118dcae3de8f08
+```
+
+A fresh preflight bound to those commits passed under
+`/data-1/tmp/verl_agent_scratch/experiment_workflow/preflight/c62b6093`. The first
+Stage1 bootstrap probe under `/data-2/experiment_registry/calibration_runs/c62b6093_v4`
+then completed in 1165 seconds, passed the 1379-row ordered stable-source-UID check, and
+cleaned up all run-owned GPU/runtime state. It is nevertheless diagnostic-only:
+
+1. native telemetry measured `truncation_rate = 0.29731689630166785`, which exceeds
+   the immutable `0.01` hard gate; the per-dataset length-finished counts were
+   HumanEval+ `8/164`, MBPP+ `22/378`, and LiveCodeBench `380/837`;
+2. the probe and formal Stage1 path used the base pretrained snapshot at
+   `/data-1/.cache/huggingface/hub/models--Qwen--Qwen3-1.7B/snapshots/70d244cc86ccca08cf5af4e1e306ecf908b1ad5e`,
+   while the actual FRAC25 Stage1 experiment family initializes from the retained
+   format-SFT model at
+   `/data-1/model_weights/format_cold_start_fraction/qwen3-1p7b-kodcode-format-sft-frac25`;
+3. the latter is provenance-bound by `format_cold_start_source.json` to
+   `SFT-FORMAT-COLDSTART-Qwen3-1P7B-CODE-KODCODE-FRAC25-V1_1783390514/global_step_30`.
+
+The mismatch is a workload-identity defect, not grounds to tune the truncation threshold,
+shorten context, filter datasets, or reinterpret telemetry. Preserve `c62b6093_v4`
+unchanged and never admit it to trusted history after the Stage1 model identity changes.
+Before implementation or another GPU launch:
+
+1. obtain independent plan `READY` for the exact phase model-role contract below;
+2. add an explicit manifest path for the FRAC25 format-SFT Stage1 initialization and
+   bind its safe artifact hash plus provenance-file hash;
+3. make formal Stage1 and Stage1 calibration consume that same manifest identity;
+4. classify Stage1 workload provenance as `sft_checkpoint`, not `base_pretrained`;
+5. preserve Stage2 model1 as the base pretrained model and Stage2 model2 as the retained
+   Stage1 handoff, matching the existing fixed-model2 joint topology; preserve Stage3
+   as the extracted Stage2 model2;
+6. make descriptor, queue, preflight, and eligibility checks fail closed on any path,
+   role, provenance, or hash mismatch;
+7. add regression fixtures, run focused/fast/full/PM2/isolation/transaction gates,
+   commit recipe first, and obtain a new independent `CPU ACCEPTED` verdict;
+8. generate a completely fresh preflight bound to the new commits before one new
+   Stage1 probe in a new calibration root. Only a probe with UID, deadline, telemetry,
+   truncation, timeout, and cleanup gates all passing may unlock the remaining queue.
 
 ## Non-Negotiable Boundaries
 
@@ -1440,6 +1465,57 @@ or `pm2 startup` path, and records either a verified existing non-systemd reboot
 bootstrap or the fail-closed limitation. No real PM2 daemon or host service manager is
 acceptance evidence.
 
+### AC-29 - Phase Model Identity Matches the Formal Stage123 Experiment
+
+- Given manifest fields that pin the exact FRAC25 format-SFT directory, its
+  `format_cold_start_source.json`, the provenance schema version, the safe model-tree
+  hash, and the provenance-file hash; the base pretrained Qwen3-1.7B snapshot; the
+  retained Stage1 handoff; and, once produced, the current 20-step Stage2 model2 plus
+  its run ID, final step, extraction path, model-tree hash, and provenance-file hash,
+- When the manifest normalizer, workload-descriptor generator, formal queue dry-run,
+  calibration phase sandbox launch, calibration queue sandbox launch, preflight receipt
+  issue/verify path, deployability admission, and validation eligibility recomputation
+  resolve model roles from a clean sandbox,
+- Then Stage1 resolves only the manifest-pinned FRAC25 format-SFT initialization with
+  provenance class `sft_checkpoint`; Stage2 resolves model1 to the base pretrained
+  snapshot and model2 to the exact Stage1 handoff; Stage3 resolves only the model2
+  extracted from the named current Stage2 run at `final_step = 20`; every consumer
+  records identical canonical paths, safe artifact hashes, provenance schema versions,
+  and provenance hashes; and any missing, not-yet-produced, substituted, role-swapped,
+  stale, or hash-mismatched model fails before Docker, tmux, Ray, or trainer startup.
+  Stage1 is admitted as the explicit source dependency of each Stage2 run rather than
+  as a synthetic standalone entry in `runs`; the source-dependency admission is bound
+  into the preflight receipt and is mandatory for direct Stage1 calibration. Until the
+  current Stage2 20-step output exists, Stage3 descriptor generation, preflight, and
+  calibration fail closed; the old `step_40_s2steps60` model is never an exact-match
+  substitute.
+
+Verification:
+
+```bash
+python3 -m pytest -q \
+  tests/experiment_workflow/test_experiment_manifest.py \
+  tests/experiment_workflow/test_calibration_workload_descriptor.py \
+  tests/experiment_workflow/test_operational_calibration_runner.py \
+  tests/experiment_workflow/test_stage123_formal_admission.py \
+  tests/experiment_workflow/test_preflight_receipt.py \
+  tests/experiment_workflow/test_dual_receipt_admission.py
+python3 recipe/on_policy_wdl_sft/code_task/calibration_validation_eligibility.py --help
+python3 recipe/on_policy_wdl_sft/code_task/calibration_workload_descriptor.py --help
+bash scripts/run_code_task_operational_calibration_queue.sh --sandbox-dry-run
+bash recipe/on_policy_wdl_sft/code_task/run_code_task_operational_calibration_phase.sh --sandbox-dry-run stage1
+bash recipe/on_policy_wdl_sft/code_task/run_code_task_qwen3_1p7b_stage123_queue.sh --dry-run
+python3 scripts/stage123_preflight_receipt.py verify --help
+```
+
+Expected evidence: positive fixtures bind the exact Stage1/2/3 role graph and hashes;
+negative fixtures cover the previous base-pretrained Stage1 substitution, missing
+format-SFT provenance/schema/hash, changed model bytes, Stage2 role swap,
+calibration/formal queue drift, stale preflight bindings, a missing current Stage2
+20-step output, and substitution of the legacy 60-step model. Sandbox commands must be
+implemented as side-effect-free committed interfaces: no Docker, tmux, Ray, trainer,
+GPU process, PM2 daemon, or external service contact may start.
+
 ## Required Execution Order
 
 Milestones 0 through 4 are implemented, committed, and independently CPU-accepted at
@@ -1452,18 +1528,25 @@ the commits recorded in the Resume Snapshot. On resume, execute this remaining o
 3. Preserve the first frozen contract as failed diagnostic evidence: it exposed empty
    launch-time features and non-informative Stage2/Stage3 intervals. Do not mutate or
    authorize from that contract or its fresh-preflight predecessor.
-4. Implement the independently reviewed `calibration_workloads` descriptor schema,
-   outcome schema v2, native token/EOS/finish telemetry, predictor/checker coverage, and
-   regression fixtures. Run focused and fast/full CPU gates and commit the result.
-5. Add and verify the PM2-only keepalive contract for any persistent local CI or
-   reliability monitor. Assert that no systemd unit or `systemctl` path is introduced.
-6. Generate fresh machine, budget, and preflight evidence bound to that committed state
-   and a completely new calibration root. Historical receipts must not authorize launch.
-7. Run a new six-repetition bootstrap cohort per phase. The eighteen preserved v1
-   repetitions are diagnostic-only and cannot enter trusted outcome-schema-v2 history.
-8. Freeze trusted history, generate the prediction contract, run exactly three new
+4. Treat outcome schema v2, native telemetry, stable source UID, PM2-only keepalive,
+   their CPU gates, and their accepted commits as completed evidence. Do not repeat them.
+5. Obtain independent `READY` for AC-29, then implement the exact model identity,
+   provenance schema/hash, source-dependency admission, Stage3 dynamic-output gate, and
+   sandbox interfaces. Commit recipe first, run focused/fast/full/PM2/isolation/
+   transaction gates, and obtain fresh independent `CPU ACCEPTED`.
+6. Generate fresh machine, budget, and preflight evidence bound to that committed state.
+   Historical receipts must not authorize launch.
+7. In a completely new calibration root, run exactly one Stage1 bootstrap probe in tmux.
+   Only if UID, deadline, telemetry, timeout, truncation (`<= 0.01`), score, memory, and
+   cleanup hard gates pass may the remaining Stage1 repetitions and Stage2 calibration
+   proceed. A failed probe remains diagnostic and does not unlock the queue.
+8. After the current Stage2 20-step model2 is actually produced and provenance-bound,
+   regenerate/verify the Stage3 descriptor and preflight binding; only then run Stage3
+   calibration. Complete six eligible bootstrap repetitions per phase without reusing
+   `af1a407f`, `c62b6093_v4`, or the legacy 60-step Stage2 model.
+9. Freeze trusted history, generate the prediction contract, run exactly three new
    acceptance repetitions per phase, and require checker-owned `deployable` evidence.
-9. A fresh independent Reviewer executes every AC-01 through AC-28 command, the PM2
+10. A fresh independent Reviewer executes every AC-01 through AC-29 command, the PM2
    keepalive checks, and the completion-state checker from committed code.
 
 No milestone may start until all required ACs from the previous milestone pass.
@@ -1531,7 +1614,7 @@ The implementer may report local verification but may not mark this goal accepte
 A fresh reviewer must:
 
 1. run all AC verification commands in both repositories;
-2. report AC-01 through AC-28 as `PASS`, `FAIL`, or `WEAKENED`;
+2. report AC-01 through AC-29 as `PASS`, `FAIL`, or `WEAKENED`;
 3. inspect commits and tests for skipped, deleted, loosened, or trivial checks;
 4. confirm acceptance used no real external service;
 5. write the final review under `docs/joint_training/codereview/active/` and move

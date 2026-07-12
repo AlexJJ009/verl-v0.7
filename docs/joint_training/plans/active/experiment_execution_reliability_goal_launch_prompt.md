@@ -9,7 +9,7 @@ Resume and complete the long-running VERL Experiment Execution Reliability Goal.
 ```
 
 Read the entire plan before acting. Treat its `Resume Snapshot - 2026-07-12 (Outcome Schema V2)` and
-AC-01 through AC-28 as the execution contract. Do not restart from Milestone 0 or
+AC-01 through AC-29 as the execution contract. Do not restart from Milestone 0 or
 repeat accepted work unless live verification proves its evidence is stale or invalid.
 
 ## Current Repository State
@@ -18,12 +18,12 @@ repeat accepted work unless live verification proves its evidence is stale or in
 superproject:                  /data-1/code/verl
 branch:                        codex/experiment-execution-reliability
 original CPU-accepted base:    af1a407fda562f1cef8fd9d4471f73f3de91814e
-current committed HEAD:        b796ab3c (verify exact full hash live)
+current committed HEAD:        c62b60932f2e93d4c0cea6e6fb4181e6db56b3be
 
 recipe:                       /data-1/code/verl/recipe
 branch:                       codex/experiment-execution-reliability
 original accepted base:       cec05371fe17d42bb80722b5608c3cecbe4785b6
-current committed HEAD:       67b930199745518ce0433a0e7ca4c3289ac1fb0c
+current committed HEAD:       7a7a4983b8d6adc568936ca656118dcae3de8f08
 ```
 
 Verify these identities first. The committed continuation after the original baseline
@@ -58,20 +58,25 @@ They are diagnostic-only because their generation JSONL lacks native token count
 EOS, and finish telemetry. Never use this root to authorize acceptance, and never
 retrofit or infer missing outcome-schema-v2 telemetry from decoded text.
 
-Timing semantics are already resolved and reviewed: the canonical elapsed time is
-`metrics_complete.monotonic_seconds - validation_ready.monotonic_seconds`, and
-`timing_s/testing` must contain that interval. Do not reopen this decision without new
-contradictory evidence. Resume the existing outcome-schema-v2 worktree instead:
+Timing semantics, outcome schema v2, stable source UID routing, and PM2-only keepalive
+are resolved, committed, and independently CPU-accepted. A fresh Stage1 probe under
+`/data-2/experiment_registry/calibration_runs/c62b6093_v4` passed runtime, deadline,
+cleanup, and ordered UID checks, but is diagnostic-only because it measured
+`truncation_rate = 0.29731689630166785` and exposed a workload-identity mismatch:
+calibration/formal Stage1 used base pretrained while the actual FRAC25 experiment uses
+`/data-1/model_weights/format_cold_start_fraction/qwen3-1p7b-kodcode-format-sft-frac25`.
 
-1. inspect `git status` and preserve every listed user/uncommitted path;
-2. finish upgrading assembler/checker fixtures from schema v1 to v2;
-3. add the missing checker boundary tests named in the plan;
-4. reconcile queue-native acceptance directories with assembler input semantics without
-   fabricating a predictor repetition;
-5. run the focused outcome/predictor/runner/assembler/checker suite, then fast/full,
-   isolation, and dual-repository transaction gates;
-6. commit independently verifiable units with recipe-first ordering when applicable;
-7. obtain fresh independent GPT-5.5 medium CPU acceptance before preflight or GPU work.
+Before implementation or GPU work:
+
+1. independently review the amended model-role contract in AC-29;
+2. after `READY`, add a manifest-pinned, provenance/hash-bound Stage1 format-SFT path;
+3. make formal Stage1 and calibration Stage1 consume the identical model identity;
+4. preserve Stage2 model1 as base pretrained, Stage2 model2 as the Stage1 handoff, and
+   Stage3 as extracted Stage2 model2;
+5. add fail-closed drift fixtures, run focused/fast/full/PM2/isolation/transaction gates,
+   commit recipe first, and obtain fresh independent CPU acceptance;
+6. generate new preflight evidence and run only one fresh Stage1 probe first. Continue
+   the full queue only if every hard gate, including `truncation_rate <= 0.01`, passes.
 
 For any persistent local CI, queue monitor, or reliability checker, use PM2 for
 keepalive and restart management. Do not create systemd units or use `systemctl`.
@@ -81,13 +86,14 @@ bootstrap; if reboot persistence would require `pm2 startup` to install systemd,
 and report that boundary instead.
 
 Never weaken sampled validation, outcome telemetry, thresholds, interval semantics, or
-tests to make old evidence pass. Preserve all 18 old runs as diagnostic evidence.
+tests to make old evidence pass. Preserve all 18 old runs and `c62b6093_v4` as
+diagnostic evidence.
 
 ## Resume Operational Calibration
 
-Only after outcome-schema-v2 and the PM2 keepalive contract are committed, the
-focused/fast/full/isolation/transaction gates pass from committed code, and a fresh
-independent CPU acceptance is obtained:
+Only after AC-29 model identity/provenance admission, outcome-schema-v2, and the PM2
+keepalive contract are committed, the focused/fast/full/isolation/transaction gates pass
+from committed code, and a fresh independent CPU acceptance is obtained:
 
 1. generate a fresh machine report, bounded preflight report, budget decision, and
    preflight receipt bound to the current commits and manifest hashes; the old receipt
@@ -96,15 +102,20 @@ independent CPU acceptance is obtained:
 2. verify GPUs, Docker, model/data/scorer provenance, disk space, and no conflicting
    run-owned runtime;
 3. run all long GPU work in tmux;
-4. create a completely new calibration root and run six new bootstrap repetitions per
-   phase; the old `af1a407f` root is never eligible for v2 trusted history;
-5. freeze the immutable history snapshot before acceptance measurements;
-6. generate and verify `prediction_contract.json`;
-7. run exactly three new acceptance repetitions per Stage1/Stage2/Stage3, excluding
+4. create a completely new calibration root and run exactly one Stage1 probe first;
+   unlock the remaining queue only if every hard gate, including truncation `<= 0.01`,
+   passes; the old `af1a407f` and `c62b6093_v4` roots remain diagnostic-only;
+5. complete six eligible bootstrap repetitions for Stage1 and Stage2. Stage3 remains
+   fail-closed until the current named Stage2 run actually produces its 20-step model2,
+   model/provenance hashes are recorded, and a regenerated preflight binds that output;
+6. complete six eligible Stage3 bootstrap repetitions, then freeze the immutable history
+   snapshot before acceptance measurements;
+7. generate and verify `prediction_contract.json`;
+8. run exactly three new acceptance repetitions per Stage1/Stage2/Stage3, excluding
    them from history;
-8. assemble only a `candidate` report; checker alone may issue `deployable` and its
+9. assemble only a `candidate` report; checker alone may issue `deployable` and its
    canonical receipt;
-9. preserve the 30-minute readiness-to-complete-metrics hard timeout and verified GPU
+10. preserve the 30-minute readiness-to-complete-metrics hard timeout and verified GPU
    cleanup; any timeout, incomplete metric, scorer safety failure, semantic/hash drift,
    interval failure, or stale receipt is blocked with no bypass.
 
@@ -121,7 +132,7 @@ independent CPU acceptance is obtained:
 
 Do not mark the Goal complete until:
 
-- every AC-01 through AC-28 is covered by current evidence;
+- every AC-01 through AC-29 is covered by current evidence;
 - real local L40S calibration returns checker-owned `deployable`;
 - both receipts are fresh and exactly hash-matched;
 - fast/full gates pass from committed code;
