@@ -79,6 +79,41 @@ def verify_adoption(recipe: Path, baseline: dict, adoption: dict, *, require_ful
     return failures
 
 
+def dirty_paths(repo: Path) -> set[str]:
+    output = subprocess.check_output(
+        ["git", "status", "--porcelain=v1", "-z", "--untracked-files=all"],
+        cwd=repo,
+    )
+    paths: set[str] = set()
+    text = output.decode("utf-8", "surrogateescape") if isinstance(output, bytes) else output
+    records = text.split("\0")
+    index = 0
+    while index < len(records):
+        record = records[index]
+        index += 1
+        if not record:
+            continue
+        status, path = record[:2], record[3:]
+        paths.add(path)
+        if status[0] in "RC" and index < len(records):
+            renamed_from = records[index]
+            index += 1
+            if renamed_from:
+                paths.add(renamed_from)
+    return paths
+
+
+def verify_no_unregistered_dirty(
+    repo: Path,
+    baseline: dict,
+    extra_allowed: set[str] | None = None,
+    current_dirty: set[str] | None = None,
+) -> list[str]:
+    allowed = {entry["path"] for entry in baseline.get("entries", [])} | (extra_allowed or set())
+    extra = sorted((dirty_paths(repo) if current_dirty is None else current_dirty) - allowed)
+    return [f"{repo}: unregistered dirty path: {path}" for path in extra]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--superproject", type=Path, required=True)
@@ -87,6 +122,14 @@ def main() -> int:
     parser.add_argument("--adoption-manifest", type=Path)
     parser.add_argument("--superproject-adoption-manifest", type=Path)
     args = parser.parse_args()
+    if args.adoption_manifest is None:
+        candidate = args.superproject / "docs/joint_training/manifests/stage123_dirty_adoption.json"
+        if candidate.is_file():
+            args.adoption_manifest = candidate
+    if args.superproject_adoption_manifest is None:
+        candidate = args.superproject / "docs/joint_training/manifests/goal_contract_dirty_adoption.json"
+        if candidate.is_file():
+            args.superproject_adoption_manifest = candidate
     super_baseline = json.loads((args.baseline_root / "superproject.json").read_text())
     recipe_baseline = json.loads((args.baseline_root / "recipe.json").read_text())
     adoption = json.loads(args.adoption_manifest.read_text()) if args.adoption_manifest else None
@@ -95,6 +138,8 @@ def main() -> int:
     super_allowed = {"recipe"} | (set(super_adoption.get("allowed_paths", [])) if super_adoption else set())
     failures = verify_baseline(args.superproject, super_baseline, super_allowed)
     failures += verify_baseline(args.submodule, recipe_baseline, recipe_allowed)
+    failures += verify_no_unregistered_dirty(args.superproject, super_baseline, {"recipe"})
+    failures += verify_no_unregistered_dirty(args.submodule, recipe_baseline)
     if super_adoption:
         failures += verify_adoption(args.superproject, super_baseline, super_adoption, require_full_scope=False)
     if adoption:

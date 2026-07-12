@@ -3,6 +3,9 @@
 # we launch num_workers reward managers to parallelize the reward computation
 num_workers: 8
 
+# Maximum in-flight reward computations within each reward worker.
+max_concurrency_per_worker: 16
+
 # custom reward function definition
 custom_reward_function:
   # The path to the file containing your customized reward function.

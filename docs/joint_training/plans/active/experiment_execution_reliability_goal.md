@@ -1,6 +1,6 @@
 # Experiment Execution Reliability and GPU Utilization Goal
 
-- Status: `REVISED AFTER REVIEW, PENDING RE-REVIEW`
+- Status: `IN EXECUTION - INDEPENDENT PLAN REVIEW READY (2026-07-12)`
 - Created: 2026-07-11
 - Branch: `feature/on-policy-wdl-sft`
 - Scope: future Stage1/Stage2/Stage3 experiment families, beginning with Qwen3-1.7B Stage123
@@ -243,14 +243,91 @@ The historical 76-minute Stage2 pre-validation stall is a required regression fi
 An implementation that improves relative throughput but still exceeds 30 minutes is
 not accepted.
 
+Formal code validation intentionally preserves sampled pass@1 decoding because the
+experiment-quality contract takes precedence over making runtime prediction
+artificially deterministic. The estimator therefore models a distribution rather than
+claiming a single deterministic upper bound. Its inputs include phase, model parameter
+count and provenance, canonical resource-profile hash, response-length distribution,
+validation dataset composition and difficulty strata, scorer timeout/latency
+distribution, and prior trusted runs with identical semantic hashes. Missing or
+out-of-domain history widens the interval or returns `inconclusive`; it never silently
+substitutes greedy decoding or a narrower validation set.
+
+The dynamic estimator contract is fixed as `stage123_history_conformal_v1`:
+
+1. A run is eligible history only when its release gate passed, its calibration
+   artifacts remain content-addressed and readable, and its validation dataset hashes,
+   sampled-decoding semantic hash, resource-profile hash, phase topology, scorer hash,
+   timeout policy, and `MAX_RESPONSE_LENGTH` exactly match the requested phase.
+2. Eligible history comes from a content-addressed immutable JSON snapshot, never a
+   live database query. Before contract generation, the snapshot freezes a cutoff as
+   UTC RFC3339 with whole seconds and `Z`; runs completed after that cutoff are ignored.
+   Its canonical bytes and SHA-256 are recorded in the contract. Eligible runs are
+   sorted by completion timestamp ascending and then run ID ascending, and the last
+   twelve are selected. Operators cannot include, exclude, reorder, or weight individual
+   runs. The current calibration's predictor and measured repetitions are never history
+   inputs.
+3. At least six eligible prior runs per phase are required. The estimator uses at most
+   the latest twelve. Fewer than six returns `out_of_domain` and `inconclusive`; it
+   cannot borrow from another semantic/profile/phase cohort.
+   If a new exact-match cohort has fewer than six trusted runs, Milestone 5 first runs
+   a bootstrap calibration batch of six independent repetitions per phase under the
+   already reviewed semantic/profile contract and 30-minute timeout. Bootstrap runs
+   are infrastructure calibration evidence only: they cannot produce `deployable`,
+   cannot enter experiment-result SQLite/W&B, and any failed/timeout/incomplete run is
+   ineligible and must be replaced by a fresh repetition. After six eligible runs are
+   release-gated, their immutable snapshot and cutoff are frozen. Only then is
+   `prediction_contract.json` generated, followed by three new acceptance repetitions
+   per phase that are excluded from that snapshot. This ordered bootstrap is the only
+   history-creation path; it cannot reuse acceptance measurements or weaken hashes.
+4. Features are fixed to phase, log2 parameter count, model provenance class, per-dataset
+   row counts and difficulty-stratum counts, response-length p50/p95/truncation rate,
+   scorer-latency p50/p95, scorer-timeout rate, and peak RSS. Feature names, units,
+   missing-value rejection, and ordering are schema-versioned and hashed.
+5. Elapsed-time and RSS point predictions use the cohort median. For each historical
+   value `y_i`, the leave-one-out residual is exactly
+   `r_i = abs(y_i - median(y_j for j != i))`. Residuals are sorted numerically ascending
+   while preserving duplicates. The finite-sample rank is
+   `k = min(n, ceil((n + 1) * 0.90))`; `q` is the one-based `k`th sorted residual. The
+   prediction interval is exactly
+   `[max(0, cohort_median - q), cohort_median + q]`. Equal values retain their duplicate
+   ranks; no tie interpolation occurs. Exact internal decimal values are rounded only
+   when serialized: lower bounds toward negative infinity and upper bounds toward
+   positive infinity to six decimal places. GPU-idle uses the cohort raw-value interval
+   `[max(0, min(values)-0.02), min(1, max(values)+0.02)]` with the same outward rounding.
+6. Before any predictor or measured run starts, the history index, selected cohort,
+   features, algorithm version, coverage `0.90`, interval parameters, hashes, and
+   generated predictions are frozen in `prediction_contract.json`. Its SHA-256 is
+   propagated into every run artifact. Changing it requires a new reviewed commit,
+   new preflight, and a completely new calibration root.
+7. A contract is non-informative and returns `inconclusive` if elapsed-time interval
+   width exceeds 50% of its midpoint, RSS width exceeds 25% of its midpoint, GPU-idle
+   width exceeds `0.75`, or leave-one-run-out empirical coverage is below 0.80. The
+   `0.75` GPU-idle limit deliberately admits the current approximately `0.08` to `0.70`
+   bimodal fixture while rejecting near-full-range evidence such as `[0.02,0.87]`.
+   Coverage, margins, width limits, cohort size, and algorithm may not be lowered or
+   widened after measured evidence exists. An elapsed upper bound at or above 1800
+   seconds is a hard runtime-risk result and maps to `blocked`, not `inconclusive`.
+8. Canonical JSON throughout this contract is UTF-8, keys sorted recursively, compact
+   separators `(',', ':')`, no NaN/Infinity, and exactly one trailing newline. SHA-256
+   is computed over those canonical bytes. Any manifest, policy, history-snapshot,
+   semantic-contract, or prediction-contract byte change creates a new hash and
+   invalidates downstream evidence.
+
 Verification:
 
 ```bash
-python3 -m pytest -q tests/experiment_workflow/test_preflight_comparison.py
+python3 -m pytest -q \
+  tests/experiment_workflow/test_preflight_comparison.py \
+  tests/experiment_workflow/test_dynamic_calibration_interval.py \
+  tests/experiment_workflow/test_validation_readiness.py
 ```
 
 Expected evidence: semantic-downscope fixtures fail even when their throughput is
-higher; neutral results cannot satisfy a performance-optimization claim.
+higher; neutral results cannot satisfy a performance-optimization claim; the frozen
+dynamic estimator contract is byte-reproducible across edge cases; and the historical
+76-minute `val_before_train` fixture is classified as exceeding the 1800-second hard
+deadline even if relative throughput improved.
 
 ### AC-06 - Real GPU Smoke Is Explicitly Approval-Gated
 
@@ -539,26 +616,129 @@ quality evidence.
 - Given sandbox acceptance is green, the canonical profile/image/model/data hashes
   are pinned, and the user explicitly approves bounded local L40S calibration,
 - When Stage1, exact Stage2 fixed-Model2 joint topology, and Stage3 calibration run
-  in tmux using the same deterministic benchmark contract as AC-03,
+  in tmux using the same content-addressed benchmark contract as AC-03 while preserving
+  sampled pass@1 validation decoding,
 - Then the report records full provenance, before/after observed metrics, estimator
   prediction error, and one decision: `deployable`, `blocked`, or `inconclusive`.
-  `Deployable` requires the AC-05 improvement/safety budget and prediction error no
-  greater than 20% for elapsed scorer time, peak RSS, and GPU-wait fraction. Each
-  phase has a 30-minute hard timeout and must produce complete full-validation metrics;
-  any timeout, incomplete metric set, or scorer stall returns `blocked`.
+  `Deployable` requires the AC-05 improvement/safety budget. For validation elapsed time
+  and peak RSS, both gates must pass: the point prediction relative error against the
+  median of three valid measured repetitions is at most 20%, and all three measured
+  values plus their median lie inside the frozen prediction interval. Sampled-validation
+  `all_gpu_idle_fraction_during_validation` uses interval overlap rather than a
+  single-point 20% requirement. Its measured interval from exactly three valid
+  repetitions is `[max(0,min(raw)-0.02), min(1,max(raw)+0.02)]`, outward-rounded to six
+  decimals; fewer than three valid repetitions is `blocked`. Overlap is exactly
+  `max(pred_low, measured_low) <= min(pred_high, measured_high)`. GPU idle has no
+  physical hard threshold. The conservative predicted validation-time upper bound must
+  remain below 30 minutes. The report records raw per-run values, feature/provenance
+  hashes, history selection, interval method,
+  confidence/coverage target, and out-of-domain status. Status mapping is exhaustive:
+  fewer than six trusted history runs, OOD features, a non-informative interval, or
+  insufficient leave-one-out coverage returns `inconclusive`; semantic/profile/
+  provenance mismatch, measured timeout, incomplete metrics, scorer safety failure,
+  elapsed/RSS point-prediction relative error above 20%, any elapsed/RSS repetition or
+  its median outside the frozen interval,
+  elapsed upper bound at or above 1800 seconds, measured/predicted interval
+  non-overlap, or stale/mismatched receipt returns `blocked`. It cannot be overridden.
+  Each phase also has an
+  independent 30-minute hard runtime timeout and must produce complete full-validation
+  metrics; any timeout, incomplete metric set, or scorer stall returns `blocked`.
+
+#### AC-19A - Prediction Contract Is Frozen Before Execution
+
+- Given a reviewed manifest/policy commit and a content-addressed immutable trusted-
+  history snapshot whose cutoff, canonical SHA-256, and selection order are frozen,
+- When any predictor or measured repetition is requested,
+- Then `prediction_contract.json` is generated first with the exact history query,
+  selected and excluded run IDs, feature vector, algorithm version, fixed parameters,
+  hashes, OOD decision, and predictions; current calibration runs are excluded and the
+  contract hash cannot change within the calibration root.
+
+#### AC-19B - History Selection Is Deterministic
+
+- Given trusted calibration history,
+- When `stage123_history_conformal_v1` selects a cohort,
+- Then it applies the exact semantic/profile/phase eligibility and chronological
+  latest-twelve rule above; fewer than six eligible runs returns `inconclusive`, and
+  operator-selected history or cross-cohort borrowing fails closed.
+
+#### AC-19C - Interval Algorithm Is Byte-Reproducible
+
+- Given the same frozen cohort and feature inputs,
+- When the estimator runs repeatedly,
+- Then it emits byte-identical median predictions, split-conformal intervals,
+  empirical GPU-idle interval, coverage results, and contract hash using the fixed
+  finite-sample and rounding rules above.
+
+#### AC-19D - Intervals Cannot Be Widened After Evidence
+
+- Given a frozen prediction contract,
+- When coverage is insufficient, an interval exceeds its fixed informativeness limit,
+  or elapsed-time upper bound is at or above 1800 seconds,
+- Then insufficient history, OOD, non-informative width, or insufficient coverage is
+  `inconclusive`; elapsed upper bound at or above 1800 seconds is `blocked`; coverage
+  downgrade, cohort switching,
+  outlier removal, margin changes, and post-hoc widening are rejected.
+
+#### AC-19E - GPU Idle Is Distributional Diagnostic Evidence
+
+- Given sampled validation can create bimodal rollout/scoring overlap,
+- When deployability is checked,
+- Then complete metrics, elapsed deadline, scorer health, timeout rate, and RSS remain
+  hard gates; the three-repetition measured GPU-idle interval must overlap the frozen
+  informative predicted interval but is not assigned an invented physical safety
+  threshold. Raw values remain in the report and cannot be replaced by a selected run.
+
+#### AC-19F - Checker Owns the Only Deployment Decision
+
+- Given the assembler has produced a content-addressed calibration candidate,
+- When the checker validates it,
+- Then the assembler never self-declares `deployable`; the checker alone writes a
+  receipt binding report, manifest, policy, history-index, and prediction-contract
+  SHA-256 values to `deployable`, `blocked`, or `inconclusive`. The receipt uses the
+  canonical JSON rule above, contains `issued_at` as UTC RFC3339 whole seconds with `Z`,
+  and binds the exact report, manifest, policy, immutable history snapshot, semantic
+  contract, and prediction-contract hashes. The manifest field
+  `calibration_receipt_max_age_seconds` is fixed at `86400`; freshness is checked at
+  formal-queue admission with at most `300` seconds future clock skew. A receipt is not
+  single-use: within its TTL it may be reused only for repeated admission of the same
+  formal queue identity and the exact same bound hashes. Reuse for another queue
+  identity, after any bound-byte change, or outside the age/skew limits is replay and
+  must be rejected. No mutable consumption ledger is introduced. Formal execution
+  accepts only this fresh exact-matching checker receipt. The deployability receipt
+  also binds the exact AC-24 preflight-receipt SHA-256; it supplements rather than
+  replaces the preflight receipt.
 
 Verification:
 
 ```bash
+python3 -m pytest -q \
+  tests/experiment_workflow/test_dynamic_calibration_interval.py \
+  tests/experiment_workflow/test_operational_calibration_assembler.py \
+  tests/experiment_workflow/test_operational_calibration_checker.py
+python3 scripts/check_calibration_prediction_contract.py \
+  --contract /data-1/tmp/verl_agent_scratch/experiment_workflow/calibration/prediction_contract.json \
+  --manifest recipe/on_policy_wdl_sft/experiment_manifest/stage123.yaml \
+  --history-index /data-1/tmp/verl_agent_scratch/experiment_workflow/calibration/trusted_history.json
 python3 scripts/check_code_task_operational_calibration.py \
   --report /data-1/tmp/verl_agent_scratch/experiment_workflow/calibration/report.json \
-  --manifest recipe/on_policy_wdl_sft/experiment_manifest/stage123.yaml
+  --manifest recipe/on_policy_wdl_sft/experiment_manifest/stage123.yaml \
+  --contract /data-1/tmp/verl_agent_scratch/experiment_workflow/calibration/prediction_contract.json \
+  --receipt /data-1/tmp/verl_agent_scratch/experiment_workflow/calibration/deployability_receipt.json
 ```
 
 Expected evidence: checker exits `0` only for `deployable`; `blocked` and
 `inconclusive` preserve reports and keep formal deployment disabled. If GPU execution
 is unavailable, sandbox implementation may be accepted but workflow deployment stays
 `PENDING OPERATIONAL CALIBRATION`, not complete.
+Fixtures must reject same-input nondeterminism, current-run leakage, operator-selected
+history, use of fewer than six bootstrap runs, bootstrap-as-deployable, acceptance-run
+leakage into the history snapshot, semantic/profile mismatch, coverage downgrade, post-hoc
+widening, excessive interval width, upper bound equal to or above 1800, non-overlapping
+intervals, elapsed/RSS point error above 20%, any elapsed/RSS repetition outside its
+frozen interval, acceptance of the approximately `[0.08,0.70]` bimodal GPU-idle fixture,
+rejection of `[0.02,0.87]`, assembler self-declaration, TTL/skew boundaries, permitted
+same-queue exact-hash receipt reuse, and rejected cross-queue or changed-hash replay.
 
 ### AC-20 - Soft Threshold Failure Stops and Requests User Decision
 
@@ -643,7 +823,9 @@ and manifest truncation fixtures fail; unchanged protected work passes.
   remains active and cannot be marked complete. `GOAL COMPLETE` requires AC-19 to
   return `deployable` from real local measurements and an independent reviewer to
   mark AC-19 through AC-25 `PASS`. A phase exceeding the 30-minute validation budget
-  can never yield `deployable`.
+  can never yield `deployable`. Where exact-match history is initially insufficient,
+  the ordered six-run bootstrap per phase in AC-05 must complete before the three
+  acceptance repetitions; bootstrap evidence alone never satisfies AC-19 or this AC.
 
 Verification:
 
@@ -661,8 +843,11 @@ complete status; only reviewer-accepted deployable evidence can.
   a missing/failed/stale report, a report for another manifest/run/profile, or direct
   phase invocation attempts to bypass the launch gate,
 - Then execution exits nonzero before Docker, Ray, tmux, or trainer startup. Queue and
-  every phase launcher require the same content-addressed preflight receipt, whose
-  report/manifest/profile hashes match and whose age is within the manifest policy.
+  every phase launcher require both receipts: the same content-addressed preflight
+  receipt, whose report/manifest/profile hashes match and whose age is within the
+  manifest policy, and the fresh `deployable` AC-19F checker receipt that binds that
+  exact preflight-receipt SHA-256 plus the calibration evidence hashes. Neither receipt
+  contains or replaces the other; failure of either independently blocks admission.
   `ALLOW_QWEN3_1P7B_STAGE123_TRAINING=1` remains only a positive formal-launch guard
   and never substitutes for the receipt.
 
@@ -675,7 +860,8 @@ bash scripts/check_experiment_workflow_fast.sh
 
 Expected evidence: static checks reject skip/force variables in formal launch paths;
 behavioral fixtures cover missing, failed, stale, mismatched, queue-skipped, and
-direct-phase cases; all fail before side effects.
+direct-phase cases for each receipt independently, including a deployability receipt
+bound to another preflight receipt; all fail before side effects.
 
 ### AC-25 - Stage123 Dirty Files Use a Controlled Adoption Transaction
 
@@ -807,6 +993,12 @@ The user approved these boundaries on 2026-07-11:
    of 30 minutes.
 4. WxPusher sends once when a run is verified started, once when it fails, or once
    when human judgment is required; it does not send routine healthy-status updates.
+5. On 2026-07-12 the user explicitly chose to preserve sampled pass@1 formal validation.
+   Runtime prediction must use a deliberately loose, history-fitted dynamic model based
+   on model size, phase, dataset difficulty/composition, response-length behavior,
+   scorer behavior, and the shared resource profile. Experiment quality must not be
+   weakened to make the runtime bound deterministic; the 30-minute wall-clock controller
+   remains the final hard safety boundary.
 
 ## Independent Acceptance Contract
 

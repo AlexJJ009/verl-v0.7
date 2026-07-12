@@ -33,7 +33,10 @@ def main() -> int:
     parser.add_argument("--project", required=True)
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--release-gate-run-name", required=True)
-    parser.add_argument("--release-gate-script", default="/data-1/verl07/verl/scripts/training_result_release_gate.py")
+    parser.add_argument(
+        "--release-gate-script",
+        default=os.environ.get("TRAINING_RELEASE_GATE_SCRIPT", "/data-1/code/verl/scripts/training_result_release_gate.py"),
+    )
     parser.add_argument("--mark-synced", action="store_true")
     args = parser.parse_args()
 

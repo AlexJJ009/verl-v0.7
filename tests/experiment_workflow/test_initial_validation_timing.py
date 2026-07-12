@@ -12,3 +12,13 @@ def test_initial_validation_records_testing_wall_time() -> None:
     assert text.index('with marked_timer("testing", initial_validation_timing):') < text.index(
         'if self.config.trainer.get("val_only", False):'
     )
+
+
+def test_calibration_timeline_records_validation_phase_boundaries() -> None:
+    text = TRAINER.read_text()
+    ready = text.index('"validation_ready"')
+    generation = text.index('"generation_complete"')
+    metrics = text.index('"metrics_complete"')
+    assert ready < generation < metrics
+    assert 'CALIBRATION_VALIDATION_TIMELINE_FILE' in text
+    assert '"monotonic_seconds": time.monotonic()' in text

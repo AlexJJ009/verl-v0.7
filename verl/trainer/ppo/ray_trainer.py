@@ -21,6 +21,7 @@ This trainer supports model-agonistic model initialization with huggingface
 import json
 import os
 import shutil
+import time
 import uuid
 from collections import defaultdict
 from copy import deepcopy
@@ -846,11 +847,43 @@ class RayPPOTrainer:
         sample_turns = []
         sample_uids = []
         sample_data_sources = []
+        validation_timeline_file = os.environ.get("CALIBRATION_VALIDATION_TIMELINE_FILE")
+
+        def record_validation_event(event: str, **fields: Any) -> None:
+            if not validation_timeline_file:
+                return
+            timeline_path = os.path.abspath(validation_timeline_file)
+            os.makedirs(os.path.dirname(timeline_path), exist_ok=True)
+            row = {"schema_version": 1, "event": event, "monotonic_seconds": time.monotonic(), **fields}
+            with open(timeline_path, "a", encoding="utf-8") as handle:
+                handle.write(json.dumps(row, sort_keys=True) + "\n")
 
         total_val_batches = len(self.val_dataloader)
         for batch_idx, test_data in enumerate(self.val_dataloader, start=1):
             test_batch = DataProto.from_single_dict(test_data)
             prompt_count = len(test_batch)
+            validation_ready_file = os.environ.get("CALIBRATION_VALIDATION_READY_FILE")
+            if validation_ready_file and batch_idx == 1:
+                ready_path = os.path.abspath(validation_ready_file)
+                os.makedirs(os.path.dirname(ready_path), exist_ok=True)
+                tmp_path = f"{ready_path}.tmp.{os.getpid()}"
+                with open(tmp_path, "w", encoding="utf-8") as handle:
+                    json.dump(
+                        {
+                            "schema_version": 1,
+                            "prompt_count": prompt_count,
+                            "total_validation_batches": total_val_batches,
+                        },
+                        handle,
+                        sort_keys=True,
+                    )
+                    handle.write("\n")
+                os.replace(tmp_path, ready_path)
+                record_validation_event(
+                    "validation_ready",
+                    prompt_count=prompt_count,
+                    total_validation_batches=total_val_batches,
+                )
             print(
                 f"validation batch {batch_idx}/{total_val_batches} start: "
                 f"prompts={prompt_count}, repeat_times={self.config.actor_rollout_ref.rollout.val_kwargs.n}, "
@@ -897,6 +930,11 @@ class RayPPOTrainer:
             test_output_gen_batch = unpad_dataproto(test_output_gen_batch_padded, pad_size=pad_size)
 
             print(f"validation batch {batch_idx}/{total_val_batches} generation end")
+            record_validation_event(
+                "generation_complete",
+                batch_index=batch_idx,
+                total_validation_batches=total_val_batches,
+            )
 
             test_batch = test_batch.union(test_output_gen_batch)
             test_batch.meta_info["validate"] = True
@@ -1908,6 +1946,23 @@ class RayPPOTrainer:
                 val_metrics = self._validate()
             assert val_metrics, f"{val_metrics=}"
             val_metrics["timing_s/testing"] = initial_validation_timing["testing"]
+            timeline_file = os.environ.get("CALIBRATION_VALIDATION_TIMELINE_FILE")
+            if timeline_file:
+                timeline_path = os.path.abspath(timeline_file)
+                os.makedirs(os.path.dirname(timeline_path), exist_ok=True)
+                with open(timeline_path, "a", encoding="utf-8") as handle:
+                    handle.write(
+                        json.dumps(
+                            {
+                                "schema_version": 1,
+                                "event": "metrics_complete",
+                                "monotonic_seconds": time.monotonic(),
+                                "validation_elapsed_seconds": initial_validation_timing["testing"],
+                            },
+                            sort_keys=True,
+                        )
+                        + "\n"
+                    )
             pprint(f"Initial validation metrics: {val_metrics}")
             logger.log(data=val_metrics, step=self.global_steps)
             if self.config.trainer.get("val_only", False):

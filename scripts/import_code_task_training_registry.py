@@ -31,8 +31,9 @@ from registry_core import (  # noqa: E402
 )
 
 
-REPO = Path("/data-1/verl07/verl")
-DB = "/data-1/experiment_registry/experiment_registry.sqlite"
+REPO = Path(os.environ.get("VERL_REPO_ROOT", "/data-1/code/verl")).resolve()
+DB = os.environ.get("EXPERIMENT_REGISTRY_DB", "/data-1/experiment_registry/experiment_registry.sqlite")
+WANDB_ROOT = Path(os.environ.get("WANDB_ROOT", "/data-1/wandb_runs")).resolve()
 PROJECT_NAME = "verl:feature/on-policy-wdl-sft"
 BRANCH = "feature/on-policy-wdl-sft"
 IMPORTER = "import_code_task_training_registry_v1"
@@ -98,14 +99,18 @@ def infer_run(run_name: str) -> dict[str, Any]:
         beta = 0.0
         beta_label = "beta0"
 
-    stage = "stage2" if "CODE-S2-" in run_name else "stage1"
+    stage = "stage3" if "CODE-S3-" in run_name else "stage2" if "CODE-S2-" in run_name else "stage1"
     handoff = None
-    m = re.search(r"-P(\d+)-", run_name)
+    m = re.search(r"(?:-|_)P(\d+)(?:-|_)", run_name)
     if m:
         handoff = int(m.group(1))
-    dataset = "kodcode" if "KODCODE" in run_name else "deepcoder" if "DEEPCODER" in run_name else "code"
-    init = "qwen3-4b-instruct-2507" if "INSTRUCT2507" in run_name else "qwen3-4b-base"
-    ctx = "ctx8k" if "CTX8K" in run_name or "R8K" in run_name else "ctx4k"
+    dataset = "kodcode" if "KODCODE" in run_name or "STAGE123" in run_name else "deepcoder" if "DEEPCODER" in run_name else "code"
+    if "1P7B" in run_name:
+        init = "qwen3-1.7b"
+    else:
+        init = "qwen3-4b-instruct-2507" if "INSTRUCT2507" in run_name else "qwen3-4b-base"
+    ctx = "response8k-model9216" if "STAGE123" in run_name else "ctx8k" if "CTX8K" in run_name or "R8K" in run_name else "ctx4k"
+    fraction = "frac25" if "FRAC25" in run_name else "frac50" if "FRAC50" in run_name else None
     suffix = slug(run_name)
     return {
         "beta": beta,
@@ -115,6 +120,7 @@ def infer_run(run_name: str) -> dict[str, Any]:
         "dataset": dataset,
         "init": init,
         "ctx": ctx,
+        "fraction": fraction,
         "experiment_key": f"verl.on_policy_wdl_sft.code.{dataset}.{init}.{ctx}.{stage}.{beta_label}.{suffix}",
         "display_name": f"{stage.upper()} {dataset} {init} {ctx} {beta_label} {run_name}",
     }
@@ -150,8 +156,8 @@ def find_validation_path(run_name: str, step: int) -> Path | None:
 def find_wandb_run(run_name: str, run_prefix: str | None) -> str | None:
     roots = []
     if run_prefix:
-        roots.append(Path("/data-1/wandb_runs") / run_prefix / "wandb")
-    roots.append(Path("/data-1/wandb_runs"))
+        roots.append(WANDB_ROOT / run_prefix / "wandb")
+    roots.append(WANDB_ROOT)
     candidates: list[Path] = []
     for root in roots:
         if root.exists():

@@ -91,7 +91,7 @@ training_queue_monitor_main() {
     }
 
     run_release_success_hook() {
-        local prefix="$1" run_name="$2" step="$3" final_step="$4" ckpt="$5" metrics="$6"
+        local prefix="$1" run_name="$2" step="$3" final_step="$4" ckpt="$5" metrics="$6" train_file="${7:-}"
         if [ -z "$TRAINING_RELEASE_SUCCESS_HOOK" ]; then
             return 0
         fi
@@ -102,6 +102,7 @@ training_queue_monitor_main() {
             METRICS_PATH="$metrics" \
             OBSERVED_STEP="$step" \
             FINAL_STEP="$final_step" \
+            TRAIN_FILE="$train_file" \
             WANDB_PROJECT="$WANDB_PROJECT" \
             bash -lc "$TRAINING_RELEASE_SUCCESS_HOOK" >>"$LOG_FILE" 2>&1; then
             echo "[$(date '+%Y-%m-%d %H:%M:%S')] WARNING: release success hook failed for ${run_name}" | tee -a "$LOG_FILE"
@@ -138,7 +139,9 @@ Next action: Monitor will notify on launch, completion, failure, or queue exit."
             local tmux_name="${TMUX_NAMES[$idx]}"
             local final_step="${FINAL_STEPS[$idx]}"
             local ckpt step metrics status
-            ckpt=$(find "$CKPT_ROOT" -maxdepth 1 -type d -name "${prefix}_*" 2>/dev/null | sort | tail -1)
+            local ckpt_search_root
+            ckpt_search_root=$(readlink -f "$CKPT_ROOT")
+            ckpt=$(find "$ckpt_search_root" -maxdepth 1 -type d -name "${prefix}_*" 2>/dev/null | sort | tail -1)
             step="none"
             status="missing"
             if [ -n "$ckpt" ]; then
@@ -182,7 +185,11 @@ Next action: Monitor will notify on completion or early stop."
             if [ "$status" = "checkpoint-final" ] && [ "${notified_complete[$prefix]}" = "0" ]; then
                 notified_complete["$prefix"]=1
                 if record_release_gate "$prefix" "success_complete" "$step" "$final_step" "${ckpt:-}" "${metrics:-}" "Reached configured final checkpoint with metrics evidence."; then
-                    if run_release_success_hook "$prefix" "$(basename "$ckpt")" "$step" "$final_step" "${ckpt:-}" "${metrics:-}"; then
+                    local train_file=""
+                    if declare -p TRAIN_FILES >/dev/null 2>&1; then
+                        train_file="${TRAIN_FILES[$idx]:-}"
+                    fi
+                    if run_release_success_hook "$prefix" "$(basename "$ckpt")" "$step" "$final_step" "${ckpt:-}" "${metrics:-}" "$train_file"; then
                         notify_monitor "${MONITOR_NAME} run released" "Status: completed
 What happened: ${prefix} reached final_step=${final_step}, passed the release gate, and completed the release hook.
 Evidence: step=${step}; checkpoint=${ckpt:-none}; metrics=${metrics:-none}

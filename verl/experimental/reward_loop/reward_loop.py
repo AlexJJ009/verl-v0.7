@@ -35,6 +35,20 @@ logger = logging.getLogger(__file__)
 logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
 
 
+def split_near_equal(data: DataProto, chunk_count: int) -> list[DataProto]:
+    if chunk_count <= 0:
+        raise ValueError("chunk_count must be positive")
+    worker_count = min(chunk_count, len(data))
+    base_size, remainder = divmod(len(data), worker_count)
+    chunks = []
+    start = 0
+    for index in range(worker_count):
+        size = base_size + int(index < remainder)
+        chunks.append(data[start : start + size])
+        start += size
+    return chunks
+
+
 def migrate_legacy_reward_impl(config):
     """
     Migrate the legacy reward model implementation to the new one.
@@ -112,8 +126,20 @@ class RewardLoopWorker:
             reward_router_address: str, the address of reward router.
         """
         self.config = config
+        self.max_concurrency = self._validate_max_concurrency(
+            self.config.reward.max_concurrency_per_worker
+        )
         self.reward_router_address = reward_router_address
         self._init_reward_fn()
+
+    @staticmethod
+    def _validate_max_concurrency(value: int) -> int:
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            raise ValueError(
+                "reward.max_concurrency_per_worker must be a positive integer, "
+                f"got {value!r}"
+            )
+        return value
 
     def _init_reward_fn(self):
         input_tokenizer_local_path = copy_to_local(self.config.actor_rollout_ref.model.path)
@@ -131,10 +157,27 @@ class RewardLoopWorker:
         )
 
     async def compute_score_batch(self, data: DataProto) -> list[dict]:
-        tasks = []
-        for i in range(len(data)):
-            tasks.append(asyncio.create_task(self.compute_score(data[i : i + 1])))
-        outputs = await asyncio.gather(*tasks)
+        outputs = [None] * len(data)
+        next_index = 0
+
+        async def consume_scores() -> None:
+            nonlocal next_index
+            while next_index < len(data):
+                index = next_index
+                next_index += 1
+                outputs[index] = await self.compute_score(data[index : index + 1])
+
+        tasks = [
+            asyncio.create_task(consume_scores())
+            for _ in range(min(self.max_concurrency, len(data)))
+        ]
+        try:
+            await asyncio.gather(*tasks)
+        except BaseException:
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            raise
         return outputs
 
     async def compute_score(self, data: DataProto) -> dict:
@@ -297,6 +340,7 @@ class RewardLoopManager:
             self.reward_loop_workers.append(
                 self.reward_loop_workers_class.options(
                     name=f"reward_loop_worker_{i}",
+                    max_concurrency=self.config.reward.max_concurrency_per_worker,
                     scheduling_strategy=ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
                         node_id=node_id,
                         soft=True,
@@ -308,11 +352,12 @@ class RewardLoopManager:
         if self.reward_model_manager is not None:
             self.reward_model_manager.wake_up()
 
-        chunks = data.chunk(len(self.reward_loop_workers))
+        chunks = split_near_equal(data, len(self.reward_loop_workers))
+        worker_count = len(chunks)
         outputs = ray.get(
             [
                 worker.compute_score_batch.remote(chunk)
-                for worker, chunk in zip(self.reward_loop_workers, chunks, strict=True)
+                for worker, chunk in zip(self.reward_loop_workers[:worker_count], chunks, strict=True)
             ]
         )
         outputs_flat = [item for sublist in outputs for item in sublist]

@@ -1,14 +1,21 @@
+import json
 import os
+import signal
+import sqlite3
 import subprocess
+import tempfile
 import time
 import unittest
 import uuid
+import zlib
 from types import SimpleNamespace
 from unittest.mock import Mock
+from unittest.mock import patch
 
 from recipe.on_policy_wdl_sft.code_task.official_aligned_reward import _restore_jsonable
 from recipe.on_policy_wdl_sft.code_task.code_extraction import extract_code
 from recipe.on_policy_wdl_sft.code_task.official_aligned_reward import compute_score_code_official_aligned
+from recipe.on_policy_wdl_sft.code_task.official_aligned_reward import score_livecodebench_official
 from recipe.on_policy_wdl_sft.code_task.prepare_deepcoder_preview_dataset import convert_row
 from verl.experimental.agent_loop.agent_loop import _default_reward_extra_value
 from verl.experimental.reward_loop.reward_manager.dapo import DAPORewardManager
@@ -20,6 +27,52 @@ def wrap_code(code: str) -> str:
 
 
 class TestCodeTaskRewardAndMetrics(unittest.TestCase):
+    def test_livecodebench_sqlite_index_reads_one_question(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = os.path.join(td, "lcb.sqlite")
+            payload = {"inputs": ["1\n"], "outputs": ["1\n"]}
+            with sqlite3.connect(path) as con:
+                con.execute("CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+                con.execute(
+                    "CREATE TABLE input_output (question_id TEXT PRIMARY KEY, payload_zlib BLOB NOT NULL) WITHOUT ROWID"
+                )
+                con.execute("INSERT INTO metadata VALUES ('release_version', 'release_v5')")
+                con.execute(
+                    "INSERT INTO input_output VALUES (?, ?)",
+                    ("q1", sqlite3.Binary(zlib.compress(json.dumps(payload).encode()))),
+                )
+            with patch.dict(os.environ, {"LCB_INPUT_OUTPUT_INDEX": path}):
+                from recipe.on_policy_wdl_sft.code_task.official_aligned_reward import (
+                    _resolve_livecodebench_input_output,
+                )
+
+                self.assertEqual(
+                    _resolve_livecodebench_input_output(
+                        {"question_id": "q1", "release_version": "release_v5"}
+                    ),
+                    payload,
+                )
+
+    def test_livecodebench_official_timeout_kills_process_group(self):
+        class HangingProcess:
+            returncode = None
+            pid = os.getpid()
+
+            def communicate(self, timeout=None):
+                if timeout is not None:
+                    raise subprocess.TimeoutExpired("lcb", timeout)
+                self.returncode = -signal.SIGKILL
+                return "", ""
+
+        proc = HangingProcess()
+        with patch("recipe.on_policy_wdl_sft.code_task.official_aligned_reward.subprocess.Popen", return_value=proc), patch(
+            "recipe.on_policy_wdl_sft.code_task.official_aligned_reward.os.killpg"
+        ) as killpg:
+            result = score_livecodebench_official("print(1)", {"input_output": {"inputs": [], "outputs": []}})
+
+        self.assertEqual(result["code_reward_status"], "timeout")
+        killpg.assert_called_once_with(proc.pid, signal.SIGKILL)
+
     def test_strict_extraction_rejects_full_text_fallback(self):
         result = extract_code("```python\ndef f():\n    return 1\n```")
         self.assertFalse(result.ok)
@@ -154,6 +207,13 @@ class TestCodeTaskRewardAndMetrics(unittest.TestCase):
         self.assertEqual(result["reward_extra_info"]["verification_method"], "reward_manager_fallback")
         self.assertFalse(result["reward_extra_info"]["official_aligned"])
         self.assertIn("code_reward_sandbox", result["reward_extra_info"])
+
+    def test_dapo_timeout_helper_remains_latency_agnostic(self):
+        manager = object.__new__(DAPORewardManager)
+        manager.timeout = 0.01
+        manager.is_async_reward_score = False
+        result = manager._timeout_result("code", "stuck")
+        self.assertNotIn("code_reward_latency_seconds", result["reward_extra_info"])
 
     def test_reward_extra_union_defaults_keep_agent_loop_schema_stable(self):
         infos = [

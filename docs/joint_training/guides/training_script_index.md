@@ -107,6 +107,17 @@ Times are local server time (`Asia/Shanghai`, CST).
 | `platform/hope_code_task/run.hope` | Template platform config for code-task AFO launches. | 2026-06-04 | not used | Documents supported `EXPERIMENT` values, including formal Stage1 code On-Policy SFT and retention reruns. |
 | `platform/hope_code_task/jupyter.sh` | Thin AFO platform shim for code-task launches. | 2026-06-04 | not used | Delegates to `recipe/on_policy_wdl_sft/code_task/meituan/jupyter.sh`. |
 
+## Qwen3-1.7B Stage123 Plateau Breakthrough
+
+| Script | Purpose | Added | Last used | Notes |
+| --- | --- | --- | --- | --- |
+| `recipe/on_policy_wdl_sft/code_task/qwen3_1p7b_stage123_resource_profile.sh` | Canonical L40S resource and length profile shared by Stage1/2/3. | 2026-07-11 | 2026-07-11 formal run | Serializes every governed field and enforces expected SHA256; response length is fixed at 8192 and reward workers default to 1 after the two-worker host-RAM failure. |
+| `recipe/on_policy_wdl_sft/code_task/run_s1_code_qwen3_1p7b_stage123_common.sh` | Stage1/source-check wrapper for the Stage123 family. | 2026-07-11 | 2026-07-11 dry-run | Sources only the canonical profile for resource settings and retains full LCB. |
+| `recipe/on_policy_wdl_sft/code_task/run_s2_code_qwen3_1p7b_stage123_common.sh` | Short Stage2 wrapper for the Stage123 family. | 2026-07-11 | 2026-07-11 dry-run | Uses model2 rollout/joint objective while sharing the exact Stage1/3 resource hash. |
+| `recipe/on_policy_wdl_sft/code_task/run_s3_code_qwen3_1p7b_stage123_common.sh` | Stage1-like Stage3 wrapper from extracted Stage2 model2. | 2026-07-11 | 2026-07-11 dry-run | Requires Stage2 provenance and the canonical resource hash. |
+| `recipe/on_policy_wdl_sft/code_task/run_code_task_qwen3_1p7b_stage123_queue.sh` | Approval-gated FRAC25/FRAC50 P40 Stage123 queue. | 2026-07-11 | 2026-07-11 formal run | Verifies `/data-2` checkpoint placement, source checkpoints, profile identity, full LCB, handoff paths, and the machine-readable preflight gate. |
+| `recipe/on_policy_wdl_sft/code_task/monitor_code_task_qwen3_1p7b_stage123_notify.sh` | Generic release-aware monitor for Stage123 phase transitions. | 2026-07-11 | 2026-07-11 formal run | Uses `scripts/training_queue_monitor.sh`; final checkpoints must pass the release gate before DB/W&B publication. |
+
 Operational runbook: `docs/joint_training/guides/code_task_monitor_agent_runbook.md`
 defines the Monitor Agent failure classification, disk/OOM/resume policy, and
 actions requiring user approval. Keep detailed operational procedures there, not
@@ -201,3 +212,9 @@ Formal code-task queue launch and repair history:
 | `/data-1/dataset/math/train_rl_format.parquet` | Generated MATH train file consumed by `run_1d_group_adv_is_math_train.sh`. | 2026-05-22 10:06:47 | 7500 rows; columns match existing RL format: `data_source`, `ability`, `reward_model`, `prompt`, `split`, `extra_info`; empty `ground_truth` count is 0. |
 | `recipe/on_policy_wdl_sft/code_task/prepare_kodcode_light_rl_dataset.py` | Downloads and converts `KodCode/KodCode-Light-RL-10K` into the code-task RL format with the existing system/user prompt contract. | 2026-06-04 | Writes raw parquet under `/data-1/dataset/KodCode-Light-RL-10K/`, converted train parquet under `/data-1/dataset/code/verl_rl/`, and audit reports under `/data-1/dataset/KodCode-Light-RL-10K/reports/`. |
 | `/data-1/dataset/code/verl_rl/kodcode_light_rl_10k_train_rl_format.parquet` | Generated KodCode-Light-RL-10K train file for code-task On-Policy SFT experiments. | 2026-06-04 | 10000 rows; `data_source=kodcode_light_rl_10k`; prompt contract is `<think>...</think><answer>```python ...```</answer>`; reward uses `kodcode_exec`. |
+### Qwen3-1.7B Stage123 reliability gates
+
+- Fast machine-readable preflight: `python3 recipe/on_policy_wdl_sft/code_task/stage123_preflight.py`
+- Preflight during an already active queue audit: `python3 recipe/on_policy_wdl_sft/code_task/stage123_preflight.py --allow-active`
+- Read-only GPU idle watchdog: `python3 recipe/on_policy_wdl_sft/code_task/stage123_gpu_idle_watchdog.py --idle-minutes 10`
+- The watchdog records alerts in `/data-2/experiment_registry/stage123_gpu_idle_watchdog.jsonl`; it never kills or restarts training.

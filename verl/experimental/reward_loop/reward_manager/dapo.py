@@ -15,6 +15,7 @@
 import asyncio
 import inspect
 import logging
+import time
 
 from verl import DataProto
 from verl.experimental.reward_loop.reward_manager import register
@@ -142,6 +143,7 @@ class DAPORewardManager(RewardManagerBase):
         }
 
     async def run_single(self, data: DataProto) -> dict:
+        reward_started = time.perf_counter()
         assert len(data) == 1, "Only support single data item"
         data_item = data[0]
         response_ids = data_item.batch["responses"]
@@ -170,9 +172,13 @@ class DAPORewardManager(RewardManagerBase):
                 timeout=self.timeout,
             )
         except asyncio.TimeoutError:
-            return self._timeout_result(data_source, response_str)
+            output = self._timeout_result(data_source, response_str)
+            output["reward_extra_info"]["code_reward_latency_seconds"] = time.perf_counter() - reward_started
+            return output
         except Exception as exc:
-            return self._error_result(data_source, response_str, exc)
+            output = self._error_result(data_source, response_str, exc)
+            output["reward_extra_info"]["code_reward_latency_seconds"] = time.perf_counter() - reward_started
+            return output
 
         reward_extra_info = {}
 
@@ -198,4 +204,5 @@ class DAPORewardManager(RewardManagerBase):
                 reward_extra_info["overlong_reward"] = overlong_reward
                 reward_extra_info["overlong"] = overlong_reward < 0
 
+        reward_extra_info["code_reward_latency_seconds"] = time.perf_counter() - reward_started
         return {"reward_score": reward, "reward_extra_info": reward_extra_info}

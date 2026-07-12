@@ -550,6 +550,7 @@ sandbox_fusion:
   memory_limit_mb: null
 reward:
   num_workers: 8
+  max_concurrency_per_worker: 16
   custom_reward_function:
     path: null
     name: compute_score
