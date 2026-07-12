@@ -421,13 +421,16 @@ def build_prediction_contract(
     *,
     manifest_sha256: str | None = None,
     history_index_sha256: str | None = None,
+    phases: tuple[str, ...] = PHASES,
 ) -> dict[str, Any]:
     validate_history_snapshot(history_index)
-    phases = []
-    for phase in PHASES:
+    if not phases or any(phase not in PHASES for phase in phases) or len(set(phases)) != len(phases):
+        raise ContractError("prediction phases must be a unique non-empty subset of Stage1/2/3")
+    phase_results = []
+    for phase in phases:
         cohort, excluded = select_cohort(history_index, manifest, phase)
         prediction = predict_for_cohort(cohort)
-        phases.append(
+        phase_results.append(
             {
                 "phase": phase,
                 "status": prediction["status"],
@@ -440,7 +443,7 @@ def build_prediction_contract(
                 "predictions": prediction["predictions"],
             }
         )
-    decisions = {phase["decision"] for phase in phases}
+    decisions = {phase["decision"] for phase in phase_results}
     decision = "blocked" if "blocked" in decisions else "inconclusive" if "inconclusive" in decisions else "deployable"
     return {
         "algorithm_version": ALGORITHM_VERSION,
@@ -466,7 +469,7 @@ def build_prediction_contract(
             "loo_coverage_min": LOO_COVERAGE_MIN,
             "elapsed_hard_upper_seconds": ELAPSED_HARD_UPPER_SECONDS,
         },
-        "phases": phases,
+        "phases": phase_results,
     }
 
 
@@ -477,6 +480,7 @@ def verify_prediction_contract(
     *,
     manifest_sha256: str | None = None,
     history_index_sha256: str | None = None,
+    phases: tuple[str, ...] = PHASES,
 ) -> dict[str, Any]:
     failures: list[str] = []
     decision = "deployable"
@@ -486,6 +490,7 @@ def verify_prediction_contract(
             history_index,
             manifest_sha256=manifest_sha256,
             history_index_sha256=history_index_sha256,
+            phases=phases,
         )
     except ContractError as exc:
         return {"ok": False, "decision": "blocked", "failures": [str(exc)]}

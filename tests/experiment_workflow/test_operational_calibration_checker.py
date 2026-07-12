@@ -195,6 +195,25 @@ def test_deployable_candidate_and_blocked_boundaries(tmp_path):
     assert not result["ok"] and result["decision"] == "blocked"
 
 
+def test_failed_result_does_not_create_or_overwrite_receipt(tmp_path, monkeypatch):
+    m = load()
+    manifest, report, contract = fixture(tmp_path)
+    patch_dataset_hashes(m, report)
+    report["phases"][0]["observed"]["maximum_validation_elapsed_seconds"] = 1801
+    manifest_path = tmp_path / "manifest.json"; manifest_path.write_text(json.dumps(manifest))
+    report_path = tmp_path / "report.json"; report_path.write_text(json.dumps(report))
+    history_path = tmp_path / "history.json"; history_path.write_text("{}")
+    receipt_path = tmp_path / "receipt.json"; receipt_path.write_text("preserve-existing")
+    monkeypatch.setattr(m, "check_file_binding", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(m, "check", lambda *_args, **_kwargs: {"ok": False, "decision": "blocked", "failures": ["blocked"], "inconclusive_reasons": []})
+    monkeypatch.setattr(sys, "argv", [
+        "checker", "--report", str(report_path), "--manifest", str(manifest_path),
+        "--history-index", str(history_path), "--receipt", str(receipt_path),
+    ])
+    assert m.main() == 1
+    assert receipt_path.read_text() == "preserve-existing"
+
+
 def test_assembler_must_not_self_declare_deployable(tmp_path):
     m = load()
     manifest, report, contract = fixture(tmp_path)

@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+from datetime import datetime, timezone
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -63,8 +64,23 @@ def test_release_wrapper_blocks_hook_until_manifest_provenance_passes(tmp_path: 
     verifier, manifest, run, train, receipt, provenance = fixture(tmp_path)
     normalized = tmp_path / "normalized.json"; normalized.write_text(json.dumps(manifest))
     provenance_file = tmp_path / "provenance.json"; provenance_file.write_text(json.dumps(provenance))
-    fake_repo = tmp_path / "repo"; (fake_repo / "scripts").mkdir(parents=True)
+    fake_repo = tmp_path / "repo"; (fake_repo / "scripts").mkdir(parents=True); (fake_repo / "recipe/on_policy_wdl_sft/code_task").mkdir(parents=True)
     (fake_repo / "scripts/verify_manifest_release_provenance.py").write_bytes((ROOT / "scripts/verify_manifest_release_provenance.py").read_bytes())
+    (fake_repo / "recipe/on_policy_wdl_sft/code_task/stage123_deployability_receipt.py").write_bytes((ROOT / "recipe/on_policy_wdl_sft/code_task/stage123_deployability_receipt.py").read_bytes())
+    report = tmp_path / "calibration.json"; report.write_text("{}")
+    cal_policy = tmp_path / "calibration_policy.json"; cal_policy.write_text("{}")
+    history = tmp_path / "history.json"; history.write_text("{}")
+    contract = tmp_path / "contract.json"; contract.write_text("{}")
+    deployability = tmp_path / "deployability.json"
+    deployability_doc = {
+        "receipt_type": "code_task_operational_calibration_deployability", "decision": "deployable",
+        "issued_at": datetime.now(timezone.utc).replace(microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "queue_identity": "stage123-formal", "manifest_sha256": manifest["manifest_sha256"],
+        "profile_sha256": manifest["resource_profile"]["sha256"], "preflight_receipt_sha256": hashlib.sha256(receipt.read_bytes()).hexdigest(),
+        "report_sha256": hashlib.sha256(report.read_bytes()).hexdigest(), "policy_sha256": hashlib.sha256(cal_policy.read_bytes()).hexdigest(),
+        "history_index_sha256": hashlib.sha256(history.read_bytes()).hexdigest(), "prediction_contract_sha256": hashlib.sha256(contract.read_bytes()).hexdigest(),
+    }
+    deployability.write_text(json.dumps(deployability_doc, sort_keys=True, separators=(",", ":")) + "\n")
     marker = tmp_path / "hook-called"
     hook = fake_repo / "scripts/code_task_training_release_hook.sh"
     hook.write_text(f"#!/usr/bin/env bash\nset -euo pipefail\ntouch {marker}\n")
@@ -78,6 +94,10 @@ def test_release_wrapper_blocks_hook_until_manifest_provenance_passes(tmp_path: 
         "EXPERIMENT_NORMALIZED_MANIFEST": str(normalized),
         "EXPERIMENT_RUN_PROVENANCE": str(provenance_file),
         "EXPERIMENT_PREFLIGHT_RECEIPT": str(receipt),
+        "EXPERIMENT_DEPLOYABILITY_RECEIPT": str(deployability),
+        "EXPERIMENT_CALIBRATION_REPORT": str(report), "EXPERIMENT_CALIBRATION_POLICY": str(cal_policy),
+        "EXPERIMENT_CALIBRATION_HISTORY_INDEX": str(history), "EXPERIMENT_CALIBRATION_PREDICTION_CONTRACT": str(contract),
+        "EXPERIMENT_FORMAL_QUEUE_ID": "stage123-formal", "EXPERIMENT_EXPECTED_PROFILE_HASH": manifest["resource_profile"]["sha256"],
     }
     wrapper = ROOT / "scripts/manifest_code_task_training_release_hook.sh"
     assert subprocess.run(["bash", str(wrapper)], env=env, capture_output=True).returncode == 0
@@ -87,3 +107,22 @@ def test_release_wrapper_blocks_hook_until_manifest_provenance_passes(tmp_path: 
     assert failed.returncode != 0
     assert not marker.exists()
     assert "not release eligible" in failed.stdout + failed.stderr
+
+
+def test_release_wrapper_rejects_limited_receipt_before_hook(tmp_path: Path):
+    _verifier, manifest, run, train, receipt, provenance = fixture(tmp_path)
+    normalized = tmp_path / "normalized.json"; normalized.write_text(json.dumps(manifest))
+    provenance_file = tmp_path / "provenance.json"; provenance_file.write_text(json.dumps(provenance))
+    limited = tmp_path / "limited.json"; limited.write_text('{"receipt_type":"code_task_operational_calibration_stage12_producer"}\n')
+    marker = tmp_path / "hook-called"
+    fake_repo = tmp_path / "repo"; (fake_repo / "scripts").mkdir(parents=True)
+    hook = fake_repo / "scripts/code_task_training_release_hook.sh"; hook.write_text(f"#!/bin/sh\ntouch {marker}\n"); hook.chmod(0o755)
+    env = {**os.environ, "REPO": str(fake_repo), "RUN_PREFIX": run["run_prefix"], "FINAL_STEP": str(run["final_step"]),
+           "TRAIN_FILE": str(train), "EXPERIMENT_NORMALIZED_MANIFEST": str(normalized), "EXPERIMENT_RUN_PROVENANCE": str(provenance_file),
+           "EXPERIMENT_PREFLIGHT_RECEIPT": str(receipt), "EXPERIMENT_DEPLOYABILITY_RECEIPT": str(limited),
+           "EXPERIMENT_CALIBRATION_REPORT": str(limited), "EXPERIMENT_CALIBRATION_POLICY": str(limited),
+           "EXPERIMENT_CALIBRATION_HISTORY_INDEX": str(limited), "EXPERIMENT_CALIBRATION_PREDICTION_CONTRACT": str(limited),
+           "EXPERIMENT_FORMAL_QUEUE_ID": "stage123-formal", "EXPERIMENT_EXPECTED_PROFILE_HASH": manifest["resource_profile"]["sha256"]}
+    result = subprocess.run(["bash", str(ROOT / "scripts/manifest_code_task_training_release_hook.sh")], env=env, text=True, capture_output=True)
+    assert result.returncode != 0 and "limited_receipt_scope_mismatch" in result.stderr
+    assert not marker.exists()

@@ -24,6 +24,15 @@ from calibration_outcomes import CONTINUOUS_OUTCOMES, RATE_OUTCOMES
 
 
 PHASES = ("stage1", "stage2", "stage3")
+STAGE12_PHASES = ("stage1", "stage2")
+STAGE12_PRODUCER = {
+    "run_id": "frac25-stage2",
+    "run_prefix": "CODE-S2-QWEN3-1P7B-STAGE123-FRAC25_P40_S220_S340-BETA01-LAMBDA08-V1",
+    "final_step": 20,
+    "train_file_sha256": "160be1866e6c1dc439dcfbd594b54324f000f1f48db1f6a0fc88cf227c628dab",
+    "expected_output_path": "/data-2/model_weights/code_task/qwen3_1p7b_stage123/frac25_p40_s220_s340/stage2_final_model2",
+    "expected_provenance_path": "/data-2/model_weights/code_task/qwen3_1p7b_stage123/frac25_p40_s220_s340/frac25-stage3.provenance.json",
+}
 METRICS = (*CONTINUOUS_OUTCOMES, *RATE_OUTCOMES, "all_gpu_idle_fraction_during_validation")
 POINT_ERROR_METRICS = CONTINUOUS_OUTCOMES
 VALIDATION_DATASETS = {
@@ -227,6 +236,7 @@ def check(
     contract: dict[str, Any] | None = None,
     history_index: dict[str, Any] | None = None,
     hashes: dict[str, str] | None = None,
+    expected_phases: tuple[str, ...] = PHASES,
 ) -> dict[str, Any]:
     failures: list[str] = []
     inconclusive: list[str] = []
@@ -263,6 +273,7 @@ def check(
                 history_index,
                 manifest_sha256=hashes.get("manifest"),
                 history_index_sha256=hashes.get("history_index"),
+                phases=expected_phases,
             )
             if verification.get("failures"):
                 failures.extend(verification["failures"])
@@ -276,7 +287,7 @@ def check(
             inconclusive.append("prediction contract decision is inconclusive")
 
     phases = report.get("phases", [])
-    if [p.get("phase") for p in phases] != list(PHASES):
+    if [p.get("phase") for p in phases] != list(expected_phases):
         failures.append("phase order mismatch")
     hashes_seen = {p.get("profile_hash") for p in phases}
     if hashes_seen != {manifest.get("resource_profile", {}).get("sha256")}:
@@ -417,6 +428,67 @@ def check(
     return {"ok": decision == "deployable", "decision": decision, "failures": failures, "inconclusive_reasons": inconclusive}
 
 
+def stage12_producer_from_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
+    producer_runs = [item for item in manifest.get("runs", []) if item.get("id") == STAGE12_PRODUCER["run_id"]]
+    if len(producer_runs) != 1:
+        raise ValueError("stage12 producer run missing from manifest")
+    run = producer_runs[0]
+    if sum(item.get("run_prefix") == STAGE12_PRODUCER["run_prefix"] for item in manifest.get("runs", [])) != 1:
+        raise ValueError("stage12 producer run prefix must be unique")
+    dependencies = [
+        item for item in manifest.get("runs", [])
+        if item.get("phase") == "stage3" and item.get("source", {}).get("run_id") == run.get("id")
+    ]
+    if len(dependencies) != 1:
+        raise ValueError("stage12 producer must have exactly one Stage3 dependency")
+    observed = {
+        "run_id": run.get("id"),
+        "run_prefix": run.get("run_prefix"),
+        "final_step": run.get("final_step"),
+        "train_file_sha256": run.get("train_file_sha256"),
+        "expected_output_path": STAGE12_PRODUCER["expected_output_path"],
+        "expected_provenance_path": dependencies[0].get("provenance_file"),
+    }
+    if observed != STAGE12_PRODUCER:
+        raise ValueError("stage12 producer identity mismatch")
+    return observed
+
+
+def build_stage12_receipt(result, report_path, manifest_path, hashes, report, manifest, contract):
+    producer = stage12_producer_from_manifest(manifest)
+    cohort_hashes = {}
+    for phase in STAGE12_PHASES:
+        phase_doc = phase_contract(contract, phase) or {}
+        cohort_hashes[phase] = canonical_json_sha256(phase_doc.get("eligible_run_ids", []))
+    now = datetime.now(timezone.utc).replace(microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return {
+        "schema_version": 1,
+        "receipt_type": "code_task_operational_calibration_stage12_producer",
+        "issued_at": now,
+        "decision": result["decision"],
+        "ttl_seconds": RECEIPT_TTL_SECONDS,
+        "queue_identity": report.get("queue_identity"),
+        "phase_scope": list(STAGE12_PHASES),
+        "authorized_run_ids": [producer["run_id"]],
+        "authorized_final_steps": {producer["run_id"]: producer["final_step"]},
+        "producer": producer,
+        "selected_cohort_sha256_by_phase": cohort_hashes,
+        "workload_descriptor_sha256_by_phase": {
+            phase: canonical_json_sha256(manifest["calibration_workloads"][phase]) for phase in STAGE12_PHASES
+        },
+        "hashes": {
+            "report_sha256": file_sha256(report_path),
+            "manifest_sha256": hashes.get("manifest") or file_sha256(manifest_path),
+            "rendered_manifest_sha256": manifest.get("manifest_sha256"),
+            "policy_sha256": hashes.get("policy"),
+            "history_index_sha256": hashes.get("history_index"),
+            "prediction_contract_sha256": hashes.get("prediction_contract"),
+            "preflight_receipt_sha256": hashes.get("preflight_receipt"),
+        },
+        "failures": result.get("failures", []),
+    }
+
+
 def build_receipt(
     result: dict[str, Any],
     report_path: Path,
@@ -460,12 +532,16 @@ def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--report", type=Path, required=True)
     p.add_argument("--manifest", type=Path, required=True)
+    p.add_argument("--normalized-manifest", type=Path, help="normalized manifest bound by preflight")
     p.add_argument("--contract", type=Path, help="frozen prediction contract")
     p.add_argument("--history-index", type=Path, required=True, help="immutable trusted history snapshot")
     p.add_argument("--policy", type=Path, help="reviewed calibration/admission policy")
     p.add_argument("--preflight-receipt", type=Path, help="AC-24 preflight receipt")
+    p.add_argument("--preflight-report", type=Path, help="machine report bound by the AC-24 receipt")
+    p.add_argument("--preflight-policy", type=Path, help="policy bound by the AC-24 receipt")
     p.add_argument("--semantic-contract", type=Path, help="optional sampled-decoding semantic contract")
     p.add_argument("--receipt", type=Path, help="write canonical checker receipt")
+    p.add_argument("--authorization-scope", choices=("full", "stage12_producer"), default="full")
     a = p.parse_args()
 
     report = load_json(a.report)
@@ -491,15 +567,56 @@ def main() -> int:
         for key, path in (("contract", a.contract), ("history-index", a.history_index), ("policy", a.policy), ("preflight-receipt", a.preflight_receipt)):
             if path is None:
                 failures.append(f"--{key} is required when writing --receipt")
-    result = check(report, manifest, contract=contract, history_index=history_index, hashes=hashes)
+    expected_phases = STAGE12_PHASES if a.authorization_scope == "stage12_producer" else PHASES
+    result = check(report, manifest, contract=contract, history_index=history_index, hashes=hashes, expected_phases=expected_phases)
     result["failures"] = failures + result["failures"]
     if failures:
         result["ok"] = False
         result["decision"] = "blocked"
-    if a.receipt:
-        receipt = build_receipt(result, a.report, a.manifest, hashes, report, manifest)
+    if a.authorization_scope == "stage12_producer" and result["ok"]:
+        try:
+            stage12_producer_from_manifest(manifest)
+            if contract is None or [item.get("phase") for item in contract.get("phases", [])] != list(STAGE12_PHASES):
+                raise ValueError("stage12 prediction contract must contain exactly stage1 and stage2")
+            if set(manifest.get("calibration_workloads", {})) != set(PHASES):
+                raise ValueError("stage123 manifest workload graph mismatch")
+            history_phases = {item.get("phase") for item in (history_index or {}).get("runs", [])}
+            if history_phases != set(STAGE12_PHASES):
+                raise ValueError("stage12 history index must contain exactly stage1 and stage2")
+            if a.normalized_manifest is None or a.preflight_report is None or a.preflight_receipt is None or a.preflight_policy is None:
+                raise ValueError("stage12 issuance requires normalized manifest and preflight report, receipt, and policy")
+            sys.path.insert(0, str(Path(__file__).resolve().parent))
+            import stage123_preflight_receipt as preflight_tool
+            preflight_args = argparse.Namespace(
+                receipt=a.preflight_receipt, normalized_manifest=a.normalized_manifest, report=a.preflight_report,
+                policy=a.preflight_policy, run_id=STAGE12_PRODUCER["run_id"], calibration_phase=None,
+                profile_hash=manifest.get("resource_profile", {}).get("sha256"), max_age_seconds=RECEIPT_TTL_SECONDS,
+            )
+            try:
+                preflight_result = preflight_tool.verify(preflight_args)
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ValueError(f"stage12 preflight verification failed: {exc}") from exc
+            if not preflight_result["ok"]:
+                raise ValueError("stage12 preflight verification failed: " + "; ".join(preflight_result["failures"]))
+            preflight = load_json(a.preflight_receipt)
+            if preflight.get("authorized_calibration_phases") != list(STAGE12_PHASES):
+                raise ValueError("stage12 preflight must authorize exactly stage1 and stage2")
+        except ValueError as exc:
+            result["ok"] = False
+            result["decision"] = "blocked"
+            result["failures"].append(str(exc))
+        else:
+            result["decision"] = "stage12_calibrated"
+    if a.receipt and result["ok"]:
+        receipt = (
+            build_stage12_receipt(result, a.report, a.manifest, hashes, report, manifest, contract or {})
+            if a.authorization_scope == "stage12_producer"
+            else build_receipt(result, a.report, a.manifest, hashes, report, manifest)
+        )
         result["receipt_sha256"] = write_receipt(a.receipt, receipt)
         result["receipt"] = str(a.receipt)
+    elif a.receipt:
+        result["receipt"] = None
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0 if result["ok"] else 1
 
