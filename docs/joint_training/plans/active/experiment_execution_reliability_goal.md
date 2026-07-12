@@ -1,6 +1,6 @@
 # Experiment Execution Reliability and GPU Utilization Goal
 
-- Status: `READY TO RESUME - CPU ACCEPTED; OPERATIONAL CALIBRATION BLOCKED ON ELAPSED-TIME EVIDENCE SEMANTICS (2026-07-12)`
+- Status: `READY TO RESUME - OUTCOME SCHEMA V2 IMPLEMENTATION IN PROGRESS; FRESH CALIBRATION NOT YET AUTHORIZED (2026-07-12)`
 - Created: 2026-07-11
 - Goal branch: `codex/experiment-execution-reliability`
 - Parent experiment branch: `feature/on-policy-wdl-sft`
@@ -37,10 +37,10 @@ recipe/on_policy_wdl_sft/experiment_manifest/
 New queue, monitor, preflight, and release behavior must consume that schema rather
 than maintaining independent run-prefix/final-step/train-file arrays.
 
-## Resume Snapshot - 2026-07-12
+## Resume Snapshot - 2026-07-12 (Outcome Schema V2)
 
 This section is the authoritative resume point for the next `/goal` run. It updates
-transient execution state without weakening or replacing AC-01 through AC-27.
+transient execution state without weakening or replacing AC-01 through AC-28.
 
 ### Accepted State
 
@@ -49,7 +49,7 @@ transient execution state without weakening or replacing AC-01 through AC-27.
 2. CPU/sandbox implementation received independent `CPU ACCEPTED` review. The final
    accepted CPU state includes AC-19F, AC-24, and AC-25; the focused receipt tests,
    fast/full gates, strict Git isolation, and dual-repository transaction passed.
-3. The independently CPU-accepted implementation baselines are:
+3. The original independently CPU-accepted implementation baselines were:
 
    ```text
    superproject branch: codex/experiment-execution-reliability
@@ -58,28 +58,58 @@ transient execution state without weakening or replacing AC-01 through AC-27.
    accepted recipe commit:         cec05371fe17d42bb80722b5608c3cecbe4785b6
    ```
 
-   The superproject may contain later plan-only resume commits. At Goal startup,
-   classify every commit after the accepted implementation baseline; do not treat an
-   expected plan-only commit as implementation drift.
+   The timing correction and outcome-schema-v2 plan amendments were subsequently
+   reviewed independently as `READY`. The committed continuation chain now includes:
 
-4. The recipe-first transaction is complete and the recipe worktree is clean. The
-   only remaining superproject untracked paths are pre-existing user assets recorded
-   by the content-addressed baseline:
+   ```text
+   06aeb171 docs: define canonical calibration timing interval
+   0b8699c4 fix: use readiness interval for calibration timing
+   46c5c312 chore: refresh goal contract adoption receipt
+   8a4b3124 docs: specify calibration outcome schema v2
+   21be9dad feat: record native validation response telemetry
+   484f344a docs: define safe HF snapshot hashing
+   67b9301 recipe commit: add calibration workload descriptors
+   b796ab3c feat: validate calibration workload descriptors
+   ```
+
+   At Goal startup, verify this chain and classify every later commit. Do not reset to
+   `af1a407f`, discard the current worktree, or repeat accepted timing/telemetry/workload
+   work merely because the earlier baseline is named above.
+
+4. Preserve these pre-existing user assets recorded by the content-addressed baseline:
 
    ```text
    .claude/skills/experiment-registry
    docs/joint_training/plans/active/qwen3_1p7b_code_stage123_plateau_breakthrough.md
    ```
 
-5. A passing preflight snapshot was generated under:
+   The current worktree also contains an intentional, unfinished outcome-schema-v2
+   implementation. Audit and continue it in place; do not revert, overwrite, or treat
+   it as unrelated dirt. At this snapshot its expected paths are:
+
+   ```text
+   scripts/calibration_outcomes.py
+   scripts/assemble_code_task_operational_calibration.py
+   scripts/check_calibration_prediction_contract.py
+   scripts/check_code_task_operational_calibration.py
+   scripts/run_code_task_operational_calibration_queue.sh
+   tests/experiment_workflow/test_calibration_outcomes.py
+   tests/experiment_workflow/test_dynamic_calibration_interval.py
+   tests/experiment_workflow/test_operational_calibration_runner.py
+   docs/joint_training/plans/active/experiment_execution_reliability_goal.md
+   docs/joint_training/plans/active/experiment_execution_reliability_goal_launch_prompt.md
+   ```
+
+5. A passing preflight snapshot was previously generated under:
 
    ```text
    /data-1/tmp/verl_agent_scratch/experiment_workflow/preflight/af1a407f
    ```
 
-   Its receipt has a one-hour TTL and is historical evidence only when the Goal is
-   resumed. A fresh machine report, budget result, and preflight receipt bound to the
-   then-current commits and hashes are required before any new GPU work.
+   It and the later preflight root ending in `46c5c312` are stale historical evidence.
+   A fresh machine report, budget result, and preflight receipt bound to the final
+   committed v2 implementation, recipe commit, manifest hash, workload descriptors,
+   and outcome schema are required before any new GPU work.
 
 ### Preserved Operational Evidence
 
@@ -99,13 +129,13 @@ Evidence root:
 /data-2/experiment_registry/calibration_runs/af1a407f
 ```
 
-The queue stopped before writing `trusted_history.json` or
-`prediction_contract.json`. All GPUs and run-owned containers/tmux sessions were
-released. These bootstrap artifacts are candidates for reuse only after the blocker
-below is resolved and their completeness/content hashes are revalidated; they are not
-trusted history merely because their phase status returned zero.
+The queue later wrote a prediction contract with an empty workload feature map, but it
+did not reach acceptance. All GPUs and run-owned containers/tmux sessions were
+released. The eighteen runs lack native response token count, EOS presence, and finish
+reason telemetry. They are immutable diagnostic evidence only and are categorically
+ineligible for `outcome_schema_version = 2` trusted history or authorization.
 
-### Current Blocking Condition
+### Resolved Timing Blocker
 
 History assembly correctly failed closed because the pre-resume implementation imposed
 an unjustified one-second equality tolerance between two clocks with different start
@@ -136,14 +166,44 @@ silently discard the eighteen runs. It must:
 5. add regression fixtures for Stage1, Stage2, and Stage3 timing evidence, then rerun
    CPU gates and issue a fresh preflight.
 
-After that gate passed, deterministic audit confirmed that all eighteen bootstrap
+That gate passed: the canonical interval is
+`metrics_complete.monotonic_seconds - validation_ready.monotonic_seconds`, while
+`timing_s/testing` is required diagnostic containment evidence and must be greater than
+or equal to the canonical interval. Equality or a post-hoc tolerance is forbidden.
+Focused timing tests, the fast gate, the full gate, and Git isolation passed for the
+committed timing implementation.
+
+Deterministic audit then confirmed that all eighteen bootstrap
 repetitions are complete under the timing contract, but the later outcome-schema audit
 found that they lack native response token/EOS/finish telemetry. They remain immutable
 diagnostic evidence and must not enter trusted history v2. After the outcome-schema-v2
 implementation and its fresh preflight pass, the Goal must run a new six-repetition
 bootstrap cohort per phase, freeze immutable history, generate the prediction contract,
 run three new acceptance repetitions per phase, obtain checker-owned `deployable`,
-and complete fresh independent AC-01 through AC-27 acceptance.
+and complete fresh independent AC-01 through AC-28 acceptance.
+
+### Current Blocking Condition
+
+Outcome-schema-v2 implementation is partially complete but not committed or independently
+accepted. The shared outcome extractor and predictor-v2 focused tests pass. The latest
+independent focused command covering checker, assembler, predictor, and outcome tests
+reported `3 failed, 38 passed`: the failures are the assembler's three-argument
+`fake_load_rep` fixture and two checker fixtures that still describe schema v1. Resume
+from the existing worktree and:
+
+1. upgrade assembler and checker fixtures to include workload descriptors,
+   `workload_descriptor_sha256`, `outcome_schema_version = 2`, and every required v2
+   continuous/rate outcome;
+2. add checker coverage for continuous point error and interval containment, rate
+   containment, `truncation_rate > 0.01`, `scorer_timeout_rate > 0.10`, and missing-v2
+   metric rejection;
+3. reconcile the queue-native `report/acceptance/<phase>/rep_0..2` layout with the
+   assembler's historical `rep0_predictor` / `rep1..3` assumptions without fabricating
+   a predictor run or weakening frozen-contract semantics;
+4. ensure assembled reports bind the exact workload descriptor and outcome schema;
+5. run focused, fast, full, isolation, and transaction gates from committed code;
+6. obtain fresh independent CPU acceptance before generating a new preflight or using
+   any GPU.
 
 ## Non-Negotiable Boundaries
 
@@ -174,6 +234,14 @@ and complete fresh independent AC-01 through AC-27 acceptance.
     healthy-progress messages. A run-start notification requires the first training
     step or complete formal validation metrics; tmux/container existence alone is not
     evidence that an experiment has started successfully.
+11. Any local CI, queue-monitor, or reliability-check process that must survive shell
+    disconnects or restart after failure is managed by PM2, not systemd. The Goal must
+    not create a systemd unit or call `systemctl` for CI keepalive. It must provide a
+    committed PM2 ecosystem definition (or equivalent committed PM2 command contract),
+    machine-check `pm2 start`, `pm2 status`, log paths, restart behavior, and `pm2 save`.
+    Host-reboot restoration uses an already provisioned non-systemd PM2 bootstrap plus
+    `pm2 resurrect`; if none exists, record the limitation and stop rather than using
+    `pm2 startup` to install a systemd-backed unit.
 
 ## Repository Transaction Baseline
 
@@ -1206,6 +1274,36 @@ Expected evidence: all three positive events, every listed non-event, deduplicat
 secret redaction, local-path inclusion, and fake-delivery failure are covered. A
 delivery failure is recorded locally but never changes launch/release state.
 
+### AC-28 - Persistent CI Uses PM2 and Never Systemd
+
+- Given a committed PM2 ecosystem definition or equivalent committed PM2 command
+  contract for every persistent local CI, queue-monitor, or reliability-check process,
+- When the PM2 keepalive checker and its sandbox fixtures execute,
+- Then they prove that the declared process can be started, inspected, restarted after
+  a synthetic failure, mapped to explicit stdout/stderr log paths, and persisted with
+  `pm2 save`; no keepalive path creates a systemd unit, calls `systemctl`, or invokes
+  `pm2 startup`; and a host without an already provisioned non-systemd PM2 reboot
+  bootstrap records `reboot_restore_available=false` and fails closed instead of
+  installing systemd.
+
+Verification:
+
+```bash
+python3 -m pytest -q tests/experiment_workflow/test_pm2_ci_keepalive.py
+python3 scripts/check_pm2_ci_keepalive.py \
+  --contract config/pm2/experiment-reliability-ci.json \
+  --repo-root . \
+  --require-no-systemd
+```
+
+Expected evidence: the tests use an isolated fake PM2 binary/state directory and cover
+`start`, `status`, explicit log paths, synthetic crash/restart, `save`, `resurrect`,
+missing reboot bootstrap, and command failure. The checker exits zero only when the
+committed contract names every persistent process, contains no `systemctl`, systemd unit,
+or `pm2 startup` path, and records either a verified existing non-systemd reboot
+bootstrap or the fail-closed limitation. No real PM2 daemon or host service manager is
+acceptance evidence.
+
 ## Required Execution Order
 
 Milestones 0 through 4 are implemented, committed, and independently CPU-accepted at
@@ -1221,14 +1319,16 @@ the commits recorded in the Resume Snapshot. On resume, execute this remaining o
 4. Implement the independently reviewed `calibration_workloads` descriptor schema,
    outcome schema v2, native token/EOS/finish telemetry, predictor/checker coverage, and
    regression fixtures. Run focused and fast/full CPU gates and commit the result.
-5. Generate fresh machine, budget, and preflight evidence bound to that committed state
+5. Add and verify the PM2-only keepalive contract for any persistent local CI or
+   reliability monitor. Assert that no systemd unit or `systemctl` path is introduced.
+6. Generate fresh machine, budget, and preflight evidence bound to that committed state
    and a completely new calibration root. Historical receipts must not authorize launch.
-6. Run a new six-repetition bootstrap cohort per phase. The eighteen preserved v1
+7. Run a new six-repetition bootstrap cohort per phase. The eighteen preserved v1
    repetitions are diagnostic-only and cannot enter trusted outcome-schema-v2 history.
-7. Freeze trusted history, generate the prediction contract, run exactly three new
+8. Freeze trusted history, generate the prediction contract, run exactly three new
    acceptance repetitions per phase, and require checker-owned `deployable` evidence.
-8. A fresh independent Reviewer executes every AC-01 through AC-27 command and the
-   completion-state checker from committed code.
+9. A fresh independent Reviewer executes every AC-01 through AC-28 command, the PM2
+   keepalive checks, and the completion-state checker from committed code.
 
 No milestone may start until all required ACs from the previous milestone pass.
 
@@ -1265,6 +1365,8 @@ Stop implementation and ask the user when:
    minutes without complete validation metrics. Stop the affected runtime, preserve
    evidence, send one `run_failed` notification when unattended, and do not continue
    to consume all GPUs.
+10. keeping CI alive would require creating or enabling a systemd service. Stop and
+    report the missing non-systemd reboot bootstrap; do not substitute systemd for PM2.
 
 ## Approved Operational Decisions
 
@@ -1293,7 +1395,7 @@ The implementer may report local verification but may not mark this goal accepte
 A fresh reviewer must:
 
 1. run all AC verification commands in both repositories;
-2. report AC-01 through AC-27 as `PASS`, `FAIL`, or `WEAKENED`;
+2. report AC-01 through AC-28 as `PASS`, `FAIL`, or `WEAKENED`;
 3. inspect commits and tests for skipped, deleted, loosened, or trivial checks;
 4. confirm acceptance used no real external service;
 5. write the final review under `docs/joint_training/codereview/active/` and move
