@@ -170,7 +170,7 @@
         "status": "??",
         "type": "file"
       },
-      "changed": false,
+      "changed": true,
       "ownership": "experiment-execution-reliability-goal",
       "path": "on_policy_wdl_sft/code_task/stage123_preflight.py",
       "result": {
