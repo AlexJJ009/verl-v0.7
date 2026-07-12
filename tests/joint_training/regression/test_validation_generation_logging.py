@@ -102,6 +102,20 @@ def test_validation_generations_logger_uses_row_per_sample_table_shape():
     assert rows[1][columns.index("score")] == 1.0
 
 
+def test_dump_generations_writes_stable_uid(tmp_path):
+    trainer = RayPPOTrainer.__new__(RayPPOTrainer)
+    trainer.global_steps = 3
+    trainer._dump_generations(
+        inputs=["prompt"], outputs=["response"], gts=["answer"], scores=[1.0],
+        reward_extra_infos_dict={}, dump_path=str(tmp_path), data_sources=["HumanEval+"], sample_uids=["he-1"],
+    )
+    import json
+
+    row = json.loads((tmp_path / "3.jsonl").read_text())
+    assert row["uid"] == "he-1"
+    assert row["data_source"] == "HumanEval+"
+
+
 def test_maybe_log_val_generations_prints_subset_and_logs_full_tracking(capsys):
     trainer = RayPPOTrainer.__new__(RayPPOTrainer)
     trainer.global_steps = 7

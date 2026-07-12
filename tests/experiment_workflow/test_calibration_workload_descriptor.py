@@ -61,6 +61,9 @@ def test_manifest_schema_requires_outcome_schema_v2():
     schema = json.loads((ROOT / "recipe/on_policy_wdl_sft/experiment_manifest/schema.json").read_text())
     assert "calibration_workloads" in schema["required"]
     assert schema["$defs"]["calibrationWorkload"]["properties"]["outcome_schema_version"] == {"const": 2}
+    eligibility = schema["$defs"]["calibrationWorkload"]["properties"]["validation_eligibility"]
+    assert eligibility["properties"]["max_prompt_length"] == {"const": 1024}
+    assert eligibility["properties"]["filter_enabled"] == {"const": True}
 
 
 def test_real_manifest_has_strict_workload_descriptors():
@@ -72,3 +75,9 @@ def test_real_manifest_has_strict_workload_descriptors():
         workloads["stage2"]["rollout_model_parameter_counts"]
     )
     assert all(item["outcome_schema_version"] == 2 for item in workloads.values())
+    eligibility = [item["validation_eligibility"] for item in workloads.values()]
+    assert eligibility[0] == eligibility[1] == eligibility[2]
+    assert eligibility[0]["submitted_prompt_count"] == sum(
+        eligibility[0]["per_dataset_eligible_counts"].values()
+    )
+    assert sum(row["row_count"] for row in workloads["stage1"]["datasets"]) == 1422

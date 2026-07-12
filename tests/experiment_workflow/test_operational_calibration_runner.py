@@ -1,9 +1,12 @@
 import json
+import hashlib
 import os
 import stat
 import subprocess
 import sys
 from pathlib import Path
+
+import yaml
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -70,7 +73,7 @@ def test_runner_terminates_immediately_on_fatal_runtime_error() -> None:
 
 def _fake_runner(path: Path, log: Path, fail_on: str | None = None) -> None:
     script = f"""#!/usr/bin/env python3
-import json, os, sys
+import json, os, sys, yaml
 from pathlib import Path
 phase = sys.argv[1]
 role = os.environ["CALIBRATION_ROLE"]
@@ -102,15 +105,23 @@ root.mkdir(parents=True, exist_ok=True)
     "data": {{"timing_s/testing": 109}},
 }}) + "\\n")
 (root / phase / "logs/validation/run").mkdir(parents=True, exist_ok=True)
-(root / phase / "logs/validation/run/0.jsonl").write_text("\\n".join(
-    json.dumps({{
-        "uid": f"{{phase}}-{{i}}",
+manifest = yaml.safe_load(Path(os.environ["CALIBRATION_MANIFEST"]).read_text())
+workload = manifest["calibration_workloads"][phase]
+eligible_counts = workload["validation_eligibility"]["per_dataset_eligible_counts"]
+rows = []
+for source in workload["datasets"]:
+    name = source["name"]
+    rows.extend({{
+        "uid": f"{{name}}-{{i}}",
+        "data_source": name,
         "response_token_count": 100,
         "response_eos_present": True,
         "response_finish_reason": "stop",
         "code_reward_latency_seconds": 1.0,
         "code_reward_timeout": 0,
-    }}) for i in range(1422)
+    }} for i in range(eligible_counts[name]))
+(root / phase / "logs/validation/run/0.jsonl").write_text("\\n".join(
+    json.dumps(row) for row in rows
 ) + "\\n")
 (root / f"{{phase}}.validation_timeline.jsonl").write_text("\\n".join([
     json.dumps({{"event":"validation_ready","monotonic_seconds":10}}),
@@ -123,6 +134,21 @@ root.mkdir(parents=True, exist_ok=True)
 
 
 def _queue_env(tmp_path: Path, fake_runner: Path) -> dict[str, str]:
+    source_manifest = ROOT / "recipe/on_policy_wdl_sft/experiment_manifest/stage123.yaml"
+    manifest = yaml.safe_load(source_manifest.read_text())
+    for phase, workload in manifest["calibration_workloads"].items():
+        counts = workload["validation_eligibility"]["per_dataset_eligible_counts"]
+        uid_doc = {
+            "schema_version": 1,
+            "datasets": [
+                {"name": source["name"], "source_index": index, "ordered_uids": [f"{source['name']}-{i}" for i in range(counts[source["name"]])]}
+                for index, source in enumerate(workload["datasets"])
+            ],
+        }
+        canonical = (json.dumps(uid_doc, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n").encode()
+        workload["validation_eligibility"]["ordered_eligible_uid_sha256"] = hashlib.sha256(canonical).hexdigest()
+    test_manifest = tmp_path / "stage123.test.yaml"
+    test_manifest.write_text(yaml.safe_dump(manifest, sort_keys=False))
     env = os.environ.copy()
     env.update(
         {
@@ -133,6 +159,7 @@ def _queue_env(tmp_path: Path, fake_runner: Path) -> dict[str, str]:
             "CALIBRATION_PREDICTION_ROOT": str(tmp_path / "prediction"),
             "CALIBRATION_QUEUE_SCRATCH": str(tmp_path / "scratch"),
             "CALIBRATION_QUEUE_POLL_SECONDS": "0",
+            "CALIBRATION_MANIFEST": str(test_manifest),
         }
     )
     return env
@@ -169,7 +196,7 @@ def test_queue_runs_bootstrap_then_freezes_contract_then_acceptance(tmp_path: Pa
     assert first["max_response_length"] == 8192
     assert first["outcome_schema_version"] == 2
     assert len(first["workload_descriptor_sha256"]) == 64
-    assert first["metrics"]["submitted_item_count"] == 1422
+    assert first["metrics"]["submitted_item_count"] == 1379
     assert first["metrics"]["response_length_p95_tokens"] == 100
     assert json.loads(contract.read_text())["algorithm_version"] == "stage123_history_conformal_v1"
 

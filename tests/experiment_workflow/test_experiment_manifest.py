@@ -52,3 +52,24 @@ def test_hash_changes_when_lifecycle_data_changes():
     first = tool.normalize(data)["manifest_sha256"]
     data["runs"][0]["final_step"] = 21
     assert tool.normalize(data)["manifest_sha256"] != first
+
+
+def test_eligibility_denominator_and_phase_identity_are_enforced():
+    tool = module(); data = tool.load(MANIFEST)
+    data["calibration_workloads"]["stage1"]["validation_eligibility"]["submitted_prompt_count"] += 1
+    with pytest.raises(ValueError, match="submitted prompt count mismatch"):
+        tool.normalize(data)
+
+    data = tool.load(MANIFEST)
+    data["calibration_workloads"]["stage2"]["validation_eligibility"]["ordered_eligible_uid_sha256"] = "0" * 64
+    with pytest.raises(ValueError, match="differs across phases"):
+        tool.normalize(data)
+
+
+def test_eligibility_cannot_exceed_full_source_provenance():
+    tool = module(); data = tool.load(MANIFEST)
+    eligibility = data["calibration_workloads"]["stage1"]["validation_eligibility"]
+    eligibility["per_dataset_eligible_counts"]["LiveCodeBench"] = 881
+    eligibility["submitted_prompt_count"] = sum(eligibility["per_dataset_eligible_counts"].values())
+    with pytest.raises(ValueError, match="exceeds source row count"):
+        tool.normalize(data)

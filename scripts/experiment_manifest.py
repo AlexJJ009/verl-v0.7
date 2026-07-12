@@ -45,6 +45,7 @@ def normalize(data: dict) -> dict:
         "stage2": ("fixed_model2_joint_rollout", ["model1", "model2"], 2),
         "stage3": ("stage2_model2_handoff", ["rollout"], 1),
     }
+    shared_eligibility = None
     for phase, (provenance, roles, count) in expected.items():
         workload = workloads[phase]
         if workload["phase"] != phase or workload["model_provenance_class"] != provenance:
@@ -64,6 +65,19 @@ def normalize(data: dict) -> dict:
                 raise ValueError(f"{phase}: calibration dataset hash mismatch: {dataset['name']}")
             if sum(dataset["difficulty_stratum_counts"].values()) != dataset["row_count"]:
                 raise ValueError(f"{phase}: difficulty stratum count mismatch: {dataset['name']}")
+        eligibility = workload["validation_eligibility"]
+        eligible_counts = eligibility["per_dataset_eligible_counts"]
+        if set(eligible_counts) != set(names):
+            raise ValueError(f"{phase}: eligibility dataset identity mismatch")
+        if eligibility["submitted_prompt_count"] != sum(eligible_counts.values()):
+            raise ValueError(f"{phase}: submitted prompt count mismatch")
+        source_counts = {item["name"]: item["row_count"] for item in workload["datasets"]}
+        if any(eligible_counts[name] > source_counts[name] for name in names):
+            raise ValueError(f"{phase}: eligible count exceeds source row count")
+        if shared_eligibility is None:
+            shared_eligibility = eligibility
+        elif eligibility != shared_eligibility:
+            raise ValueError(f"{phase}: validation eligibility differs across phases")
     canonical = json.dumps(result, sort_keys=True, separators=(",", ":")).encode()
     result["manifest_sha256"] = hashlib.sha256(canonical).hexdigest()
     return result

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import json
 from pathlib import Path
 
@@ -20,12 +21,22 @@ def load():
 
 
 def workload(count=3):
-    return {"datasets": [{"row_count": count}]}
+    uid_doc = {"schema_version": 1, "datasets": [{"name": "test", "source_index": 0, "ordered_uids": [chr(97 + i) for i in range(count)]}]}
+    uid_hash = hashlib.sha256((json.dumps(uid_doc, sort_keys=True, separators=(",", ":")) + "\n").encode()).hexdigest()
+    return {
+        "datasets": [{"name": "test", "row_count": count}],
+        "validation_eligibility": {
+            "submitted_prompt_count": count,
+            "per_dataset_eligible_counts": {"test": count},
+            "ordered_eligible_uid_sha256": uid_hash,
+        },
+    }
 
 
 def row(uid, count, eos, reason, latency, timeout=0):
     return {
         "uid": uid,
+        "data_source": "test",
         "response_token_count": count,
         "response_eos_present": eos,
         "response_finish_reason": reason,
@@ -68,4 +79,16 @@ def test_outcomes_fail_closed_on_incomplete_evidence(tmp_path, rows, message):
     path = tmp_path / "generation.jsonl"
     write(path, rows)
     with pytest.raises(ValueError, match=message):
+        module.load_generation_outcomes(path, workload())
+
+
+def test_outcomes_reject_wrong_uid_order_and_dataset_identity(tmp_path):
+    module = load(); path = tmp_path / "generation.jsonl"
+    rows = [row("b", 10, True, "stop", 1), row("a", 20, True, "stop", 1), row("c", 30, True, "stop", 1)]
+    write(path, rows)
+    with pytest.raises(ValueError, match="ordered eligible UID hash mismatch"):
+        module.load_generation_outcomes(path, workload())
+    rows[0]["data_source"] = "unknown"
+    write(path, rows)
+    with pytest.raises(ValueError, match="unknown validation data_source"):
         module.load_generation_outcomes(path, workload())

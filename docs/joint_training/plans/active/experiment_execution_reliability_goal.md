@@ -487,8 +487,10 @@ The dynamic estimator contract is fixed as `stage123_history_conformal_v1`:
 
    - launch-time exact-match workload descriptors are phase, base-2 `log2` model
      parameter count rounded to six decimals, model provenance class, per-dataset row
-     counts, and per-dataset difficulty-stratum counts. They must be fully known from
-     pinned model/config/dataset artifacts before the contract is generated;
+     counts, per-dataset difficulty-stratum counts, and the deterministic validation
+     eligibility set produced by the pinned tokenizer/chat-template/prompt-length
+     filter. They must be fully known from pinned model/config/dataset/code artifacts
+     before the contract is generated;
    - response-length p50/p95/truncation rate, scorer-latency p50/p95,
      scorer-timeout rate, and peak RSS are run outcomes. They are stored in every
      historical repetition and receive frozen cohort predictions/intervals alongside
@@ -511,6 +513,11 @@ The dynamic estimator contract is fixed as `stage123_history_conformal_v1`:
                  difficulty_resolution, difficulty_mapping_sha256,
                  difficulty_stratum_counts}
    tokenizer = {path, config_sha256, tokenizer_sha256}
+   validation_eligibility = {max_prompt_length, filter_enabled,
+                             filter_implementation_sha256,
+                             ordered_eligible_uid_sha256,
+                             per_dataset_eligible_counts,
+                             submitted_prompt_count}
    outcome_schema_version = 2
    ```
 
@@ -560,12 +567,44 @@ The dynamic estimator contract is fixed as `stage123_history_conformal_v1`:
    canonical `{schema_version,dataset_name,dataset_sha256,strata:{unstratified:[sorted
    UIDs]}}`, and the sole count equals Parquet `row_count`.
 
+   Full-validation provenance and submitted-outcome denominators are distinct. The
+   three pinned source Parquet files and all 1422 source rows remain mandatory. Before
+   contract generation, the descriptor reuses the canonical `RLHFDataset` message
+   construction, pinned tokenizer/chat-template settings, `filter_overlong_prompts`,
+   and `max_prompt_length=1024` to compute the ordered eligible UID sequence. It records
+   the filter implementation SHA-256, ordered eligible UID SHA-256, per-dataset eligible
+   counts, and total `submitted_prompt_count`. The observed 2026-07-12 Stage1 diagnostic
+   fixture is 1422 source rows and 1379 deterministically eligible/submitted prompts;
+   both values must be recomputed from artifacts, never hardcoded to make the run pass.
+   A source row may be ineligible only through that pinned filter. Any tokenizer,
+   chat-template, prompt construction, filter implementation/config, UID ordering, or
+   eligible-count drift is an exact-match failure.
+   `ordered_eligible_uid_sha256` is SHA-256 over canonical JSON bytes with one trailing
+   newline for `{schema_version:1,datasets:[{name,source_index,ordered_uids}]}`; object
+   keys are lexicographically sorted, separators are `,` and `:`, UTF-8 is unescaped,
+   and dataset/source order plus UID order are preserved exactly.
+
+   Eligibility has one versioned implementation entry point:
+   `recipe/on_policy_wdl_sft/code_task/calibration_validation_eligibility.py`. It must
+   instantiate the project-native `RLHFDataset` with the exact rendered manifest data
+   config and pinned tokenizer, then read the filtered dataframe UID sequence; it must
+   not duplicate prompt formatting or token-length logic. `filter_implementation_sha256`
+   is the canonical SHA-256 over `{eligibility_tool_sha256, rl_dataset_sha256,
+   normalized_manifest_data_config}`. The normalized config binds
+   prompt key, chat-template kwargs, tool schemas, truncation mode, filter enabled flag,
+   filter worker semantics, and max prompt length. Contract generation recomputes this
+   descriptor from artifacts and rejects a manifest-provided value that differs. The
+   superproject and recipe commits are bound separately by preflight/calibration
+   receipts; they are not embedded in the recipe manifest descriptor because doing so
+   would create a recipe-first submodule-pointer commit cycle.
+
    Response lengths are token counts of the complete generated response under the
    pinned rollout tokenizer, excluding padding and including EOS when present. p50 and
    p95 use nearest-rank order statistics: sort ascending and select one-based rank
    `ceil(q * N)` for `q=0.50` or `q=0.95`. Truncation means the response consumed exactly
    `MAX_RESPONSE_LENGTH` non-padding response tokens without EOS. Scorer latency and
-   timeout use the existing per-sample reward telemetry and submitted-item denominator.
+   timeout use the existing per-sample reward telemetry and `submitted_prompt_count`
+   denominator.
    Peak RSS keeps the readiness-to-completion cgroup sampling contract. Feature and
    outcome names, units, missing-value rejection, tokenizer/config hashes, ordering,
    and derivation algorithm are schema-versioned and hashed.
@@ -577,12 +616,21 @@ The dynamic estimator contract is fixed as `stage123_history_conformal_v1`:
    `response_finish_reason` is exactly `stop` when EOS is present, `length` when the
    non-padding count equals `MAX_RESPONSE_LENGTH` without EOS, and `unknown` otherwise;
    `unknown` is incomplete telemetry and makes outcome-schema-v2 history ineligible.
+   The validation JSONL dump must write the same stable `uid` already carried by
+   `build_validation_generation_samples`; retaining UID only in transient tracking
+   samples is insufficient.
    Missing
-   rows, duplicate UIDs, a row count other than the pinned full-validation count,
+   rows, duplicate UIDs, a row count other than `submitted_prompt_count`, an observed
+   UID sequence that differs from `ordered_eligible_uid_sha256`,
    missing token/EOS/finish telemetry, or disagreement between runtime and artifact
    counts makes the repetition ineligible. Historical text-only JSONL may be re-encoded
    only for diagnostic p50/p95 analysis; it cannot prove EOS/truncation and therefore
    cannot enter a complete `outcome_schema_version=2` trusted cohort.
+   The preserved `baaa596b_v2` Stage1 repetition 0 proves the deterministic
+   1422-to-1379 count transition and native token/EOS/finish telemetry, but its JSONL
+   omitted UID; it is diagnostic-only and must not enter trusted history. After this
+   contract is implemented and committed, all bootstrap evidence starts from another
+   fresh calibration root.
 
    For each continuous outcome
    `validation_elapsed_seconds`, `peak_rss_gib`, `response_length_p50_tokens`,

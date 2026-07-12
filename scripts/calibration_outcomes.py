@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 from pathlib import Path
@@ -19,6 +20,10 @@ CONTINUOUS_OUTCOMES = (
 RATE_OUTCOMES = ("truncation_rate", "scorer_timeout_rate")
 
 
+def canonical_json(value: object) -> bytes:
+    return (json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n").encode()
+
+
 def nearest_rank(values: list[float], quantile: float) -> float:
     if not values or not 0 < quantile <= 1:
         raise ValueError("nearest-rank requires values and 0 < quantile <= 1")
@@ -28,12 +33,33 @@ def nearest_rank(values: list[float], quantile: float) -> float:
 
 def load_generation_outcomes(path: Path, workload: dict) -> dict:
     rows = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
-    expected = sum(int(item["row_count"]) for item in workload["datasets"])
+    eligibility = workload["validation_eligibility"]
+    expected = int(eligibility["submitted_prompt_count"])
     if len(rows) != expected:
         raise ValueError(f"{path}: expected {expected} submitted rows, found {len(rows)}")
     uids = [row.get("uid") for row in rows]
     if any(not isinstance(uid, str) or not uid for uid in uids) or len(set(uids)) != len(uids):
         raise ValueError(f"{path}: missing or duplicate stable UIDs")
+    expected_names = [item["name"] for item in workload["datasets"]]
+    by_dataset = {name: [] for name in expected_names}
+    for row in rows:
+        name = row.get("data_source")
+        if name not in by_dataset:
+            raise ValueError(f"{path}: unknown validation data_source: {name!r}")
+        by_dataset[name].append(row["uid"])
+    actual_counts = {name: len(by_dataset[name]) for name in expected_names}
+    if actual_counts != eligibility["per_dataset_eligible_counts"]:
+        raise ValueError(f"{path}: eligible UID dataset counts mismatch")
+    uid_doc = {
+        "schema_version": 1,
+        "datasets": [
+            {"name": name, "source_index": source_index, "ordered_uids": by_dataset[name]}
+            for source_index, name in enumerate(expected_names)
+        ],
+    }
+    actual_uid_sha256 = hashlib.sha256(canonical_json(uid_doc)).hexdigest()
+    if actual_uid_sha256 != eligibility["ordered_eligible_uid_sha256"]:
+        raise ValueError(f"{path}: ordered eligible UID hash mismatch")
 
     counts = [row.get("response_token_count") for row in rows]
     eos = [row.get("response_eos_present") for row in rows]
