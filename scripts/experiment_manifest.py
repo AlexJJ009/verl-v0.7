@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 from pathlib import Path
 import sys
 
@@ -38,6 +39,31 @@ def normalize(data: dict) -> dict:
             raise ValueError(f"missing source run for {item['id']}")
         if not item["artifact_dir"].startswith("/data-2/"):
             raise ValueError(f"artifact_dir must use /data-2: {item['id']}")
+    workloads = result["calibration_workloads"]
+    expected = {
+        "stage1": ("base_pretrained", ["rollout"], 1),
+        "stage2": ("fixed_model2_joint_rollout", ["model1", "model2"], 2),
+        "stage3": ("stage2_model2_handoff", ["rollout"], 1),
+    }
+    for phase, (provenance, roles, count) in expected.items():
+        workload = workloads[phase]
+        if workload["phase"] != phase or workload["model_provenance_class"] != provenance:
+            raise ValueError(f"{phase}: calibration workload identity mismatch")
+        if [item["role"] for item in workload["model_sources"]] != roles:
+            raise ValueError(f"{phase}: calibration model source roles mismatch")
+        counts = workload["rollout_model_parameter_counts"]
+        if len(counts) != count or sum(counts) != workload["rollout_model_parameter_count_sum"]:
+            raise ValueError(f"{phase}: calibration parameter counts mismatch")
+        if workload["log2_rollout_model_parameter_count_sum"] != round(math.log2(sum(counts)), 6):
+            raise ValueError(f"{phase}: calibration log2 parameter count mismatch")
+        names = [item["name"] for item in workload["datasets"]]
+        if names != result["semantics"]["validation_datasets"]:
+            raise ValueError(f"{phase}: calibration dataset order mismatch")
+        for dataset in workload["datasets"]:
+            if dataset["sha256"] != result["semantics"]["validation_dataset_hashes"][dataset["name"]]:
+                raise ValueError(f"{phase}: calibration dataset hash mismatch: {dataset['name']}")
+            if sum(dataset["difficulty_stratum_counts"].values()) != dataset["row_count"]:
+                raise ValueError(f"{phase}: difficulty stratum count mismatch: {dataset['name']}")
     canonical = json.dumps(result, sort_keys=True, separators=(",", ":")).encode()
     result["manifest_sha256"] = hashlib.sha256(canonical).hexdigest()
     return result
