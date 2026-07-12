@@ -1497,9 +1497,9 @@ python3 -m pytest -q \
   tests/experiment_workflow/test_experiment_manifest.py \
   tests/experiment_workflow/test_calibration_workload_descriptor.py \
   tests/experiment_workflow/test_operational_calibration_runner.py \
-  tests/experiment_workflow/test_stage123_formal_admission.py \
-  tests/experiment_workflow/test_preflight_receipt.py \
-  tests/experiment_workflow/test_dual_receipt_admission.py
+  tests/experiment_workflow/test_no_preflight_bypass.py \
+  tests/experiment_workflow/test_stage123_preflight_model_identity.py \
+  tests/experiment_workflow/test_stage123_end_to_end.py
 python3 recipe/on_policy_wdl_sft/code_task/calibration_validation_eligibility.py --help
 python3 recipe/on_policy_wdl_sft/code_task/calibration_workload_descriptor.py --help
 bash scripts/run_code_task_operational_calibration_queue.sh --sandbox-dry-run
