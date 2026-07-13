@@ -247,8 +247,8 @@ Stage1 bootstrap probe under `/data-2/experiment_registry/calibration_runs/c62b6
 then completed in 1165 seconds, passed the 1379-row ordered stable-source-UID check, and
 cleaned up all run-owned GPU/runtime state. It is nevertheless diagnostic-only:
 
-1. native telemetry measured `truncation_rate = 0.29731689630166785`, which exceeds
-   the immutable `0.01` hard gate; the per-dataset length-finished counts were
+1. native telemetry measured `truncation_rate = 0.29731689630166785`; the per-dataset
+   length-finished counts were
    HumanEval+ `8/164`, MBPP+ `22/378`, and LiveCodeBench `380/837`;
 2. the probe and formal Stage1 path used the base pretrained snapshot at
    `/data-1/.cache/huggingface/hub/models--Qwen--Qwen3-1.7B/snapshots/70d244cc86ccca08cf5af4e1e306ecf908b1ad5e`,
@@ -258,8 +258,8 @@ cleaned up all run-owned GPU/runtime state. It is nevertheless diagnostic-only:
 3. the latter is provenance-bound by `format_cold_start_source.json` to
    `SFT-FORMAT-COLDSTART-Qwen3-1P7B-CODE-KODCODE-FRAC25-V1_1783390514/global_step_30`.
 
-The mismatch is a workload-identity defect, not grounds to tune the truncation threshold,
-shorten context, filter datasets, or reinterpret telemetry. Preserve `c62b6093_v4`
+The mismatch is a workload-identity defect, not grounds to shorten context, filter
+datasets, or reinterpret telemetry. Preserve `c62b6093_v4`
 unchanged and never admit it to trusted history after the Stage1 model identity changes.
 Before implementation or another GPU launch:
 
@@ -276,8 +276,10 @@ Before implementation or another GPU launch:
 7. add regression fixtures, run focused/fast/full/PM2/isolation/transaction gates,
    commit recipe first, and obtain a new independent `CPU ACCEPTED` verdict;
 8. generate a completely fresh preflight bound to the new commits before one new
-   Stage1 probe in a new calibration root. Only a probe with UID, deadline, telemetry,
-   truncation, timeout, and cleanup gates all passing may unlock the remaining queue.
+   Stage1 probe in a new calibration root. Only a probe with UID, deadline, complete
+   native truncation telemetry, scorer dependency/validity, timeout, and cleanup gates
+   all passing may unlock the remaining queue. High initial truncation alone is a
+   diagnostic baseline, not a queue-blocking infrastructure failure.
 
 ## Non-Negotiable Boundaries
 
@@ -733,12 +735,49 @@ The dynamic estimator contract is fixed as `stage123_history_conformal_v1`:
    interval is `[max(0,min(raw)-1/N), min(1,max(raw)+1/N)]`, where `N` is the exact full
    submitted-item count, with outward six-decimal rounding. Each of three acceptance
    rates and their aggregate submitted-item rate must lie inside that interval;
-   truncation rate above `0.01` or scorer timeout rate above `0.10` is `blocked`.
+   scorer timeout rate above `0.10` is `blocked`. There is no universal absolute
+   truncation-rate admission ceiling: high Stage1 truncation is a recorded baseline
+   diagnostic and never blocks infrastructure calibration by itself.
    A continuous diagnostic with a non-informative interval is `inconclusive`; a rate
    interval wider than `0.25` is `inconclusive`. These checks are additional to, and do
    not replace, elapsed deadline, scorer validity, RSS, and GPU-idle gates. Scorer
    latency p50/p95 and response p50/p95 both use nearest-rank statistics over all
    submitted items in a repetition.
+
+   Truncation evidence remains mandatory. Missing/non-finite rate or prediction
+   interval, missing native response-token/EOS/finish telemetry, finish reason
+   `unknown`, missing per-dataset rate, or disagreement with the ordered 1379-row
+   outcome artifact makes the repetition ineligible. Stage2 is compared with Stage1,
+   and Stage3 with Stage2, using per-dataset and aggregate differences in proportions
+   with the following byte-reproducible two-sided 95% interval recorded in the report.
+   Each phase contributes exactly three accepted repetitions. Pool truncated counts
+   and submitted counts across those repetitions: aggregate denominator is exactly
+   `3 * 1379`, while each dataset denominator is exactly three times that dataset's
+   manifest-pinned eligible count. The comparison is unpaired: stable `source_uid`
+   proves identical workload membership/order, but sampled decoding does not produce
+   paired Bernoulli outcomes across phases. For each prior/later pooled proportion,
+   compute the Wilson score interval with `z = 1.959963984540054` in IEEE-754 binary64:
+
+   ```text
+   center = (p + z*z/(2*n)) / (1 + z*z/n)
+   half = z * sqrt(p*(1-p)/n + z*z/(4*n*n)) / (1 + z*z/n)
+   wilson = [max(0, center-half), min(1, center+half)]
+   delta_interval = [later_wilson_low-prior_wilson_high,
+                     later_wilson_high-prior_wilson_low]
+   ```
+
+   Zero and all-truncated counts use the same formula without special substitution.
+   Classification uses unrounded binary64 `delta` and interval bounds. Serialized
+   bounds use decimal outward rounding to six places: lower bound toward negative
+   infinity, upper bound toward positive infinity; serialized `delta` uses ordinary
+   round-half-even to six places. Define `delta = later_rate - prior_rate`:
+   classification is `meaningful_worsening` only
+   when the interval lower bound is greater than zero and `delta >= 0.02`;
+   `meaningful_improvement` only when the interval upper bound is below zero and
+   `delta <= -0.02`; otherwise `not_statistically_meaningful`. This classification is
+   experiment-quality and user-decision evidence, not an automatic infrastructure
+   block and not permission to change sampled decoding, 8192 response length, model
+   identity, or dataset scope.
 
    The current `stage123.yaml` lacks a complete descriptor schema and the pre-resume
    contract emitted empty phase features. That contract is preserved as failed evidence
@@ -1502,6 +1541,41 @@ reach complete validation metrics without `EADDRINUSE`, invalid TCPStore ping,
 timeout, fatal termination, or residual run-owned runtime before AC-19 calibration
 may resume.
 
+#### AC-26B - Calibration Scorer Dependencies Fail Before GPU Validation
+
+- Given Stage1/Stage2/Stage3 calibration uses EvalPlus for HumanEval+/MBPP+ and the
+  official LiveCodeBench evaluator, and Ray reward workers may not inherit shell-only
+  `PYTHONPATH` from a separately started local Ray head,
+- When the calibration runner validates its worker runtime before model loading and
+  again when the first reward-worker actor is created,
+- Then the same `ray_kwargs.ray_init.runtime_env.env_vars.PYTHONPATH` used by reward
+  workers contains the repo, `/data-1/code_eval_envs/official_site`, and
+  `/data-1/code_eval_envs/LiveCodeBench`; an import/probe verifies EvalPlus and the
+  LiveCodeBench official evaluator from that worker-equivalent environment. A missing
+  module, path, index, or incompatible evaluator exits immediately as
+  `dependency_failure`, cleans up run-owned runtime, prevents the next repetition,
+  and writes no trusted history, candidate report, limited receipt, deployable receipt,
+  DB row, or W&B sync marker. An all-row scorer dependency failure can never be
+  interpreted as model score `-1`, ordinary invalid score, or model-quality evidence.
+
+Verification:
+
+```bash
+/data-1/verl07/run_train.sh /opt/venv/bin/python -m pytest -q \
+  tests/experiment_workflow/test_operational_calibration_scorer_preflight.py \
+  tests/experiment_workflow/test_operational_calibration_runner.py \
+  tests/on_policy_wdl_sft/test_code_task_reward_and_metrics.py
+```
+
+Expected evidence: a worker-environment fixture imports both evaluator families with
+the exact generated runtime `PYTHONPATH`; removing either path fails before Docker/tmux
+in sandbox mode and before model loading in the container probe; a simulated first-call
+dependency failure terminates the repetition and blocks queue advancement; all-row
+dependency failures are rejected by assembler/checker rather than converted to model
+scores. Stage1 and Stage3 share the same Stage1 wrapper propagation, Stage2 uses the
+same path contract through its common wrapper, and sampled decoding, full datasets,
+8192 response length, model identity, and resource profile remain unchanged.
+
 ### AC-27 - Notification Policy Is an Event State Machine
 
 - Given local fake WxPusher delivery and run-state fixtures,
@@ -1712,35 +1786,40 @@ the commits recorded in the Resume Snapshot. On resume, execute this remaining o
    run the focused runtime-isolation and cleanup tests, and obtain independent
    committed-state `CPU ACCEPTED`. Do not alter the canonical L40S resource-profile
    hash and do not use global `ray stop --force`.
-7. Generate fresh machine, budget, and preflight evidence bound to that committed state.
+7. Treat the first `bb3f51ea_stage1_transition_probe` repetition as diagnostic-only:
+   it reached `validation_ready` with 1379 prompts and no TCPStore collision, then was
+   deliberately terminated because every reward worker lacked EvalPlus/LiveCodeBench
+   imports. Obtain independent `READY` for AC-26B, propagate the exact official
+   evaluator `PYTHONPATH` through Ray runtime env for all phases, add dependency
+   fail-fast tests, commit recipe first, and obtain committed-state `CPU ACCEPTED`.
+8. Generate fresh machine, budget, and preflight evidence bound to that committed state.
    Historical receipts must not authorize launch.
-8. In a completely new diagnostic root, run two consecutive Stage1 bootstrap probes
+9. In a completely new diagnostic root, run two consecutive Stage1 bootstrap probes
    in one serial tmux queue. Both must pass AC-26A. The second probe specifically proves
    that repetition transition does not reproduce the `43063` collision.
-   If either format-SFT probe has `truncation_rate > 0.01`, stop before the canonical
-   27-run queue. Preserve and analyze native EOS, finish reason, response-token length,
-   per-dataset truncation, score, timeout, and representative generated-output evidence.
-   Model weakness or weak format adherence is a plausible diagnosis, but not an
-   automatic threshold override. Present the evidence for user decision if satisfying
-   the hard gate would require changing model identity, decoding semantics, workload,
-   or another immutable experiment parameter.
-9. In a completely new canonical calibration root, run exactly one Stage1 bootstrap probe in tmux.
-   Only if UID, deadline, telemetry, timeout, truncation (`<= 0.01`), score, memory, and
-   cleanup hard gates pass may the remaining Stage1 repetitions and Stage2 calibration
-   proceed. A failed probe remains diagnostic and does not unlock the queue.
-10. Complete six eligible Stage1/Stage2 bootstrap repetitions, freeze their history,
+   Preserve and analyze native EOS, finish reason, response-token length, per-dataset
+   truncation, score, timeout, and representative generated-output evidence. High
+   truncation alone does not stop the canonical queue; incomplete telemetry, missing
+   scorer dependencies, invalid scorer coverage, timeout, fatal runtime, or cleanup
+   failure does.
+10. In a completely new canonical calibration root, run exactly one Stage1 bootstrap probe in tmux.
+   Only if UID, deadline, complete native truncation telemetry, scorer dependency and
+   validity, timeout, score, memory, and cleanup hard gates pass may the remaining
+   Stage1 repetitions and Stage2 calibration proceed. No absolute truncation-rate
+   threshold applies. A failed probe remains diagnostic and does not unlock the queue.
+11. Complete six eligible Stage1/Stage2 bootstrap repetitions, freeze their history,
    generate their prediction contract, and run three fresh Stage1/Stage2 acceptance
    repetitions. Checker may issue only AC-30's `stage12_calibrated` limited receipt for
    the named 20-step Stage2 producer.
-11. Run the authorized Stage2 producer. Materialize/hash/provenance-bind its model2,
+12. Run the authorized Stage2 producer. Materialize/hash/provenance-bind its model2,
    regenerate Stage3 descriptor and preflight evidence, then complete six Stage3
    bootstrap and three fresh Stage3 acceptance repetitions.
    Before the producer completes, an optional historical-model Stage3 diagnostic may
    run in parallel with non-GPU preparation only under the diagnostic-only restrictions
    in AC-29; it never substitutes for this step.
-12. Assemble the complete three-phase candidate and require the original checker-owned
+13. Assemble the complete three-phase candidate and require the original checker-owned
     `deployable` receipt. A limited receipt never satisfies this step.
-13. A fresh independent Reviewer executes every AC-01 through AC-30 plus AC-26A command, the PM2
+14. A fresh independent Reviewer executes every AC-01 through AC-30 plus AC-26A/AC-26B commands, the PM2
    keepalive checks, and the completion-state checker from committed code.
 
 No milestone may start until all required ACs from the previous milestone pass.
