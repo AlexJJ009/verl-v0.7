@@ -18,3 +18,6 @@
 {"event":"MILESTONE_COMPLETED","milestone":"Milestone 2","seq":18,"summary":"Generic validation observer and manifest/policy ownership accepted","time":"2026-07-13T05:22:41.259676Z"}
 {"authorization":"autonomous Milestone 1-6 envelope","event":"MILESTONE_STARTED","milestone":"Milestone 3","seq":19,"time":"2026-07-13T05:22:41.303429Z"}
 {"event":"REVIEW_COMPLETED","milestone":"Milestone 3","plan_version":1,"prompt":"reviews/milestone-3-review-prompt.md","review_id":"milestone-3-review-01","reviewer":"Newton GPT-5.5 medium","seq":20,"summary":"AC-03 PASS; AC-04 weakened because calibration_outcomes tests still assert free-form exception text","time":"2026-07-13T05:37:56.627408Z","verdict":"WEAKENED"}
+{"event":"REVIEW_COMPLETED","milestone":"Milestone 3","plan_version":1,"prompt":"reviews/milestone-3-rereview-prompt.md","review_id":"milestone-3-rereview-01","reviewer":"Singer GPT-5.5 medium","seq":21,"summary":"AC-03 and AC-04 independently pass after structured outcomes fix","time":"2026-07-13T05:48:24.983420Z","verdict":"PASS"}
+{"event":"MILESTONE_COMPLETED","milestone":"Milestone 3","seq":22,"summary":"Python execution state and structured failures accepted","time":"2026-07-13T05:48:25.072363Z"}
+{"authorization":"autonomous Milestone 1-6 envelope","event":"MILESTONE_STARTED","milestone":"Milestone 4","seq":23,"time":"2026-07-13T05:48:25.115272Z"}
