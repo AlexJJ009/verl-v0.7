@@ -61,8 +61,6 @@ def cleanup(ownership: dict, grace_seconds: float = 10.0) -> dict:
             except OSError as exc: actions.append({"kind": "descendant", "pid": int(pid), "returncode": 1, "error": str(exc)})
     for session in ownership.get("tmux_sessions", []): actions.append({"kind": "tmux", **command(["tmux", "kill-session", "-t", session])})
     for container in ownership.get("docker_containers", []): actions.append({"kind": "docker", **command(["docker", "rm", "-f", container])})
-    if ownership.get("ray_address"):
-        actions.append({"kind": "ray", **command(["ray", "stop", "--force"])})
     reap_deadline = time.monotonic() + min(max(grace_seconds, 0.1), 2.0)
     while time.monotonic() < reap_deadline:
         residual_pids = [int(pid) for pid in ownership.get("descendant_pids", []) if alive(int(pid))]

@@ -8,6 +8,11 @@ MANIFEST_TOOL=${CALIBRATION_MANIFEST_TOOL:-$REPO/scripts/experiment_manifest.py}
 CONTRACT_TOOL=${CALIBRATION_CONTRACT_TOOL:-$REPO/scripts/check_calibration_prediction_contract.py}
 RUNNER=${CALIBRATION_RUNNER:-$REPO/scripts/run_code_task_operational_calibration.sh}
 CALIBRATION_AUTHORIZATION_SCOPE=${CALIBRATION_AUTHORIZATION_SCOPE:-full}
+CALIBRATION_RAY_WORKER_PORT_MIN=${CALIBRATION_RAY_WORKER_PORT_MIN:-21000}
+CALIBRATION_RAY_WORKER_PORT_MAX=${CALIBRATION_RAY_WORKER_PORT_MAX:-21999}
+CALIBRATION_RAY_HEAD_PORT=${CALIBRATION_RAY_HEAD_PORT:-22000}
+CALIBRATION_TCPSTORE_PORT_MIN=${CALIBRATION_TCPSTORE_PORT_MIN:-35000}
+CALIBRATION_TCPSTORE_PORT_MAX=${CALIBRATION_TCPSTORE_PORT_MAX:-35999}
 case "$CALIBRATION_AUTHORIZATION_SCOPE" in
   full) PHASES=(stage1 stage2 stage3) ;;
   stage12_producer) PHASES=(stage1 stage2) ;;
@@ -170,13 +175,50 @@ status_failed() {
 }
 
 wait_for_status() {
-  local role=$1 phase=$2 rep=$3 session=$4 path
+  local role=$1 phase=$2 rep=$3 session=$4 container=$5 path
   path=$(status_path "$role" "$phase" "$rep")
   while tmux has-session -t "$session" 2>/dev/null; do
     sleep "${CALIBRATION_QUEUE_POLL_SECONDS:-5}"
   done
   status_ok "$path" || { echo "ERROR: calibration failed role=$role phase=$phase rep=$rep status=$path" >&2; exit 1; }
+  wait_for_runtime_quiet "$session" "$container"
 }
+
+assert_port_ranges() {
+  python3 - "$CALIBRATION_RAY_WORKER_PORT_MIN" "$CALIBRATION_RAY_WORKER_PORT_MAX" "$CALIBRATION_RAY_HEAD_PORT" "$CALIBRATION_TCPSTORE_PORT_MIN" "$CALIBRATION_TCPSTORE_PORT_MAX" <<'PY'
+import sys
+ray_min, ray_max, head, store_min, store_max = map(int, sys.argv[1:])
+if not all(1024 <= value <= 65535 for value in (ray_min, ray_max, head, store_min, store_max)):
+    raise SystemExit("calibration port outside 1024-65535")
+if ray_min >= ray_max or store_min >= store_max:
+    raise SystemExit("invalid calibration port range")
+ray_ports = set(range(ray_min, ray_max + 1)) | {head}
+store_ports = set(range(store_min, store_max + 1))
+if ray_ports & store_ports:
+    raise SystemExit("calibration Ray and TCPStore port domains overlap")
+PY
+}
+
+runtime_quiet() {
+  local session=$1 container=$2
+  ! tmux has-session -t "$session" 2>/dev/null || return 1
+  [ -z "$(docker ps -aq --filter "name=^/${container}$")" ] || return 1
+  CALIBRATION_PORT_DOMAINS="$CALIBRATION_RAY_WORKER_PORT_MIN-$CALIBRATION_RAY_WORKER_PORT_MAX,$CALIBRATION_RAY_HEAD_PORT-$CALIBRATION_RAY_HEAD_PORT,$CALIBRATION_TCPSTORE_PORT_MIN-$CALIBRATION_TCPSTORE_PORT_MAX" \
+    python3 "$REPO/scripts/check_calibration_port_quiet.py"
+}
+
+wait_for_runtime_quiet() {
+  local session=$1 container=$2 deadline=$((SECONDS + ${CALIBRATION_RUNTIME_QUIET_TIMEOUT_SECONDS:-60}))
+  while ! runtime_quiet "$session" "$container"; do
+    if [ "$SECONDS" -ge "$deadline" ]; then
+      echo "ERROR: run-owned calibration runtime did not become quiet: session=$session container=$container" >&2
+      return 1
+    fi
+    sleep "${CALIBRATION_RUNTIME_QUIET_POLL_SECONDS:-1}"
+  done
+}
+
+assert_port_ranges
 
 run_missing_rep() {
   local role=$1 phase=$2 rep=$3 path session container
@@ -191,6 +233,7 @@ run_missing_rep() {
   fi
   session="code_calibration_${role}_${phase}_rep${rep}"
   container="code-calibration-${role}-${phase}-rep${rep}"
+  wait_for_runtime_quiet "$session" "$container"
   echo "start role=$role phase=$phase rep=$rep"
   env \
     ALLOW_CODE_OPERATIONAL_CALIBRATION="${ALLOW_CODE_OPERATIONAL_CALIBRATION:-1}" \
@@ -206,6 +249,11 @@ run_missing_rep() {
     CALIBRATION_PREFLIGHT_RECEIPT_MAX_AGE_SECONDS="$CALIBRATION_PREFLIGHT_RECEIPT_MAX_AGE_SECONDS" \
     CALIBRATION_TMUX_NAME="$session" \
     CALIBRATION_CONTAINER_NAME="$container" \
+    CALIBRATION_RAY_WORKER_PORT_MIN="$CALIBRATION_RAY_WORKER_PORT_MIN" \
+    CALIBRATION_RAY_WORKER_PORT_MAX="$CALIBRATION_RAY_WORKER_PORT_MAX" \
+    CALIBRATION_RAY_HEAD_PORT="$CALIBRATION_RAY_HEAD_PORT" \
+    CALIBRATION_TCPSTORE_PORT_MIN="$CALIBRATION_TCPSTORE_PORT_MIN" \
+    CALIBRATION_TCPSTORE_PORT_MAX="$CALIBRATION_TCPSTORE_PORT_MAX" \
     CALIBRATION_HISTORY_INDEX="$HISTORY_INDEX" \
     CALIBRATION_PREDICTION_CONTRACT="$PREDICTION_CONTRACT" \
     CALIBRATION_HISTORY_SHA256="${CALIBRATION_HISTORY_SHA256:-}" \
@@ -222,7 +270,7 @@ run_missing_rep() {
     CALIBRATION_STAGE1_HANDOFF_STEP="$CALIBRATION_STAGE1_HANDOFF_STEP" \
     CALIBRATION_TRAIN_FILE="$CALIBRATION_TRAIN_FILE" \
     "$RUNNER" "$phase"
-  wait_for_status "$role" "$phase" "$rep" "$session"
+  wait_for_status "$role" "$phase" "$rep" "$session" "$container"
 }
 
 generate_history_snapshot() {
