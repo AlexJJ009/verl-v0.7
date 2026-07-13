@@ -222,6 +222,17 @@ probe or canonical cohort:
    `CPU ACCEPTED`; then issue fresh preflight evidence and run two consecutive
    Stage1 diagnostic probes before creating a new canonical cohort.
 
+CPU verification must avoid duplicate wall-clock work. On one committed state, run
+the changed-surface focused tests first and then exactly one full gate. Because
+`check_experiment_workflow_full.sh` invokes `check_experiment_workflow_fast.sh`, do not
+run a separate complete fast gate immediately before or after that full gate. A
+Reviewer may audit the content-addressed full-gate log and independently rerun the
+focused AC-26A behavior tests; it need not repeat the entire full gate merely to
+duplicate implementer-owned output. Independent acceptance still requires the
+Reviewer to inspect the committed code, execute the acceptance-critical focused
+commands itself, and verify that the persisted full-gate command, commit identity,
+exit status, and log are authentic.
+
 Outcome-schema-v2, validation eligibility, stable source UID routing, and PM2-only CI
 keepalive are committed and received fresh independent `CPU ACCEPTED` review at:
 
@@ -1593,6 +1604,14 @@ calibration/formal queue drift, stale preflight bindings, a missing current Stag
 implemented as side-effect-free committed interfaces: no Docker, tmux, Ray, trainer,
 GPU process, PM2 daemon, or external service contact may start.
 
+A retained historical Stage2 model2 may be used only for a separately rooted
+`diagnostic_only` Stage3 plumbing/performance probe before the current 20-step producer
+exists. Such a probe must identify the historical source and mismatch, cannot enter
+trusted history or a candidate report, cannot issue or satisfy any limited/full
+receipt, cannot unlock Stage3 acceptance, and cannot weaken the fail-closed formal
+Stage3 identity checks above. Its sole purpose is to expose runtime/path/resource
+failures early while the AC-30 producer dependency remains unresolved.
+
 ### AC-30 - Stage2 Producer Uses a Checker-Owned Limited Receipt
 
 - Given the only authorized producer identity:
@@ -1698,6 +1717,13 @@ the commits recorded in the Resume Snapshot. On resume, execute this remaining o
 8. In a completely new diagnostic root, run two consecutive Stage1 bootstrap probes
    in one serial tmux queue. Both must pass AC-26A. The second probe specifically proves
    that repetition transition does not reproduce the `43063` collision.
+   If either format-SFT probe has `truncation_rate > 0.01`, stop before the canonical
+   27-run queue. Preserve and analyze native EOS, finish reason, response-token length,
+   per-dataset truncation, score, timeout, and representative generated-output evidence.
+   Model weakness or weak format adherence is a plausible diagnosis, but not an
+   automatic threshold override. Present the evidence for user decision if satisfying
+   the hard gate would require changing model identity, decoding semantics, workload,
+   or another immutable experiment parameter.
 9. In a completely new canonical calibration root, run exactly one Stage1 bootstrap probe in tmux.
    Only if UID, deadline, telemetry, timeout, truncation (`<= 0.01`), score, memory, and
    cleanup hard gates pass may the remaining Stage1 repetitions and Stage2 calibration
@@ -1709,6 +1735,9 @@ the commits recorded in the Resume Snapshot. On resume, execute this remaining o
 11. Run the authorized Stage2 producer. Materialize/hash/provenance-bind its model2,
    regenerate Stage3 descriptor and preflight evidence, then complete six Stage3
    bootstrap and three fresh Stage3 acceptance repetitions.
+   Before the producer completes, an optional historical-model Stage3 diagnostic may
+   run in parallel with non-GPU preparation only under the diagnostic-only restrictions
+   in AC-29; it never substitutes for this step.
 12. Assemble the complete three-phase candidate and require the original checker-owned
     `deployable` receipt. A limited receipt never satisfies this step.
 13. A fresh independent Reviewer executes every AC-01 through AC-30 plus AC-26A command, the PM2
