@@ -25,3 +25,6 @@
 {"event":"REVIEW_COMPLETED","milestone":"Milestone 4","plan_version":1,"prompt":"reviews/milestone-4-rereview-prompt.md","review_id":"milestone-4-rereview-01","reviewer":"Franklin GPT-5.5 medium","seq":25,"summary":"AC-05 and AC-08 independently pass with 2259/2169/0 candidate budgets","time":"2026-07-13T06:07:31.458998Z","verdict":"PASS"}
 {"event":"MILESTONE_COMPLETED","milestone":"Milestone 4","seq":26,"summary":"Evidence authority migration and deletion budgets accepted","time":"2026-07-13T06:07:31.544346Z"}
 {"authorization":"autonomous Milestone 1-6 envelope","event":"MILESTONE_STARTED","milestone":"Milestone 5","seq":27,"time":"2026-07-13T06:07:31.587846Z"}
+{"event":"REVIEW_COMPLETED","milestone":"Milestone 5","plan_version":1,"prompt":"reviews/milestone-5-review-prompt.md","review_id":"milestone-5-review-01","reviewer":"Parfit GPT-5.5 medium","seq":28,"summary":"AC-06 and AC-07 pass; sole full gate plus focused replacements, PM2-only and no-systemd verified","time":"2026-07-13T06:29:22.228122Z","verdict":"PASS"}
+{"event":"MILESTONE_COMPLETED","milestone":"Milestone 5","seq":29,"summary":"CPU preservation and operational policy gates accepted","time":"2026-07-13T06:29:22.315756Z"}
+{"authorization":"autonomous Milestone 1-6 envelope","event":"MILESTONE_STARTED","milestone":"Milestone 6","seq":30,"time":"2026-07-13T06:29:22.359977Z"}
