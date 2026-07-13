@@ -26,7 +26,7 @@
     },
     "production": {
       "baseline_lines": 3763,
-      "candidate_lines": 1923,
+      "candidate_lines": 2259,
       "ceiling": 3000,
       "files": [
         "scripts/assemble_code_task_operational_calibration.py",
@@ -51,11 +51,15 @@
         "scripts/stage123_preflight_receipt.py",
         "scripts/validation_deadline_controller.py"
       ],
-      "pass": true
+      "pass": true,
+      "replacement_files": [
+        "scripts/experiment_execution_core.py",
+        "scripts/execution_results.py"
+      ]
     },
     "tests": {
       "baseline_lines": 4694,
-      "candidate_lines": 2933,
+      "candidate_lines": 2169,
       "ceiling": 4000,
       "pass": true
     }
