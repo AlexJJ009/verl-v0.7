@@ -47,6 +47,7 @@ def test_phase_runner_is_zero_step_val_only_and_cleans_owned_ray_only():
  assert ': "${VERL_FILE_LOGGER_ROOT:=$CALIBRATION_OUTPUT_ROOT/logs/metrics}"' in text
  assert 'export VERL_FILE_LOGGER_ROOT' in text
  assert 'mkdir -p "$CALIBRATION_OUTPUT_ROOT/checkpoints" "$CALIBRATION_OUTPUT_ROOT/logs" "$VERL_FILE_LOGGER_ROOT"' in text
+ assert '+ray_kwargs.ray_init.runtime_env.env_vars.VERL_FILE_LOGGER_ROOT="\'$VERL_FILE_LOGGER_ROOT\'"' in text
  assert 'ray stop --force' not in text
  assert "root in command" in text
  assert '--temp-dir="$RAY_TMPDIR"' in text
