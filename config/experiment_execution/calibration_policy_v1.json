@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "policy_id": "stage123-calibration-policy-v1",
+  "required_phases": ["stage2", "stage3"],
+  "max_repetitions": 3,
+  "training_steps": 0,
+  "optimizer_enabled": false,
+  "max_gpu_count": 8,
+  "max_wall_seconds": 5400,
+  "prediction": {
+    "minimum_history_count": 3,
+    "maximum_observed_to_predicted_ratio": 1.25
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "result_type": "calibration_result",
+  "required": [
+    "decision", "manifest_sha256", "resource_profile_sha256",
+    "implementation_tree_sha256", "evidence_commit", "workload_identity",
+    "policy_id", "policy_sha256", "authorization_identity", "started_at",
+    "completed_at", "phase_evidence", "prediction_comparison", "cleanup",
+    "failures"
+  ],
+  "decisions": ["passed", "blocked"]
+}

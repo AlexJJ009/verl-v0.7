@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "algorithm": "stage123-implementation-boundary-v1",
+  "superproject_tree_roots": [
+    "config/experiment_execution",
+    "scripts",
+    "verl"
+  ],
+  "submodules": [
+    {"path": "recipe", "coverage": "entire_gitlink_commit"}
+  ]
+}
