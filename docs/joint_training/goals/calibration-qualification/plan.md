@@ -27,7 +27,7 @@ prediction.
 - `scripts/check_calibration_prediction_contract.py` and historical prediction
   artifacts are migration inputs, not automatically accepted policy authority.
 - This Plan does not itself authorize a GPU probe. The user must separately and
-  explicitly authorize the bounded probe defined below before Milestone 4 starts.
+  explicitly authorize the bounded probe defined below before Milestone 5 starts.
 
 ## Scope
 
