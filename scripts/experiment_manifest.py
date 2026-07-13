@@ -57,6 +57,19 @@ def canonicalize(data: dict) -> dict:
 
 
 def validate_policy_v1(result: dict) -> None:
+    legacy_freshness_fields = (
+        ("preflight", "receipt_max_age_seconds", "result_max_age_seconds"),
+        ("calibration_policy", "calibration_receipt_max_age_seconds", "calibration_result_max_age_seconds"),
+    )
+    for section, legacy, current in legacy_freshness_fields:
+        if legacy in result.get(section, {}):
+            _policy_error(
+                "legacy_freshness_field",
+                f"legacy freshness field is not current authority: {section}.{legacy}",
+                section=section,
+                legacy_field=legacy,
+                current_field=current,
+            )
     for label in ("run_prefix", "id", "tmux_name"):
         values = [item[label] for item in result["runs"]]
         if len(values) != len(set(values)):

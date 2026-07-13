@@ -19,14 +19,35 @@ def module():
     return result
 
 
-def test_stage123_manifest_normalizes_all_run_identity():
+def test_stage123_manifest_normalizes_primary_run_identity():
     tool = module()
     report = tool.normalize(tool.load(MANIFEST))
     assert report["resource_profile"]["max_response_length"] == 8192
     assert report["semantics"]["validation_datasets"] == ["HumanEval+", "MBPP+", "LiveCodeBench"]
-    assert [item["id"] for item in report["runs"]] == ["frac25-stage2", "frac25-stage3", "frac50-stage2", "frac50-stage3"]
-    assert [item["final_step"] for item in report["runs"]] == [20, 40, 20, 40]
+    assert [item["id"] for item in report["runs"]] == ["frac25-stage2", "frac25-stage3"]
+    assert [item["final_step"] for item in report["runs"]] == [20, 40]
+    assert report["preflight"]["result_max_age_seconds"] == 3600
+    assert report["calibration_policy"]["calibration_result_max_age_seconds"] == 86400
     assert len(report["manifest_sha256"]) == 64
+
+
+@pytest.mark.parametrize(
+    ("section", "legacy", "current"),
+    [
+        ("preflight", "receipt_max_age_seconds", "result_max_age_seconds"),
+        ("calibration_policy", "calibration_receipt_max_age_seconds", "calibration_result_max_age_seconds"),
+    ],
+)
+def test_legacy_receipt_freshness_names_fail_closed(section: str, legacy: str, current: str):
+    tool = module(); data = tool.load(MANIFEST)
+    data[section][legacy] = data[section].pop(current)
+    with pytest.raises(tool.ManifestPolicyError) as raised:
+        tool.normalize(data)
+    assert raised.value.as_dict() == {
+        "code": "legacy_freshness_field",
+        "message": f"legacy freshness field is not current authority: {section}.{legacy}",
+        "context": {"section": section, "legacy_field": legacy, "current_field": current},
+    }
 
 
 @pytest.mark.parametrize("field", ["run_prefix", "id", "tmux_name"])
