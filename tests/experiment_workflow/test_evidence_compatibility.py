@@ -21,7 +21,7 @@ def result(kind: str, decision: str = "passed"):
         policy_path = ROOT / "config/experiment_execution/calibration_policy_v1.json"
         value.update({
             "resource_profile_sha256": "b" * 64, "implementation_tree_sha256": "c" * 64,
-            "evidence_commit": "d" * 40, "workload_identity": {"sha256": "f" * 64}, "policy_id": "stage123-calibration-policy-v1",
+            "evidence_commit": "d" * 40, "workload_identity": {"sha256": "f" * 64, "run_ids": ["frac25-stage2", "frac25-stage3"]}, "policy_id": "stage123-calibration-policy-v1",
             "policy_sha256": hashlib.sha256(policy_path.read_bytes()).hexdigest(), "authorization_identity": {"id": "auth"}, "started_at": "2026-01-01T00:00:00Z",
             "completed_at": "2026-01-01T00:01:00Z", "phase_evidence": [{"phase": "stage2", "status": "passed"}, {"phase": "stage3", "status": "passed"}], "prediction_comparison": {"qualified": True},
             "cleanup": {"resources_released": True}, "failures": [],
@@ -32,7 +32,9 @@ def result(kind: str, decision: str = "passed"):
 def test_only_three_result_classes_can_authorize_current_execution():
     tool = module()
     assert tool.validate_result(result("preflight_result")).authorized
-    assert tool.validate_result(result("calibration_result")).authorized
+    calibration = result("calibration_result")
+    bindings = {"manifest_sha256": calibration["manifest_sha256"], "resource_profile_sha256": calibration["resource_profile_sha256"], "implementation_tree_sha256": calibration["implementation_tree_sha256"], "evidence_commit": calibration["evidence_commit"], "run_ids": calibration["workload_identity"]["run_ids"], "authorization_identity": calibration["authorization_identity"]}
+    assert tool.validate_result(calibration, expected_bindings=bindings).authorized
     assert tool.validate_result(result("acceptance_report", "accepted")).authorized
     assert not tool.validate_result(result("acceptance_report", "passed")).authorized
 
@@ -76,3 +78,12 @@ def test_stale_or_malformed_result_files_fail_closed(tmp_path: Path):
 def test_incomplete_calibration_result_never_authorizes():
     tool = module(); decision = tool.validate_result({"schema_version": 1, "result_type": "calibration_result", "manifest_sha256": "a" * 64, "decision": "passed"})
     assert not decision.authorized and decision.code == "result_fields"
+
+
+def test_calibration_result_requires_and_matches_explicit_bindings():
+    tool = module(); calibration = result("calibration_result")
+    assert tool.validate_result(calibration).code == "expected_bindings"
+    bindings = {"manifest_sha256": calibration["manifest_sha256"], "resource_profile_sha256": calibration["resource_profile_sha256"], "implementation_tree_sha256": calibration["implementation_tree_sha256"], "evidence_commit": calibration["evidence_commit"], "run_ids": calibration["workload_identity"]["run_ids"], "authorization_identity": calibration["authorization_identity"]}
+    for key in bindings:
+        mutated = dict(bindings); mutated[key] = "wrong"
+        assert tool.validate_result(calibration, expected_bindings=mutated).code == "result_binding"

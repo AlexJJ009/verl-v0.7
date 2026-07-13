@@ -54,7 +54,7 @@ def result_sha256(value: dict[str, Any]) -> str:
     return hashlib.sha256(canonical_bytes(value)).hexdigest()
 
 
-def validate_result(value: dict[str, Any], expected_type: str | None = None) -> EvidenceDecision:
+def validate_result(value: dict[str, Any], expected_type: str | None = None, expected_bindings: dict[str, Any] | None = None) -> EvidenceDecision:
     result_type = value.get("result_type")
     if result_type in LEGACY_AUTHORITY_TYPES or value.get("receipt_type") in LEGACY_AUTHORITY_TYPES:
         return EvidenceDecision(False, "legacy_evidence", "legacy receipt or adoption evidence is not current authority", {"result_type": result_type, "receipt_type": value.get("receipt_type")})
@@ -76,6 +76,18 @@ def validate_result(value: dict[str, Any], expected_type: str | None = None) -> 
         if not outcome["ok"]:
             first = outcome["failures"][0]
             return EvidenceDecision(False, first["code"], first["message"], first["context"])
+        if expected_bindings is None:
+            return EvidenceDecision(False, "expected_bindings", "calibration result requires explicit expected bindings", {})
+        actual_bindings = {
+            "manifest_sha256": value.get("manifest_sha256"),
+            "resource_profile_sha256": value.get("resource_profile_sha256"),
+            "implementation_tree_sha256": value.get("implementation_tree_sha256"),
+            "evidence_commit": value.get("evidence_commit"),
+            "run_ids": value.get("workload_identity", {}).get("run_ids"),
+            "authorization_identity": value.get("authorization_identity"),
+        }
+        if actual_bindings != expected_bindings:
+            return EvidenceDecision(False, "result_binding", "calibration result binding mismatch", {"expected": expected_bindings, "actual": actual_bindings})
     if not isinstance(value.get("manifest_sha256"), str) or len(value["manifest_sha256"]) != 64:
         return EvidenceDecision(False, "manifest_binding", "execution result lacks manifest binding", {})
     decision = value.get("decision")
@@ -87,14 +99,14 @@ def validate_result(value: dict[str, Any], expected_type: str | None = None) -> 
     return EvidenceDecision(authorized, code, message, {"result_type": result_type, "decision": decision})
 
 
-def load_and_validate(path: Path, expected_type: str | None = None) -> EvidenceDecision:
+def load_and_validate(path: Path, expected_type: str | None = None, expected_bindings: dict[str, Any] | None = None) -> EvidenceDecision:
     try:
         value = json.loads(path.read_text())
     except (OSError, json.JSONDecodeError) as exc:
         return EvidenceDecision(False, "invalid_result_file", "execution result cannot be read", {"path": str(path), "error": str(exc)})
     if not isinstance(value, dict):
         return EvidenceDecision(False, "invalid_result_file", "execution result must be a JSON object", {"path": str(path)})
-    return validate_result(value, expected_type)
+    return validate_result(value, expected_type, expected_bindings)
 
 
 def archive_historical(source: Path, destination: Path) -> dict[str, Any]:
@@ -154,11 +166,27 @@ def build_admission_bundle(manifest_path: Path, profile_path: Path, calibration_
     manifest = load_object(manifest_path)
     calibration = load_object(calibration_path)
     preflight = load_object(preflight_path)
-    calibration_decision = validate_result(calibration, "calibration_result")
+    run_ids = [item.get("id") for item in manifest.get("runs", [])]
+    expected_tree = preflight.get("implementation_tree_sha256")
+    expected_calibration_commit = preflight.get("calibration_evidence_commit")
+    expected_authorization = preflight.get("calibration_authorization_identity")
+    if not expected_tree or not expected_calibration_commit or not isinstance(expected_authorization, dict):
+        raise ValueError("preflight result lacks calibration expected bindings")
+    calibration_decision = validate_result(
+        calibration,
+        "calibration_result",
+        {
+            "manifest_sha256": manifest.get("manifest_sha256"),
+            "resource_profile_sha256": file_sha256(profile_path),
+            "implementation_tree_sha256": expected_tree,
+            "evidence_commit": expected_calibration_commit,
+            "run_ids": run_ids,
+            "authorization_identity": expected_authorization,
+        },
+    )
     preflight_decision = validate_result(preflight, "preflight_result")
     if not calibration_decision.authorized or not preflight_decision.authorized:
         raise ValueError("calibration and preflight results must both authorize")
-    run_ids = [item.get("id") for item in manifest.get("runs", [])]
     manifest_sha = manifest.get("manifest_sha256")
     if calibration.get("manifest_sha256") != manifest_sha or preflight.get("manifest_sha256") != manifest_sha:
         raise ValueError("result manifest bindings do not match")

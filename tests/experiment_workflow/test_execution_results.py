@@ -76,3 +76,16 @@ def test_launch_requires_accepted_bundle(tmp_path: Path, capsys) -> None:
     value["acceptance"] = {"decision": "accepted", "bundle_sha256": value["bundle_sha256"]}
     path.write_text(json.dumps(value))
     assert tool.admission_main(["render-launch", "--bundle", str(path), "--repo-host", str(ROOT)]) == 0
+
+
+def test_admission_builder_never_self_binds_calibration_identity(tmp_path: Path) -> None:
+    tool = module(); manifest = tmp_path / "manifest.json"; profile = tmp_path / "profile.sh"; calibration = tmp_path / "calibration.json"; preflight = tmp_path / "preflight.json"
+    manifest.write_text(json.dumps({"manifest_sha256": "a" * 64, "runs": [{"id": "frac25-stage2"}, {"id": "frac25-stage3"}]})); profile.write_text("profile")
+    calibration.write_text(json.dumps({"schema_version": 1, "result_type": "calibration_result", "decision": "passed"}))
+    preflight.write_text(json.dumps({"schema_version": 1, "result_type": "preflight_result", "decision": "passed", "manifest_sha256": "a" * 64}))
+    try:
+        tool.build_admission_bundle(manifest, profile, calibration, preflight, "b" * 40, tmp_path / "bundle.json")
+    except ValueError as exc:
+        assert str(exc) == "preflight result lacks calibration expected bindings"
+    else:
+        raise AssertionError("builder accepted self-bound calibration identity")
