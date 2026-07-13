@@ -58,7 +58,11 @@ def test_outcomes_use_nearest_rank_and_submitted_denominator(tmp_path):
         "submitted_item_count": 3,
         "response_length_p50_tokens": 20.0,
         "response_length_p95_tokens": 8192.0,
+        "truncated_item_count": 1,
         "truncation_rate": 1 / 3,
+        "truncation_by_dataset": {
+            "test": {"submitted_item_count": 3, "truncated_item_count": 1, "truncation_rate": 1 / 3}
+        },
         "scorer_latency_p50_seconds": 2.0,
         "scorer_latency_p95_seconds": 3.0,
         "scorer_timeout_rate": 1 / 3,
@@ -88,6 +92,20 @@ def test_outcomes_reject_wrong_uid_order_and_dataset_identity(tmp_path):
     write(path, rows)
     with pytest.raises(ValueError, match="ordered eligible UID hash mismatch"):
         module.load_generation_outcomes(path, workload())
+
+
+def test_outcomes_record_exact_truncation_counts_by_dataset(tmp_path):
+    module = load(); path = tmp_path / "generation.jsonl"
+    rows = [row("a", 8192, False, "length", 1), row("b", 20, True, "stop", 1), row("c", 30, True, "stop", 1)]
+    write(path, rows)
+    result = module.load_generation_outcomes(path, workload())
+    assert result["truncated_item_count"] == 1
+    assert result["truncation_rate"] == pytest.approx(1 / 3)
+    assert result["truncation_by_dataset"]["test"] == {
+        "submitted_item_count": 3,
+        "truncated_item_count": 1,
+        "truncation_rate": 1 / 3,
+    }
     rows[0]["data_source"] = "unknown"
     write(path, rows)
     with pytest.raises(ValueError, match="unknown validation data_source"):

@@ -167,7 +167,7 @@ raise SystemExit(1)
 PY
 }
 fatal_runtime_error() {
-  grep -Eq 'Fatal Python error|CUDA out of memory|OutOfMemoryError|Worker unexpectedly exits.*SYSTEM_ERROR' '$LOG' 2>/dev/null
+  grep -Eq 'Fatal Python error|CUDA out of memory|OutOfMemoryError|Worker unexpectedly exits.*SYSTEM_ERROR|"failure_class"[[:space:]]*:[[:space:]]*"dependency_failure"|EvalPlus official evaluator is unavailable|LiveCodeBench official evaluator is unavailable|ModuleNotFoundError: No module named .(evalplus|lcb_runner).' '$LOG' 2>/dev/null
 }
 set +e
 timeout --signal=TERM --kill-after=30s 1800s env DOCKER_CONTAINER_NAME='$CONTAINER' /data-1/verl07/run_train.sh env \

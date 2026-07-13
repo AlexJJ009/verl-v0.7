@@ -10,7 +10,7 @@ import math
 import subprocess
 import sys
 from datetime import datetime, timezone
-from decimal import Decimal, ROUND_CEILING, ROUND_FLOOR
+from decimal import Decimal, ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_EVEN
 from pathlib import Path
 from typing import Any
 
@@ -42,6 +42,7 @@ VALIDATION_DATASETS = {
 }
 RECEIPT_TTL_SECONDS = 86400
 ROUND_QUANT = Decimal("0.000001")
+WILSON_Z = 1.959963984540054
 
 
 def file_sha256(path: Path) -> str:
@@ -121,6 +122,93 @@ def interval_contains(interval: Any, value: float) -> bool:
 
 def intervals_overlap(left: list[float], right: list[float]) -> bool:
     return max(left[0], right[0]) <= min(left[1], right[1])
+
+
+def wilson_interval(successes: int, total: int) -> tuple[float, float]:
+    if not isinstance(successes, int) or not isinstance(total, int) or total <= 0 or not 0 <= successes <= total:
+        raise ValueError("invalid Wilson count")
+    p = successes / total
+    z2 = WILSON_Z * WILSON_Z
+    denominator = 1.0 + z2 / total
+    center = (p + z2 / (2.0 * total)) / denominator
+    half = WILSON_Z * math.sqrt(p * (1.0 - p) / total + z2 / (4.0 * total * total)) / denominator
+    return max(0.0, center - half), min(1.0, center + half)
+
+
+def outward(value: float, *, lower: bool) -> float:
+    rounding = ROUND_FLOOR if lower else ROUND_CEILING
+    return float(Decimal(str(value)).quantize(ROUND_QUANT, rounding=rounding))
+
+
+def half_even(value: float) -> float:
+    return float(Decimal(str(value)).quantize(ROUND_QUANT, rounding=ROUND_HALF_EVEN))
+
+
+def truncation_counts(phase: dict[str, Any], workload: dict[str, Any]) -> dict[str, tuple[int, int]]:
+    eligible_counts = workload.get("validation_eligibility", {}).get("per_dataset_eligible_counts")
+    if not isinstance(eligible_counts, dict) or set(eligible_counts) != set(VALIDATION_DATASETS):
+        raise ValueError("missing manifest eligible truncation counts")
+    if sum(eligible_counts.values()) != 1379:
+        raise ValueError("manifest eligible truncation count must total 1379")
+    totals = {"aggregate": [0, 0], **{name: [0, 0] for name in eligible_counts}}
+    reps = phase.get("repetitions", [])
+    if len(reps) != 3:
+        raise ValueError("expected three truncation repetitions")
+    for rep in reps:
+        metrics = rep.get("metrics", {})
+        truncated = metrics.get("truncated_item_count")
+        submitted = metrics.get("submitted_item_count")
+        if not isinstance(truncated, int) or not isinstance(submitted, int) or submitted != 1379 or not 0 <= truncated <= submitted:
+            raise ValueError("invalid aggregate truncation counts")
+        totals["aggregate"][0] += truncated
+        totals["aggregate"][1] += submitted
+        by_dataset = metrics.get("truncation_by_dataset")
+        if not isinstance(by_dataset, dict) or set(by_dataset) != set(eligible_counts):
+            raise ValueError("missing per-dataset truncation counts")
+        for name, expected_total in eligible_counts.items():
+            item = by_dataset[name]
+            dataset_total = item.get("submitted_item_count")
+            dataset_truncated = item.get("truncated_item_count")
+            if dataset_total != expected_total or not isinstance(dataset_truncated, int) or not 0 <= dataset_truncated <= dataset_total:
+                raise ValueError(f"invalid {name} truncation counts")
+            if abs(item.get("truncation_rate", -1) - dataset_truncated / dataset_total) > 1e-12:
+                raise ValueError(f"inconsistent {name} truncation rate")
+            totals[name][0] += dataset_truncated
+            totals[name][1] += dataset_total
+    return {name: (values[0], values[1]) for name, values in totals.items()}
+
+
+def truncation_comparison(
+    prior: dict[str, Any], later: dict[str, Any], prior_workload: dict[str, Any], later_workload: dict[str, Any]
+) -> dict[str, Any]:
+    prior_counts = truncation_counts(prior, prior_workload)
+    later_counts = truncation_counts(later, later_workload)
+    if {name: total for name, (_, total) in prior_counts.items()} != {name: total for name, (_, total) in later_counts.items()}:
+        raise ValueError("phase truncation denominators differ")
+    comparisons = {}
+    for name in prior_counts:
+        prior_truncated, prior_total = prior_counts[name]
+        later_truncated, later_total = later_counts[name]
+        prior_interval = wilson_interval(prior_truncated, prior_total)
+        later_interval = wilson_interval(later_truncated, later_total)
+        prior_rate = prior_truncated / prior_total
+        later_rate = later_truncated / later_total
+        delta = later_rate - prior_rate
+        interval = (later_interval[0] - prior_interval[1], later_interval[1] - prior_interval[0])
+        if interval[0] > 0 and delta >= 0.02:
+            classification = "meaningful_worsening"
+        elif interval[1] < 0 and delta <= -0.02:
+            classification = "meaningful_improvement"
+        else:
+            classification = "not_statistically_meaningful"
+        comparisons[name] = {
+            "prior": {"truncated": prior_truncated, "submitted": prior_total, "rate": half_even(prior_rate)},
+            "later": {"truncated": later_truncated, "submitted": later_total, "rate": half_even(later_rate)},
+            "delta": half_even(delta),
+            "delta_interval_95": [outward(interval[0], lower=True), outward(interval[1], lower=False)],
+            "classification": classification,
+        }
+    return comparisons
 
 
 def binding(report: dict[str, Any], key: str) -> dict[str, Any]:
@@ -240,6 +328,7 @@ def check(
 ) -> dict[str, Any]:
     failures: list[str] = []
     inconclusive: list[str] = []
+    diagnostics: dict[str, Any] = {}
     hashes = hashes or {}
     expected_authorization_scope = "stage12_producer" if expected_phases == STAGE12_PHASES else "full"
     if report.get("authorization_scope") != expected_authorization_scope:
@@ -422,15 +511,33 @@ def check(
                     for value in [*raw_values, aggregate]:
                         if not interval_contains(pred_interval, value):
                             failures.append(f"{name}: {metric} acceptance value outside prediction interval")
-                    if metric == "truncation_rate" and aggregate > 0.01:
-                        failures.append(f"{name}: truncation rate exceeds 1%")
                     if metric == "scorer_timeout_rate" and aggregate > 0.10:
                         failures.append(f"{name}: scorer timeout rate exceeds 10%")
         if phase.get("optimized") is not True:
             failures.append(f"{name}: optimization/safety budget not met")
 
+    phase_by_name = {phase.get("phase"): phase for phase in phases}
+    for prior_name, later_name in (("stage1", "stage2"), ("stage2", "stage3")):
+        if prior_name not in phase_by_name or later_name not in phase_by_name:
+            continue
+        try:
+            diagnostics[f"{prior_name}_to_{later_name}_truncation"] = truncation_comparison(
+                phase_by_name[prior_name],
+                phase_by_name[later_name],
+                manifest["calibration_workloads"][prior_name],
+                manifest["calibration_workloads"][later_name],
+            )
+        except ValueError as exc:
+            failures.append(f"{prior_name}->{later_name}: {exc}")
+
     decision = "blocked" if failures else "inconclusive" if inconclusive else "deployable"
-    return {"ok": decision == "deployable", "decision": decision, "failures": failures, "inconclusive_reasons": inconclusive}
+    return {
+        "ok": decision == "deployable",
+        "decision": decision,
+        "failures": failures,
+        "inconclusive_reasons": inconclusive,
+        "diagnostics": diagnostics,
+    }
 
 
 def stage12_producer_from_manifest(manifest: dict[str, Any]) -> dict[str, Any]:

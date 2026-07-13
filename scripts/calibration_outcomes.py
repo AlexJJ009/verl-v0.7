@@ -42,11 +42,13 @@ def load_generation_outcomes(path: Path, workload: dict) -> dict:
         raise ValueError(f"{path}: missing or duplicate stable UIDs")
     expected_names = [item["name"] for item in workload["datasets"]]
     by_dataset = {name: [] for name in expected_names}
+    rows_by_dataset = {name: [] for name in expected_names}
     for row in rows:
         name = row.get("data_source")
         if name not in by_dataset:
             raise ValueError(f"{path}: unknown validation data_source: {name!r}")
         by_dataset[name].append(row["uid"])
+        rows_by_dataset[name].append(row)
     actual_counts = {name: len(by_dataset[name]) for name in expected_names}
     if actual_counts != eligibility["per_dataset_eligible_counts"]:
         raise ValueError(f"{path}: eligible UID dataset counts mismatch")
@@ -83,11 +85,23 @@ def load_generation_outcomes(path: Path, workload: dict) -> dict:
     if any(value not in (0, 1, False, True) for value in timeouts):
         raise ValueError(f"{path}: invalid scorer timeout")
 
+    truncation_by_dataset = {}
+    for name in expected_names:
+        dataset_rows = rows_by_dataset[name]
+        truncated = sum(row["response_finish_reason"] == "length" for row in dataset_rows)
+        truncation_by_dataset[name] = {
+            "submitted_item_count": len(dataset_rows),
+            "truncated_item_count": truncated,
+            "truncation_rate": truncated / len(dataset_rows),
+        }
+    truncated_count = sum(reason == "length" for reason in reasons)
     return {
         "submitted_item_count": expected,
         "response_length_p50_tokens": float(nearest_rank(counts, 0.50)),
         "response_length_p95_tokens": float(nearest_rank(counts, 0.95)),
-        "truncation_rate": sum(reason == "length" for reason in reasons) / expected,
+        "truncated_item_count": truncated_count,
+        "truncation_rate": truncated_count / expected,
+        "truncation_by_dataset": truncation_by_dataset,
         "scorer_latency_p50_seconds": float(nearest_rank(latencies, 0.50)),
         "scorer_latency_p95_seconds": float(nearest_rank(latencies, 0.95)),
         "scorer_timeout_rate": sum(bool(value) for value in timeouts) / expected,

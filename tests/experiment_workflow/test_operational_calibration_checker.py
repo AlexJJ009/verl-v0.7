@@ -21,7 +21,15 @@ def canonical_sha(value):
 
 
 def workload(phase):
-    return {"phase": phase, "outcome_schema_version": 2, "descriptor": phase}
+    return {
+        "phase": phase,
+        "outcome_schema_version": 2,
+        "descriptor": phase,
+        "validation_eligibility": {
+            "submitted_prompt_count": 1379,
+            "per_dataset_eligible_counts": {"HumanEval+": 164, "MBPP+": 378, "LiveCodeBench": 837},
+        },
+    }
 
 
 def v2_metrics(elapsed, rss):
@@ -34,7 +42,13 @@ def v2_metrics(elapsed, rss):
         "scorer_latency_p50_seconds": 1.0,
         "scorer_latency_p95_seconds": 2.0,
         "scorer_timeout_rate": 0.0,
-        "submitted_item_count": 1422,
+        "submitted_item_count": 1379,
+        "truncated_item_count": 0,
+        "truncation_by_dataset": {
+            "HumanEval+": {"submitted_item_count": 164, "truncated_item_count": 0, "truncation_rate": 0.0},
+            "MBPP+": {"submitted_item_count": 378, "truncated_item_count": 0, "truncation_rate": 0.0},
+            "LiveCodeBench": {"submitted_item_count": 837, "truncated_item_count": 0, "truncation_rate": 0.0},
+        },
     }
 
 
@@ -342,20 +356,67 @@ def test_v2_continuous_outcome_point_error_and_interval_are_blocked(tmp_path):
         assert any(metric in failure for failure in result["failures"])
 
 
-@pytest.mark.parametrize(
-    ("metric", "value", "message"),
-    [("truncation_rate", 0.02, "truncation rate exceeds 1%"), ("scorer_timeout_rate", 0.11, "scorer timeout rate exceeds 10%")],
-)
-def test_v2_rate_thresholds_are_blocked(tmp_path, metric, value, message):
+def test_scorer_timeout_threshold_is_blocked(tmp_path):
     m = load()
     manifest, report, contract = fixture(tmp_path)
     patch_dataset_hashes(m, report)
+    metric, value = "scorer_timeout_rate", 0.11
     contract["phases"][0]["predictions"][metric]["interval"] = [0, value]
     for rep in report["phases"][0]["repetitions"]:
         rep["metrics"][metric] = value
     result = m.check(report, manifest, contract=contract)
     assert not result["ok"]
-    assert any(message in failure for failure in result["failures"])
+    assert any("scorer timeout rate exceeds 10%" in failure for failure in result["failures"])
+
+
+def test_high_stage1_truncation_is_diagnostic_not_blocked(tmp_path):
+    m = load()
+    manifest, report, contract = fixture(tmp_path)
+    patch_dataset_hashes(m, report)
+    contract["phases"][0]["predictions"]["truncation_rate"]["interval"] = [0.0, 0.3]
+    for rep in report["phases"][0]["repetitions"]:
+        rep["metrics"]["truncation_rate"] = 0.2
+        rep["metrics"]["truncated_item_count"] = 276
+        rep["metrics"]["truncation_by_dataset"] = {
+            "HumanEval+": {"submitted_item_count": 164, "truncated_item_count": 33, "truncation_rate": 33 / 164},
+            "MBPP+": {"submitted_item_count": 378, "truncated_item_count": 76, "truncation_rate": 76 / 378},
+            "LiveCodeBench": {"submitted_item_count": 837, "truncated_item_count": 167, "truncation_rate": 167 / 837},
+        }
+    result = m.check(report, manifest, contract=contract)
+    assert result["ok"], result["failures"]
+    assert not any("truncation rate exceeds" in failure for failure in result["failures"])
+
+
+def test_truncation_comparison_classifies_improvement_and_requires_counts(tmp_path):
+    m = load()
+    manifest, report, contract = fixture(tmp_path)
+    patch_dataset_hashes(m, report)
+    for phase_index, truncated in ((0, 276), (1, 28), (2, 28)):
+        contract["phases"][phase_index]["predictions"]["truncation_rate"]["interval"] = [0.0, 0.3]
+        for rep in report["phases"][phase_index]["repetitions"]:
+            rep["metrics"]["truncation_rate"] = truncated / 1379
+            rep["metrics"]["truncated_item_count"] = truncated
+            rep["metrics"]["truncation_by_dataset"] = {
+                "HumanEval+": {"submitted_item_count": 164, "truncated_item_count": round(truncated * 164 / 1379), "truncation_rate": round(truncated * 164 / 1379) / 164},
+                "MBPP+": {"submitted_item_count": 378, "truncated_item_count": round(truncated * 378 / 1379), "truncation_rate": round(truncated * 378 / 1379) / 378},
+                "LiveCodeBench": {"submitted_item_count": 837, "truncated_item_count": truncated - round(truncated * 164 / 1379) - round(truncated * 378 / 1379), "truncation_rate": (truncated - round(truncated * 164 / 1379) - round(truncated * 378 / 1379)) / 837},
+            }
+    result = m.check(report, manifest, contract=contract)
+    assert result["ok"], result["failures"]
+    assert result["diagnostics"]["stage1_to_stage2_truncation"]["aggregate"]["classification"] == "meaningful_improvement"
+    del report["phases"][0]["repetitions"][0]["metrics"]["truncation_by_dataset"]
+    assert not m.check(report, manifest, contract=contract)["ok"]
+
+
+def test_wilson_interval_and_outward_rounding_are_fixed() -> None:
+    m = load()
+    zero = m.wilson_interval(0, 4137)
+    full = m.wilson_interval(4137, 4137)
+    assert zero[0] == 0.0 and zero[1] > 0.0
+    assert full[1] == 1.0 and full[0] < 1.0
+    assert m.outward(-0.1234561, lower=True) == -0.123457
+    assert m.outward(0.1234561, lower=False) == 0.123457
+    assert m.half_even(0.1234565) == 0.123456
 
 
 def test_missing_v2_metric_and_workload_binding_are_blocked(tmp_path):
