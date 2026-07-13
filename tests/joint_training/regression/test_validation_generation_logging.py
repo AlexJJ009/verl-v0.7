@@ -8,6 +8,7 @@ from verl.trainer.ppo.ray_trainer import (
     RayPPOTrainer,
     build_response_telemetry,
     build_validation_generation_samples,
+    validation_sample_identities,
 )
 from verl.protocol import DataProto, pad_dataproto_to_divisor, unpad_dataproto
 from verl.utils.tracking import ValidationGenerationsLogger
@@ -131,12 +132,19 @@ def test_source_uid_survives_repeat_pad_and_unpad_in_order():
     assert restored.non_tensor_batch["source_uid"].tolist() == ["source-a", "source-a", "source-b", "source-b", "source-c", "source-c"]
 
 
-def test_validation_keeps_transient_and_source_uid_routing_separate():
-    source = (Path(__file__).resolve().parents[3] / "verl/trainer/ppo/ray_trainer.py").read_text()
-    assert "sample_uids.extend(test_batch.non_tensor_batch[\"uid\"])" in source
-    assert "sample_source_uids.extend(test_batch.non_tensor_batch[\"source_uid\"])" in source
-    assert "sample_uids=sample_source_uids" in source
-    assert "self._val_metrics_update(data_sources, sample_uids," in source
+def test_validation_identity_falls_back_to_legacy_uid():
+    identities = validation_sample_identities({"uid": np.array(["request-a", "request-b"])})
+    assert identities.tolist() == ["request-a", "request-b"]
+
+
+def test_validation_identity_prefers_stable_source_uid_when_present():
+    identities = validation_sample_identities(
+        {
+            "uid": np.array(["request-a", "request-b"]),
+            "source_uid": np.array(["source-a", "source-b"]),
+        }
+    )
+    assert identities.tolist() == ["source-a", "source-b"]
 
 
 def test_maybe_log_val_generations_prints_subset_and_logs_full_tracking(capsys):

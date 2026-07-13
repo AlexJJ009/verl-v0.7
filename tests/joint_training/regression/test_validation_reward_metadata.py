@@ -80,6 +80,7 @@ def test_validate_preserves_reward_metadata_for_colocated_rm():
     trainer._val_metrics_update = lambda data_sources, sample_uids, reward_extra_infos_dict, sample_turns: {"ok": 1.0}
     trainer.config = OmegaConf.create(
         {
+            "data": {"max_response_length": 3},
             "actor_rollout_ref": {
                 "rollout": {
                     "name": "hf",
@@ -129,6 +130,7 @@ def test_validate_handles_hf_raw_prompt_batches_without_tensor_gen_batch():
     trainer._val_metrics_update = lambda data_sources, sample_uids, reward_extra_infos_dict, sample_turns: {"ok": 1.0}
     trainer.config = OmegaConf.create(
         {
+            "data": {"max_response_length": 3},
             "actor_rollout_ref": {
                 "rollout": {
                     "name": "hf",

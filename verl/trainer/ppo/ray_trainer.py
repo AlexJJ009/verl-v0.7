@@ -267,6 +267,11 @@ def _normalize_validation_generation_value(value: Any) -> Any:
     return value
 
 
+def validation_sample_identities(non_tensor_batch: dict[str, Any]) -> Any:
+    """Prefer stable dataset identity when supplied, otherwise preserve legacy UID behavior."""
+    return non_tensor_batch.get("source_uid", non_tensor_batch["uid"])
+
+
 def build_validation_generation_samples(
     *,
     inputs: list[str],
@@ -1012,9 +1017,7 @@ class RayPPOTrainer:
             input_texts = [self.tokenizer.decode(ids, skip_special_tokens=True) for ids in input_ids]
             sample_inputs.extend(input_texts)
             sample_uids.extend(test_batch.non_tensor_batch["uid"])
-            if "source_uid" not in test_batch.non_tensor_batch:
-                raise ValueError("validation batch missing required source_uid")
-            sample_source_uids.extend(test_batch.non_tensor_batch["source_uid"])
+            sample_source_uids.extend(validation_sample_identities(test_batch.non_tensor_batch))
             sample_data_sources.extend(test_batch.non_tensor_batch.get("data_source", ["unknown"] * len(test_batch)))
 
             # evaluate using reward_function
