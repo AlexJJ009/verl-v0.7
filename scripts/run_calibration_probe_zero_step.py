@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shutil
 import signal
 import subprocess
 import sys
@@ -80,12 +81,15 @@ def phase_environment(rendered: dict[str, Any], phase: str, repetition: int, out
             raise RuntimeError("stage3 calibration proxy identity mismatch")
         proxy_kind = proxy["purpose"]
     offset = ((0 if phase == "stage2" else 3) + repetition - 1) * 100
+    ray_tmpdir = Path("/data-1/tmp/verl_agent_scratch/cq-ray") / f"{phase}-r{repetition}"
+    shutil.rmtree(ray_tmpdir, ignore_errors=True)
     env = {
         "QWEN3_1P7B_MODEL_PATH": rendered["paths"]["base_model"],
         "CALIBRATION_HUMANEVAL_PLUS_FILE": str(splits["HumanEval+"]),
         "CALIBRATION_MBPP_PLUS_FILE": str(splits["MBPP+"]),
         "CALIBRATION_LIVE_CODE_BENCH_FILE": str(splits["LiveCodeBench"]),
         "CALIBRATION_OUTPUT_ROOT": str(output),
+        "CALIBRATION_RAY_TMPDIR": str(ray_tmpdir),
         "CALIBRATION_TOTAL_TRAINING_STEPS": "0",
         "CALIBRATION_OPTIMIZER_ENABLED": "false",
         "CALIBRATION_RAY_WORKER_PORT_MIN": str(21000 + offset),
@@ -162,8 +166,7 @@ def generation_summary(paths: list[str]) -> tuple[int, int]:
     return count, truncated
 
 
-def owned_cleanup(output: Path, process: subprocess.Popen[str]) -> dict[str, Any]:
-    ray_root = output / "ray"
+def owned_cleanup(ray_root: Path, process: subprocess.Popen[str]) -> dict[str, Any]:
     matches = []
     result = subprocess.run(["ps", "-eo", "pid=,args="], text=True, capture_output=True, check=False)
     for line in result.stdout.splitlines():
@@ -213,7 +216,7 @@ def run_repetition(rendered: dict[str, Any], phase: str, repetition: int, root: 
     checkpoint_files = [str(path) for path in (output / "checkpoints").glob("**/*") if path.is_file()]
     generations = [str(path) for path in (output / "logs" / "validation").glob("**/*.jsonl")]
     generation_count, truncated_count = generation_summary(generations)
-    cleanup = owned_cleanup(output, process)
+    cleanup = owned_cleanup(Path(env_delta["CALIBRATION_RAY_TMPDIR"]), process)
     elapsed = time.time() - start
     status = "passed" if returncode == 0 and REQUIRED_METRICS <= metrics.keys() and not checkpoint_files and cleanup["resources_released"] else "failed"
     value = {

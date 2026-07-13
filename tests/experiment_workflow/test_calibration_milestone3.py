@@ -47,6 +47,7 @@ def test_phase_runner_is_zero_step_val_only_and_cleans_owned_ray_only():
  assert 'ray stop --force' not in text
  assert "root in command" in text
  assert '--temp-dir="$RAY_TMPDIR"' in text
+ assert 'CALIBRATION_RAY_TMPDIR:=' in text
 
 def test_stage3_proxy_is_explicit_and_hash_bound():
  rendered=json.loads(subprocess.check_output([sys.executable,str(ROOT/'scripts/experiment_manifest.py'),'render',str(ROOT/'recipe/on_policy_wdl_sft/experiment_manifest/stage123.yaml'),'--format','json'],text=True))
