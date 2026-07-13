@@ -74,6 +74,17 @@ def test_file_logger_metrics_are_discovered(tmp_path):
  m=load('run_calibration_probe_metrics',ROOT/'scripts/run_calibration_probe_zero_step.py')
  logs=tmp_path/'logs'; logs.mkdir()
  values={key: float(index+1) for index,key in enumerate(sorted(m.REQUIRED_METRICS))}
- (logs/'CALIBRATION-STAGE2.log').write_text('\n'.join(f"{key!r}: {value}" for key,value in values.items()))
+ (logs/'CALIBRATION-STAGE2.log').write_text('\n'.join(repr(f"{key!r}: {value}, ") for key,value in values.items()))
  actual,sources=m.read_metrics(tmp_path)
  assert actual==values and sources==[str(logs/'CALIBRATION-STAGE2.log')]
+
+def test_file_logger_metrics_join_quoted_fragments(tmp_path):
+ m=load('run_calibration_probe_fragments',ROOT/'scripts/run_calibration_probe_zero_step.py')
+ logs=tmp_path/'logs'; logs.mkdir()
+ ordered=sorted(m.REQUIRED_METRICS)
+ lines=[]
+ for index,key in enumerate(ordered):
+  lines.extend([f'\x1b[36m(TaskRunner pid=1)\x1b[0m  {repr(repr(key)+": ")}',f'\x1b[36m(TaskRunner pid=1)\x1b[0m  {repr(str(index+1.0)+", ")}'])
+ (logs/'CALIBRATION-STAGE2.log').write_text('\n'.join(lines))
+ actual,_=m.read_metrics(tmp_path)
+ assert actual=={key:float(index+1) for index,key in enumerate(ordered)}

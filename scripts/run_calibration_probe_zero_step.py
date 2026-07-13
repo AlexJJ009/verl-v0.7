@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import json
 import os
@@ -12,6 +13,8 @@ import subprocess
 import sys
 import threading
 import time
+import tokenize
+from io import StringIO
 from typing import Any
 import re
 
@@ -153,9 +156,26 @@ def read_metrics(output: Path) -> tuple[dict[str, Any], list[str]]:
     log_files = sorted((output / "logs").glob("CALIBRATION-*.log"))
     for path in log_files:
         text = path.read_text(errors="replace")
+        fragments = []
+        for line in text.splitlines():
+            payload = re.sub(r"\x1b\[[0-9;]*m", "", line)
+            payload = re.sub(r"^\([^)]*\)\s*", "", payload).strip()
+            try:
+                tokens = tokenize.generate_tokens(StringIO(payload).readline)
+                strings = [token.string for token in tokens if token.type == tokenize.STRING]
+            except (tokenize.TokenError, IndentationError):
+                continue
+            for string in strings:
+                try:
+                    value = ast.literal_eval(string)
+                except (SyntaxError, ValueError):
+                    continue
+                if isinstance(value, str):
+                    fragments.append(value)
+        normalized = "".join(fragments)
         data: dict[str, Any] = {}
         for key in REQUIRED_METRICS:
-            matches = re.findall(rf"['\"]{re.escape(key)}['\"]:\s*(-?[0-9]+(?:\.[0-9]+)?)", text)
+            matches = re.findall(rf"['\"]{re.escape(key)}['\"]:\s*(-?[0-9]+(?:\.[0-9]+)?)", normalized)
             if matches:
                 data[key] = float(matches[-1])
         if REQUIRED_METRICS <= data.keys():
