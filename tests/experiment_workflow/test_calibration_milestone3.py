@@ -44,6 +44,9 @@ def test_phase_runner_is_zero_step_val_only_and_cleans_owned_ray_only():
  assert 'VAL_ONLY=True TOTAL_TRAINING_STEPS="$CALIBRATION_TOTAL_TRAINING_STEPS"' in text
  assert 'CALIBRATION_TOTAL_TRAINING_STEPS:=0' in text
  assert 'CALIBRATION_OPTIMIZER_ENABLED:=false' in text
+ assert ': "${VERL_FILE_LOGGER_ROOT:=$CALIBRATION_OUTPUT_ROOT/logs/metrics}"' in text
+ assert 'export VERL_FILE_LOGGER_ROOT' in text
+ assert 'mkdir -p "$CALIBRATION_OUTPUT_ROOT/checkpoints" "$CALIBRATION_OUTPUT_ROOT/logs" "$VERL_FILE_LOGGER_ROOT"' in text
  assert 'ray stop --force' not in text
  assert "root in command" in text
  assert '--temp-dir="$RAY_TMPDIR"' in text
