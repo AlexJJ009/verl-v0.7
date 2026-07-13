@@ -39,12 +39,13 @@ def test_zero_step_driver_runs_exact_phase_matrix_and_stops_on_failure(tmp_path,
   if failures: break
  assert calls==[('stage2',1,1800),('stage2',2,1800),('stage2',3,1800),('stage3',1,1800),('stage3',2,1800)]
 
-def test_phase_runner_is_zero_step_val_only_and_cleans_ray():
+def test_phase_runner_is_zero_step_val_only_and_cleans_owned_ray_only():
  text=(ROOT/'recipe/on_policy_wdl_sft/code_task/run_code_task_operational_calibration_phase.sh').read_text()
  assert 'VAL_ONLY=True TOTAL_TRAINING_STEPS="$CALIBRATION_TOTAL_TRAINING_STEPS"' in text
  assert 'CALIBRATION_TOTAL_TRAINING_STEPS:=0' in text
  assert 'CALIBRATION_OPTIMIZER_ENABLED:=false' in text
- assert 'ray stop --force' in text
+ assert 'ray stop --force' not in text
+ assert "root in command" in text
  assert '--temp-dir="$RAY_TMPDIR"' in text
 
 def test_stage3_proxy_is_explicit_and_hash_bound():
