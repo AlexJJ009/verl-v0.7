@@ -36,7 +36,8 @@ prediction.
 - Freeze the tracked Stage123 manifest to the primary FRAC25/P40 Stage2 and Stage3
   run set required by this serial Goal chain; FRAC50 and P60 are absent.
 - Freeze one versioned calibration policy for the exact workload identity,
-  resource-profile SHA256, manifest SHA256, and candidate commit.
+  resource-profile SHA256, manifest SHA256, implementation-tree SHA256, and
+  calibration evidence commit.
 - Migrate useful prediction logic from legacy checkers without restoring receipt,
   adoption, or duplicated policy authority.
 - Execute one bounded non-training GPU calibration envelope after explicit user
@@ -46,6 +47,10 @@ prediction.
   failures.
 - Emit exactly one authoritative `calibration_result.json` with decision `passed`
   or `blocked` and immutable bindings needed by the next Goal.
+- Complete all production implementation needed by the next two Goals before the
+  bounded probe: primary manifest normalization, admission-bundle validation,
+  queue-to-Python-core lifecycle migration, event-driven monitoring, deterministic
+  launch rendering, and the frozen recovery-policy schema.
 - Preserve historical artifacts byte-identically and keep all scratch output under
   `/data-1/tmp/verl_agent_scratch/experiment_workflow/calibration/`.
 
@@ -65,21 +70,56 @@ prediction.
 - The tracked normalized manifest is the sole owner of experiment facts and the
   calibration policy version; generic core code contains no Stage123 run facts.
 - The primary manifest contains exactly `frac25-stage2` and `frac25-stage3`.
+- The authoritative path is
+  `recipe/on_policy_wdl_sft/experiment_manifest/stage123.yaml`. A broader historical
+  matrix may exist only in Git history or a non-authoritative archival fixture.
 - The calibration policy owns qualification thresholds; workload facts remain in
   the manifest and resource facts remain in the canonical resource profile.
 - `scripts/experiment_execution_core.py` owns persisted state, child lifecycle,
   deadline, cleanup, and resume behavior. Shell entrypoints remain thin delegates.
 - Calibration failures use stable `code`, `message`, and `context` fields.
+- Before the probe, compute `implementation_tree_sha256` over the tracked production
+  paths named by this Plan: manifest and resource profile; execution-result,
+  manifest, and execution-core Python; admission gate; queue; monitor; and phase
+  wrappers. Readiness may add Goal evidence and scratch results, but any change to
+  this production tree invalidates calibration and requires a new result.
 - `calibration_result.json` includes at least: schema/result type, decision,
-  manifest SHA256, resource-profile SHA256, candidate commit, workload identity,
+  manifest SHA256, resource-profile SHA256, implementation-tree SHA256, evidence
+  commit, workload identity,
   policy version/hash, bounded-probe authorization identity, timestamps, phase
   evidence, prediction comparison, cleanup result, and structured failures.
 - Freshness is result/policy validation, not a receipt. Legacy receipt fields may
   be parsed only to explain migration and always fail closed as authority.
+- Current manifest policy uses `preflight.result_max_age_seconds` and
+  `calibration_result_max_age_seconds`. Legacy `receipt_max_age_seconds` and
+  `calibration_receipt_max_age_seconds` names are removed from normalized current
+  authority; versioned migration may only report and reject them.
 - The bounded probe may use at most 8 L40S GPUs, performs no optimizer step, writes
   no formal checkpoint, has an aggregate wall-clock ceiling of 90 minutes, uses at
   most 3 acceptance repetitions per phase, and must clean owned tmux, Docker,
   child-process, and GPU state on success, failure, or timeout.
+- The exact probe interface is:
+
+```bash
+tmux new-session -d -s stage123_calibration_qualification \
+  "cd /data-1/code/verl && \
+   export REPO_HOST=/data-1/code/verl CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 && \
+   export CALIBRATION_STATE_ROOT=/data-1/tmp/verl_agent_scratch/experiment_workflow/calibration/state && \
+   export CALIBRATION_DEADLINE_SECONDS=5400 && \
+   export CALIBRATION_CHILD_COMMAND_JSON=\"\$(/data-1/verl07/run_train.sh python scripts/render_calibration_probe_command.py \
+     --manifest recipe/on_policy_wdl_sft/experiment_manifest/stage123.yaml \
+     --resource-profile recipe/on_policy_wdl_sft/code_task/qwen3_1p7b_stage123_resource_profile.sh \
+     --phases stage2,stage3 --repetitions 3 --training-steps 0 \
+     --scratch-root /data-1/tmp/verl_agent_scratch/experiment_workflow/calibration)\" && \
+   /data-1/verl07/run_train.sh python scripts/experiment_execution_core.py queue \
+     --run-id qwen3_1p7b_stage123_calibration_v1 \
+     --state-root \"\$CALIBRATION_STATE_ROOT\" --timeout-seconds 5400 \
+     --command-json \"\$CALIBRATION_CHILD_COMMAND_JSON\""
+```
+
+`scripts/render_calibration_probe_command.py` is an in-scope renderer. It validates
+`training_steps=0`, `optimizer_enabled=false`, scratch-only outputs, repetitions,
+phase set, and manifest/profile hashes, then emits argv JSON without executing it.
 
 ## Acceptance Criteria
 
@@ -163,11 +203,13 @@ prediction.
 
 ### AC-08 - Independent Qualification Is Bound To Committed State
 
-- Given a committed candidate, explicit bounded-probe authorization, and completed
+- Given a committed final production tree, explicit bounded-probe authorization,
+  a calibration evidence commit, and completed
   calibration evidence,
 - When a fresh independent reviewer runs the frozen commands and inspects the probe,
 - Then AC-01 through AC-07 are individually PASS and acceptance is bound to Plan
-  version, Plan hash, candidate commit, manifest hash, and result hash.
+  version, Plan hash, implementation-tree hash, evidence commit, manifest hash, and
+  result hash.
 - Verification command:
   `goal-plan-runtime validate-runtime docs/joint_training/goals/calibration-qualification`
 - Expected evidence: reviewer-owned `acceptance.md`, `ACCEPTANCE_COMPLETED=PASS`, and
@@ -175,21 +217,25 @@ prediction.
 
 ## Milestones
 
-1. Inventory legacy calibration authority and freeze the primary manifest/run set.
-2. Freeze result schema, policy ownership, and immutable identity bindings.
-3. Migrate prediction qualification and complete fake-adapter behavioral tests.
-4. After explicit user authorization, execute the bounded GPU calibration envelope.
-5. Render and validate the sole authoritative `calibration_result.json`.
-6. Obtain independent final acceptance from committed state.
+1. Freeze the primary manifest/run set and replace legacy receipt freshness fields.
+2. Complete admission, queue/core, monitor, launch-rendering, and recovery production
+   migration required by the serial Goals.
+3. Freeze result schema, policy ownership, implementation-tree identity, probe
+   renderer, prediction qualification, and fake-adapter behavioral tests.
+4. Commit the final production implementation candidate; no production change is
+   permitted after this point without invalidating calibration.
+5. After explicit user authorization, execute the bounded GPU calibration envelope.
+6. Render and validate the sole authoritative `calibration_result.json`.
+7. Obtain independent final acceptance from committed state.
 
-Milestones are hard ordered. Milestone 4 is a human authorization gate because it
+Milestones are hard ordered. Milestone 5 is a human authorization gate because it
 uses GPUs. Other normal milestone boundaries are not approval gates.
 
 ## Runtime Contract
 
 - Implementation starts only after Plan status is `READY` and the user starts this
-  Goal. That start authorizes Milestones 1-3 and 5-6, but not the GPU probe.
-- Milestone 4 requires a separate explicit user authorization naming this Goal and
+  Goal. That start authorizes Milestones 1-4 and 6-7, but not the GPU probe.
+- Milestone 5 requires a separate explicit user authorization naming this Goal and
   bounded probe. Do not infer authorization from Goal creation or Plan review.
 - After GPU authorization, proceed autonomously through the remaining milestones.
 - Every project Python command uses

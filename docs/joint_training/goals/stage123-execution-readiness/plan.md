@@ -16,13 +16,14 @@ started.
 ## Starting Evidence
 
 - The completed Calibration Qualification Goal supplies the unchanged primary
-  manifest, resource profile, candidate commit, and authoritative
+  manifest, resource profile, implementation-tree SHA256, calibration evidence
+  commit, and authoritative
   `calibration_result.json`.
 - Current authority classes are `calibration_result`, `preflight_result`, and
   `acceptance_report`; legacy receipts and adoption artifacts cannot authorize.
-- The current Stage123 queue still contains substantial shell-owned lifecycle,
-  deadline, Docker ownership, checkpoint polling, and cleanup behavior that must be
-  reconciled with the consolidated Python execution core.
+- Calibration acceptance guarantees that manifest/admission/queue/monitor/recovery
+  production migration was completed before the probe and is bound by the passed
+  `implementation_tree_sha256`.
 
 ## Scope
 
@@ -33,10 +34,9 @@ started.
 - Produce fresh `preflight_result.json` for models, datasets, scorer dependencies,
   storage, container runtime, source checkpoints, provenance, machine facts, and
   conflicting execution.
-- Migrate queue lifecycle, deadline, cleanup, persisted state, and resume ownership
-  to `scripts/experiment_execution_core.py`; keep shell launchers thin.
-- Make queue and monitor consume one normalized manifest and persisted event/state
-  authority.
+- Verify without production changes that queue lifecycle, deadline, cleanup,
+  persisted state, and resume are Python-owned and the monitor consumes the same
+  normalized manifest and persisted event/state authority.
 - Validate one immutable admission bundle containing the manifest, resource profile,
   calibration result, preflight result, reviewer acceptance report, hashes, and
   exact launch command.
@@ -47,6 +47,9 @@ started.
 - Any formal weight-updating Stage1, Stage2, or Stage3 training.
 - P60, FRAC50, a 27-run queue, broader sweep, or manifest/run-set change.
 - Recalibration or modification of a passed calibration result.
+- Any production-code, manifest, profile, queue, monitor, gate, wrapper, admission,
+  or recovery-policy change. Such a change invalidates calibration and returns to
+  Calibration Qualification.
 - Real W&B, WxPusher, Hugging Face, GitHub, registry mutation, or publication.
 - New receipts, adoption artifacts, per-AC wrappers, or review-document chains.
 - Modification, deletion, or staging of the three protected user assets named in
@@ -54,7 +57,8 @@ started.
 
 ## Architecture Contract
 
-- The manifest, resource profile, and passed calibration result are immutable inputs.
+- The manifest, resource profile, passed calibration result, and
+  `implementation_tree_sha256` are immutable inputs.
 - Generic admission validation checks shared bindings and result classes without
   hard-coding Stage123 run facts.
 - Experiment-specific deployability policy is versioned and manifest-owned.
@@ -64,8 +68,16 @@ started.
   and delegates; monitor consumes persisted events/state.
 - `ALLOW_QWEN3_1P7B_STAGE123_TRAINING=1` expresses human launch intent but is never
   sufficient authority without a valid immutable admission bundle.
-- `acceptance_report.json` is reviewer-owned and binds the same manifest, profile,
-  calibration result, preflight result, candidate commit, run set, and Plan.
+- `scripts/execution_results.py admission validate` is the named generic interface.
+  It consumes `--manifest`, `--resource-profile`, `--calibration-result`,
+  `--preflight-result`, and optionally `--acceptance-report`; verifies shared
+  bindings, freshness, implementation tree, evidence commits, and run set; and
+  renders canonical `admission_bundle.json` plus `bundle_sha256`.
+- Before final review the bundle is a candidate without acceptance. The independent
+  reviewer writes `acceptance_report.json`; final validation includes it and renders
+  the immutable accepted bundle consumed by Execution.
+- `acceptance_report.json` binds the same manifest, profile, implementation tree,
+  calibration result, preflight result, Readiness evidence commit, run set, and Plan.
 - Any binding mutation, stale result, extra run, dirty protected asset, or active
   conflicting execution fails closed before Ray or training starts.
 
@@ -75,8 +87,9 @@ started.
 
 - Given the predecessor calibration result and its bound artifacts,
 - When readiness validation begins,
-- Then manifest, profile, workload, run set, candidate commit, and calibration-result
-  hash match exactly and no recalibration or rewriting occurs.
+- Then manifest, profile, workload, run set, implementation tree, evidence commit,
+  and calibration-result hash match exactly and no recalibration, rewriting, or
+  production implementation occurs.
 - Verification command:
   `REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python -m pytest -q tests/experiment_workflow/test_calibration_outcomes.py tests/experiment_workflow/test_experiment_manifest.py`
 - Expected evidence: exact hash comparison and mutation failures.
@@ -132,7 +145,7 @@ started.
 - Then only the exact complete bundle authorizes and every mutation blocks before
   Ray or a training child starts with structured failure evidence.
 - Verification command:
-  `REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python -m pytest -q tests/experiment_workflow -k 'manifest or preflight or admission or execution_result or stage123'`
+  `REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python -m pytest -q tests/experiment_workflow/test_execution_results.py tests/experiment_workflow/test_stage123_admission_bundle.py tests/experiment_workflow/test_stage123_end_to_end.py`
 - Expected evidence: mutation matrix, zero child calls on blocked inputs, and one
   admitted bundle hash.
 
@@ -151,10 +164,11 @@ started.
 
 - Given the immutable admission bundle,
 - When its launch command is rendered from a clean checkout,
-- Then it pins repo path, candidate commit, manifest/profile/result paths and hashes,
+- Then it pins repo path, implementation tree, Readiness evidence commit,
+  manifest/profile/result paths and hashes,
   tmux session, primary run set, and explicit human intent variable without secrets.
 - Verification command:
-  `bash -n recipe/on_policy_wdl_sft/code_task/run_code_task_qwen3_1p7b_stage123_queue.sh recipe/on_policy_wdl_sft/code_task/monitor_code_task_qwen3_1p7b_stage123_notify.sh`
+  `REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/execution_results.py admission render-launch --bundle docs/joint_training/goals/stage123-execution-readiness/admission_bundle.json --repo-host /data-1/code/verl`
 - Expected evidence: reviewer-owned rendered command and deliberate mismatch failures.
 
 ### AC-09 - Independent Readiness Acceptance Is Bound
@@ -170,12 +184,12 @@ started.
 
 ## Milestones
 
-1. Verify predecessor bindings and inventory remaining queue/core duplication.
-2. Migrate queue lifecycle and monitor authority to the consolidated Python core.
-3. Produce fresh structured preflight evidence from the live environment.
-4. Build and mutation-test the immutable admission bundle.
+1. Verify predecessor bindings and confirm the calibrated production tree is unchanged.
+2. Produce fresh structured preflight evidence from the live environment.
+3. Behavior-test the calibrated queue/core/monitor/admission implementation.
+4. Build and mutation-test the candidate admission bundle.
 5. Run dry-run and non-weight-updating readiness checks; confirm no execution.
-6. Obtain independent final readiness acceptance from committed state.
+6. Obtain independent final readiness acceptance and render the accepted bundle.
 
 ## Runtime Contract
 
@@ -194,8 +208,9 @@ started.
   rather than continuing implementation.
 - If two related implementation-review rounds leave the same finding open, stop
   before a third ordinary fix and perform a convergence review.
-- Routine `IN_SCOPE` repairs are autonomous if they do not alter the calibrated
-  manifest/profile/workload/run set or add an execution outcome.
+- Routine `IN_SCOPE` repairs may change only Goal evidence, non-production test
+  fixtures, and scratch artifacts. A production-tree change invalidates calibration
+  and is a `CONTRADICTION`, not a routine repair.
 - Stop for `CONTRADICTION`, `AC_CHANGE`, convergence failure, protected-asset risk,
   need to recalibrate, need to run weight-updating training, or need for a real
   external service.

@@ -17,10 +17,14 @@ configuration.
 
 - The Readiness Goal supplies one immutable admission bundle containing the exact
   manifest, profile, calibration result, preflight result, acceptance report,
-  candidate commit, run set, hashes, and launch command.
+  implementation-tree SHA256, Readiness evidence commit, run set, hashes, and launch
+  command.
 - The admitted run set is exactly `frac25-stage2` and `frac25-stage3`.
 - Execution is operational work, not implementation: a code/config/manifest/profile
   change invalidates admission and returns to Readiness.
+- The accepted bundle includes `implementation_tree_sha256`; a production-tree
+  change returns first to Calibration Qualification, while evidence-only expiry or
+  live-preflight change returns to Readiness.
 
 ## Scope
 
@@ -42,7 +46,8 @@ configuration.
 ### Excluded
 
 - Any change to code, manifest, resource profile, calibration/preflight/acceptance
-  artifacts, candidate commit, run set, hyperparameters, source checkpoints, data,
+  artifacts, implementation tree, Readiness evidence commit, run set,
+  hyperparameters, source checkpoints, data,
   validation breadth, or recovery policy.
 - P60, FRAC50, a 27-run queue, additional seeds, retries outside frozen policy,
   broader sweeps, or a replacement experiment.
@@ -63,7 +68,12 @@ configuration.
 - Python persisted state is execution authority. Monitor output, tmux presence, W&B,
   and registry state are observations, not substitute authority.
 - Automatic recovery is limited to one resume attempt for a failure explicitly
-  classified as resumable by the admitted policy. Configuration, dependency,
+  classified as resumable by the admitted policy. The only resumable codes are
+  `host_interruption`, `container_runtime_interruption`, and
+  `checkpoint_available_child_exit`. Persisted attempt records contain `attempt`,
+  `max_attempts=2`, `resume_from_checkpoint`, `failure_code`, `manifest_sha256`,
+  `implementation_tree_sha256`, `bundle_sha256`, `started_at`, and `completed_at`.
+  Configuration, dependency,
   provenance, OOM, repeated deadline, data, scorer, or binding failures are not
   automatically altered or downscoped.
 - Any code/config/artifact binding change is `AC_CHANGE`; stop and return to a new
@@ -80,7 +90,7 @@ configuration.
 - Then every binding matches, protected assets remain untouched, no conflicting run
   exists, and only the exact primary launch command can start Ray.
 - Verification command:
-  `goal-plan-runtime validate-runtime docs/joint_training/goals/stage123-primary-chain-execution`
+  `REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/execution_results.py admission validate --bundle docs/joint_training/goals/stage123-execution-readiness/admission_bundle.json --require-accepted --repo-root /data-1/code/verl`
 - Expected evidence: pre-launch validation report and immutable bundle hash.
 
 ### AC-02 - Only The Primary Run Set Executes
@@ -101,7 +111,7 @@ configuration.
 - Then its final step, full required validation, checkpoint, metrics, resource
   profile, manifest binding, and cleanup state are complete and structured.
 - Verification command:
-  `REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/training_result_release_gate.py check --run-name <STAGE2_RUN_NAME>`
+  `STAGE2_RUN_NAME=$(REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/experiment_manifest.py run recipe/on_policy_wdl_sft/experiment_manifest/stage123.yaml --run-id frac25-stage2 --field run_prefix) && REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/training_result_release_gate.py check --run-name "$STAGE2_RUN_NAME"`
 - Expected evidence: persisted completed state, checkpoint/metrics paths, validation
   evidence, and release-gate diagnostic result without premature publication.
 
@@ -123,7 +133,7 @@ configuration.
 - Then it uses only that input, reaches its admitted final step, completes required
   validation, writes checkpoint/metrics/provenance, and reaches a clean terminal state.
 - Verification command:
-  `REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/training_result_release_gate.py check --run-name <STAGE3_RUN_NAME>`
+  `STAGE3_RUN_NAME=$(REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/experiment_manifest.py run recipe/on_policy_wdl_sft/experiment_manifest/stage123.yaml --run-id frac25-stage3 --field run_prefix) && REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/training_result_release_gate.py check --run-name "$STAGE3_RUN_NAME"`
 - Expected evidence: completed persisted state and matching runtime artifacts.
 
 ### AC-06 - Recovery Obeys The Frozen Policy
@@ -156,10 +166,13 @@ configuration.
   only after release-gate PASS; registry/W&B publication occurs only under explicit
   publication authorization and is verified without checkpoint/artifact payload sync.
 - Verification command:
-  `REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/training_result_release_gate.py check --run-name <RUN_NAME>`
+  `for RUN_ID in frac25-stage2 frac25-stage3; do RUN_NAME=$(REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/experiment_manifest.py run recipe/on_policy_wdl_sft/experiment_manifest/stage123.yaml --run-id "$RUN_ID" --field run_prefix) && REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/training_result_release_gate.py check --run-name "$RUN_NAME"; done`
 - Expected evidence: release decisions, registry rows and W&B sync markers only for
   eligible authorized success, or structured local-only completion if publication
   was not authorized/available.
+- Publication transport failure after successful local execution is recorded as
+  `local_execution_complete_publication_blocked`; it never rewrites training state
+  as failed.
 
 ### AC-09 - Independent Acceptance Verifies Execution, Not Hypothesis
 
@@ -170,7 +183,8 @@ configuration.
 - Verification command:
   `goal-plan-runtime validate-runtime docs/joint_training/goals/stage123-primary-chain-execution`
 - Expected evidence: reviewer-owned acceptance bound to Plan, admission bundle,
-  execution state, artifacts, release decision, and terminal candidate commit.
+  execution state, artifacts, release decision, and terminal execution-evidence
+  commit.
 
 ## Milestones
 
