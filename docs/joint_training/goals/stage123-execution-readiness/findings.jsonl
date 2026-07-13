@@ -23,3 +23,4 @@
 {"event":"FINDING_FIX_PROPOSED","finding_id":"F-RD-RR-01","fix":"Independently recompute and compare predecessor canonical JSONL and SHA256 before admission","seq":23,"time":"2026-07-13T09:36:10.163621Z"}
 {"event":"FINDING_FIX_PROPOSED","finding_id":"F-RD-RR-01","fix":"Consume the exact predecessor versioned path manifest for canonical tree recomputation","seq":24,"time":"2026-07-13T09:39:02.405438Z"}
 {"event":"FINDING_REVIEWED","finding_id":"F-RD-RR-01","review":"plan-v1-identity-convergence-review-01","seq":25,"summary":"Convergence review requires formal Plan amendment; third ordinary fix round is prohibited","time":"2026-07-13T09:48:40.531152Z","verdict":"FAIL"}
+{"event":"FINDING_CLOSED","finding_id":"F-RD-RR-01","resolution":"Formal amendment review accepted independent consumption of the complete production identity boundary","review":"plan-v1-formal-amendment-review-01","seq":26,"time":"2026-07-13T10:03:10.392390Z"}
