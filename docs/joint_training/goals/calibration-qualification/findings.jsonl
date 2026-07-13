@@ -13,3 +13,4 @@
 {"event":"FINDING_OPENED","finding_id":"F-CQ-RR-01","seq":13,"source":"review:plan-v1-rereview-01","summary":"implementation_tree_sha256 canonical serialization and recipe submodule semantics are not frozen","time":"2026-07-13T09:35:27.597423Z"}
 {"classification":"IN_SCOPE","event":"FINDING_CLASSIFIED","finding_id":"F-CQ-RR-01","reason":"AC-08 requires independently reproducible production identity","seq":14,"time":"2026-07-13T09:35:27.639545Z"}
 {"event":"FINDING_FIX_PROPOSED","finding_id":"F-CQ-RR-01","fix":"Freeze stage123-implementation-tree-v1 canonical JSONL using superproject and recipe mode/blob records plus gitlink commit","seq":15,"time":"2026-07-13T09:36:10.024364Z"}
+{"event":"FINDING_FIX_PROPOSED","finding_id":"F-CQ-RR-01","fix":"Freeze config/experiment_execution/stage123_implementation_tree_v1.json with an explicit no-glob superproject and recipe path list","seq":16,"time":"2026-07-13T09:39:02.362487Z"}

@@ -62,8 +62,11 @@ started.
 - `implementation_tree_sha256` always means the predecessor's frozen
   `stage123-implementation-tree-v1` canonical JSONL algorithm, including the
   superproject recipe gitlink record and selected recipe blob records. Readiness
-  independently reruns `scripts/implementation_tree_identity.py` and compares both
-  canonical JSONL and SHA256 before using calibration evidence.
+  uses the exact no-glob lists in
+  `config/experiment_execution/stage123_implementation_tree_v1.json`, independently
+  reruns `scripts/implementation_tree_identity.py`, and compares both canonical
+  JSONL and SHA256 before using calibration evidence. A path-list change is a
+  production-tree change and returns to Calibration.
 - Generic admission validation checks shared bindings and result classes without
   hard-coding Stage123 run facts.
 - Experiment-specific deployability policy is versioned and manifest-owned.
@@ -98,7 +101,7 @@ started.
 - Verification command:
   `REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python -m pytest -q tests/experiment_workflow/test_calibration_outcomes.py tests/experiment_workflow/test_experiment_manifest.py`
 - Additional verification command:
-  `REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/implementation_tree_identity.py --repo-root /data-1/code/verl --format json --compare docs/joint_training/goals/calibration-qualification/implementation-tree.jsonl`
+  `REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/implementation_tree_identity.py --repo-root /data-1/code/verl --path-manifest config/experiment_execution/stage123_implementation_tree_v1.json --format json --compare docs/joint_training/goals/calibration-qualification/implementation-tree.jsonl`
 - Expected evidence: exact canonical-tree comparison and mutation failures, including
   gitlink, recipe blob, executable-mode, symlink, dirty-path, and ordering cases.
 

@@ -21,3 +21,4 @@
 {"event":"FINDING_OPENED","finding_id":"F-RD-RR-01","seq":21,"source":"review:plan-v1-rereview-01","summary":"Readiness inherits an under-specified implementation_tree_sha256","time":"2026-07-13T09:35:27.682059Z"}
 {"classification":"IN_SCOPE","event":"FINDING_CLASSIFIED","finding_id":"F-RD-RR-01","reason":"AC-01, AC-06, and AC-08 require reproducible predecessor binding","seq":22,"time":"2026-07-13T09:35:27.724615Z"}
 {"event":"FINDING_FIX_PROPOSED","finding_id":"F-RD-RR-01","fix":"Independently recompute and compare predecessor canonical JSONL and SHA256 before admission","seq":23,"time":"2026-07-13T09:36:10.163621Z"}
+{"event":"FINDING_FIX_PROPOSED","finding_id":"F-RD-RR-01","fix":"Consume the exact predecessor versioned path manifest for canonical tree recomputation","seq":24,"time":"2026-07-13T09:39:02.405438Z"}

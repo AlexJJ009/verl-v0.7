@@ -99,6 +99,58 @@ prediction.
   selected production paths. `implementation_tree_sha256` is SHA256 of the emitted
   canonical JSONL bytes. The JSONL itself is retained with calibration evidence so
   a reviewer can independently recompute and diff it.
+- The versioned path inventory is
+  `config/experiment_execution/stage123_implementation_tree_v1.json`. It contains
+  exactly the following lists, uses no glob, directory walk, import discovery, or
+  runtime expansion, and is itself the first superproject path in the hash:
+
+```text
+superproject_paths:
+  config/experiment_execution/stage123_implementation_tree_v1.json
+  scripts/implementation_tree_identity.py
+  scripts/render_calibration_probe_command.py
+  scripts/experiment_manifest.py
+  scripts/experiment_execution_core.py
+  scripts/execution_results.py
+  scripts/calibration_outcomes.py
+  scripts/calibration_timing.py
+  scripts/check_code_task_operational_calibration.py
+  scripts/check_calibration_prediction_contract.py
+  scripts/check_code_task_preflight_budget.py
+  scripts/experiment_failure_classifier.py
+  scripts/stage123_manifest_monitor.py
+  scripts/stage123_manifest_release_dispatch.sh
+  scripts/training_result_release_gate.py
+  scripts/code_task_training_release_hook.sh
+  scripts/validation_deadline_controller.py
+  scripts/l40s/run_train.sh
+  verl/trainer/ppo/ray_trainer.py
+
+recipe_paths:
+  on_policy_wdl_sft/experiment_manifest/schema.json
+  on_policy_wdl_sft/experiment_manifest/stage123.yaml
+  on_policy_wdl_sft/code_task/calibration_workload_descriptor.py
+  on_policy_wdl_sft/code_task/qwen3_1p7b_stage123_resource_profile.sh
+  on_policy_wdl_sft/code_task/stage123_manifest_gate.sh
+  on_policy_wdl_sft/code_task/stage123_preflight.py
+  on_policy_wdl_sft/code_task/stage123_gpu_idle_watchdog.py
+  on_policy_wdl_sft/code_task/run_code_task_qwen3_1p7b_stage123_queue.sh
+  on_policy_wdl_sft/code_task/monitor_code_task_qwen3_1p7b_stage123_notify.sh
+  on_policy_wdl_sft/code_task/run_s1_code_qwen3_1p7b_stage123_common.sh
+  on_policy_wdl_sft/code_task/run_s2_code_qwen3_1p7b_stage123_common.sh
+  on_policy_wdl_sft/code_task/run_s3_code_qwen3_1p7b_stage123_common.sh
+  on_policy_wdl_sft/code_task/run_s1_code_base.sh
+  on_policy_wdl_sft/code_task/run_s2_code_kodcode_qwen3_1p7b_instruct_ctx8k_p40_common.sh
+  on_policy_wdl_sft/code_task/run_s2_code_model2_rollout_common.sh
+  on_policy_wdl_sft/ablation_single_model/_common_ablation.sh
+  on_policy_wdl_sft/staged_v1/_run_stage2_model2_rollout_common.sh
+```
+
+The identity command validates that its built-in schema/version and the literal
+path lists match this Plan, that every path is tracked in the declared repository,
+and that no duplicate or cross-repository path exists. Adding, removing, renaming,
+or substituting a production path requires a Plan amendment and fresh review before
+calibration; the implementer may not silently change the list to make tests pass.
 - `calibration_result.json` includes at least: schema/result type, decision,
   manifest SHA256, resource-profile SHA256, implementation-tree SHA256, evidence
   commit, workload identity,
@@ -229,7 +281,7 @@ phase set, and manifest/profile hashes, then emits argv JSON without executing i
 - Verification command:
   `goal-plan-runtime validate-runtime docs/joint_training/goals/calibration-qualification`
 - Additional verification command:
-  `REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/implementation_tree_identity.py --repo-root /data-1/code/verl --format json --output /data-1/tmp/verl_agent_scratch/experiment_workflow/calibration/implementation-tree.jsonl`
+  `REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/implementation_tree_identity.py --repo-root /data-1/code/verl --path-manifest config/experiment_execution/stage123_implementation_tree_v1.json --format json --output /data-1/tmp/verl_agent_scratch/experiment_workflow/calibration/implementation-tree.jsonl`
 - Expected evidence: reviewer-owned recomputation of the canonical JSONL and SHA256,
   `acceptance.md`, `ACCEPTANCE_COMPLETED=PASS`, and runtime validation success.
 

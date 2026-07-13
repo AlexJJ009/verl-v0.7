@@ -64,8 +64,11 @@ configuration.
   acceptance, run-set, source-artifact, and protected-status bindings are rechecked.
 - The implementation binding is independently recomputed with
   `stage123-implementation-tree-v1`, including the recipe gitlink and selected recipe
-  blobs, before admission validation. A gitlink/recipe HEAD mismatch, dirty selected
-  path, mode/blob difference, missing canonical record, or SHA mismatch blocks launch.
+  blobs from the exact no-glob path lists in
+  `config/experiment_execution/stage123_implementation_tree_v1.json`, before
+  admission validation. A path-manifest change, gitlink/recipe HEAD mismatch, dirty
+  selected path, mode/blob difference, missing canonical record, or SHA mismatch
+  blocks launch.
 - Stage2 must complete its admitted final step and required validation before model2
   extraction. Extraction must produce content/provenance hashes bound to Stage2.
 - Stage3 starts only from the admitted extracted model2 and verified provenance.
@@ -96,7 +99,7 @@ configuration.
 - Verification command:
   `REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/execution_results.py admission validate --bundle docs/joint_training/goals/stage123-execution-readiness/admission_bundle.json --require-accepted --repo-root /data-1/code/verl`
 - Additional verification command:
-  `REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/implementation_tree_identity.py --repo-root /data-1/code/verl --format json --compare docs/joint_training/goals/calibration-qualification/implementation-tree.jsonl`
+  `REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/implementation_tree_identity.py --repo-root /data-1/code/verl --path-manifest config/experiment_execution/stage123_implementation_tree_v1.json --format json --compare docs/joint_training/goals/calibration-qualification/implementation-tree.jsonl`
 - Expected evidence: pre-launch canonical tree comparison, admission validation
   report, and immutable bundle hash.
 

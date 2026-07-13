@@ -21,3 +21,4 @@
 {"event":"FINDING_OPENED","finding_id":"F-EX-RR-01","seq":21,"source":"review:plan-v1-rereview-01","summary":"Execution inherits an under-specified implementation_tree_sha256","time":"2026-07-13T09:35:27.767472Z"}
 {"classification":"IN_SCOPE","event":"FINDING_CLASSIFIED","finding_id":"F-EX-RR-01","reason":"AC-01 and AC-09 require exact independently recomputable admission identity","seq":22,"time":"2026-07-13T09:35:27.811372Z"}
 {"event":"FINDING_FIX_PROPOSED","finding_id":"F-EX-RR-01","fix":"Recompute canonical implementation tree including recipe gitlink and blobs before Ray launch","seq":23,"time":"2026-07-13T09:36:10.299640Z"}
+{"event":"FINDING_FIX_PROPOSED","finding_id":"F-EX-RR-01","fix":"Require pre-Ray recomputation using the exact accepted versioned path manifest","seq":24,"time":"2026-07-13T09:39:02.449001Z"}
