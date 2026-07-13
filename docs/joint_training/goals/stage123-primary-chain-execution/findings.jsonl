@@ -22,3 +22,4 @@
 {"classification":"IN_SCOPE","event":"FINDING_CLASSIFIED","finding_id":"F-EX-RR-01","reason":"AC-01 and AC-09 require exact independently recomputable admission identity","seq":22,"time":"2026-07-13T09:35:27.811372Z"}
 {"event":"FINDING_FIX_PROPOSED","finding_id":"F-EX-RR-01","fix":"Recompute canonical implementation tree including recipe gitlink and blobs before Ray launch","seq":23,"time":"2026-07-13T09:36:10.299640Z"}
 {"event":"FINDING_FIX_PROPOSED","finding_id":"F-EX-RR-01","fix":"Require pre-Ray recomputation using the exact accepted versioned path manifest","seq":24,"time":"2026-07-13T09:39:02.449001Z"}
+{"event":"FINDING_REVIEWED","finding_id":"F-EX-RR-01","review":"plan-v1-identity-convergence-review-01","seq":25,"summary":"Convergence review requires formal Plan amendment; third ordinary fix round is prohibited","time":"2026-07-13T09:48:40.616320Z","verdict":"FAIL"}
