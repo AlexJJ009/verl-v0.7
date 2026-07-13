@@ -1,0 +1,18 @@
+{
+  "command": "REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python -m pytest -q tests/experiment_workflow tests/joint_training/regression/test_validation_generation_logging.py",
+  "duration_seconds": 365.36,
+  "exit_code": 1,
+  "failed": 3,
+  "failed_tests": [
+    "tests/experiment_workflow/test_gate_exit_propagation.py::test_full_gate_wires_queue_and_monitor_to_same_fresh_scratch",
+    "tests/experiment_workflow/test_initial_validation_timing.py::test_calibration_timeline_records_validation_phase_boundaries",
+    "tests/experiment_workflow/test_operational_calibration_scorer_preflight.py::test_runner_treats_dependency_failure_as_fatal"
+  ],
+  "passed": 146,
+  "run_count": 1,
+  "targeted_fix_evidence": {
+    "fast_gate": "22 passed",
+    "preservation_focused": "23 passed",
+    "three_replacement_tests": "10 passed"
+  }
+}
