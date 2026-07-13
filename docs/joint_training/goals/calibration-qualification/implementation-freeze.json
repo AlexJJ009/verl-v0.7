@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
   "algorithm": "stage123-implementation-boundary-v1",
-  "production_candidate_commit": "58cab95391fb9d9c6804ab7c8d2b62b88a71e0b2",
+  "production_candidate_commit": "edae5e63db33551ef4e4e4b25032f2d736a7aea2",
   "recipe_gitlink_commit": "888d8e1a979070013ffc9ccca401ea17c73f26d6",
-  "implementation_tree_sha256": "cd081fcb51813cbe52b3610b97bb99f881810b1c270eab5377bb5ea14481c784",
-  "canonical_jsonl_path": "/data-1/tmp/verl_agent_scratch/experiment_workflow/calibration/implementation-tree-m5-val-only-1.jsonl",
+  "implementation_tree_sha256": "6ef1077325ec7d2bad2551694ef4445cfaf290795f8ed9ad76a605055c089614",
+  "canonical_jsonl_path": "/data-1/tmp/verl_agent_scratch/experiment_workflow/calibration/implementation-tree-m5-subreaper-1.jsonl",
   "recomputation_count": 2,
   "byte_identical": true,
   "production_changes_after_freeze": false,
