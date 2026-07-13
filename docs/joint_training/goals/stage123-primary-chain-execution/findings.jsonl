@@ -13,3 +13,11 @@
 {"event":"FINDING_FIX_PROPOSED","finding_id":"F-EX-PLAN-03","fix":"Require scripts/execution_results.py admission validate --require-accepted before launch","seq":13,"time":"2026-07-13T09:25:18.743301Z"}
 {"event":"FINDING_FIX_PROPOSED","finding_id":"F-EX-PLAN-04","fix":"Derive exact run names via experiment_manifest.py run --field run_prefix in every release command","seq":14,"time":"2026-07-13T09:25:18.785645Z"}
 {"event":"FINDING_FIX_PROPOSED","finding_id":"F-EX-PLAN-05","fix":"Freeze three resumable failure codes and persisted attempt/max-attempt/binding schema","seq":15,"time":"2026-07-13T09:25:18.827683Z"}
+{"event":"FINDING_CLOSED","finding_id":"F-EX-PLAN-01","resolution":"Independent rereview confirmed the amended contract closes the finding","review":"plan-v1-rereview-01","seq":16,"time":"2026-07-13T09:35:27.381151Z"}
+{"event":"FINDING_CLOSED","finding_id":"F-EX-PLAN-02","resolution":"Independent rereview confirmed the amended contract closes the finding","review":"plan-v1-rereview-01","seq":17,"time":"2026-07-13T09:35:27.424673Z"}
+{"event":"FINDING_CLOSED","finding_id":"F-EX-PLAN-03","resolution":"Independent rereview confirmed the amended contract closes the finding","review":"plan-v1-rereview-01","seq":18,"time":"2026-07-13T09:35:27.467287Z"}
+{"event":"FINDING_CLOSED","finding_id":"F-EX-PLAN-04","resolution":"Independent rereview confirmed the amended contract closes the finding","review":"plan-v1-rereview-01","seq":19,"time":"2026-07-13T09:35:27.509894Z"}
+{"event":"FINDING_CLOSED","finding_id":"F-EX-PLAN-05","resolution":"Independent rereview confirmed the amended contract closes the finding","review":"plan-v1-rereview-01","seq":20,"time":"2026-07-13T09:35:27.553674Z"}
+{"event":"FINDING_OPENED","finding_id":"F-EX-RR-01","seq":21,"source":"review:plan-v1-rereview-01","summary":"Execution inherits an under-specified implementation_tree_sha256","time":"2026-07-13T09:35:27.767472Z"}
+{"classification":"IN_SCOPE","event":"FINDING_CLASSIFIED","finding_id":"F-EX-RR-01","reason":"AC-01 and AC-09 require exact independently recomputable admission identity","seq":22,"time":"2026-07-13T09:35:27.811372Z"}
+{"event":"FINDING_FIX_PROPOSED","finding_id":"F-EX-RR-01","fix":"Recompute canonical implementation tree including recipe gitlink and blobs before Ray launch","seq":23,"time":"2026-07-13T09:36:10.299640Z"}

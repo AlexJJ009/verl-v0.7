@@ -83,6 +83,22 @@ prediction.
   manifest, and execution-core Python; admission gate; queue; monitor; and phase
   wrappers. Readiness may add Goal evidence and scratch results, but any change to
   this production tree invalidates calibration and requires a new result.
+- Canonical tree hashing is version `stage123-implementation-tree-v1` and is computed
+  by the in-scope command
+  `python scripts/implementation_tree_identity.py --repo-root /data-1/code/verl --format json`.
+  The command emits UTF-8 JSON Lines with sorted keys and exactly one terminal LF.
+  Records are ordered by bytewise UTF-8 `path` and contain:
+  `{"path":...,"repo":"superproject|recipe","mode":...,"blob_sha1":...}`.
+  For ordinary tracked files, `mode` and `blob_sha1` are taken from
+  `git ls-files --stage`. Symlinks therefore use mode `120000` and hash their link
+  target blob. The recipe submodule adds a first record
+  `{"path":"recipe","repo":"superproject","mode":"160000","gitlink_commit":...}`
+  using the superproject gitlink, followed by the selected recipe production paths
+  using `git -C recipe ls-files --stage`. The command fails unless the checked-out
+  recipe `HEAD` equals the gitlink commit and both repositories are clean for all
+  selected production paths. `implementation_tree_sha256` is SHA256 of the emitted
+  canonical JSONL bytes. The JSONL itself is retained with calibration evidence so
+  a reviewer can independently recompute and diff it.
 - `calibration_result.json` includes at least: schema/result type, decision,
   manifest SHA256, resource-profile SHA256, implementation-tree SHA256, evidence
   commit, workload identity,
@@ -212,8 +228,10 @@ phase set, and manifest/profile hashes, then emits argv JSON without executing i
   result hash.
 - Verification command:
   `goal-plan-runtime validate-runtime docs/joint_training/goals/calibration-qualification`
-- Expected evidence: reviewer-owned `acceptance.md`, `ACCEPTANCE_COMPLETED=PASS`, and
-  runtime validation success.
+- Additional verification command:
+  `REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/implementation_tree_identity.py --repo-root /data-1/code/verl --format json --output /data-1/tmp/verl_agent_scratch/experiment_workflow/calibration/implementation-tree.jsonl`
+- Expected evidence: reviewer-owned recomputation of the canonical JSONL and SHA256,
+  `acceptance.md`, `ACCEPTANCE_COMPLETED=PASS`, and runtime validation success.
 
 ## Milestones
 
