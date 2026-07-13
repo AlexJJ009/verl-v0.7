@@ -61,3 +61,9 @@ def test_owned_ray_socket_path_fits_af_unix_limit():
  base='/data-1/tmp/verl_agent_scratch/r/31'
  plasma=f'{base}/session_2026-07-13_18-40-15_123456_2147483647/sockets/plasma_store'
  assert len(plasma)<=107
+
+def test_probe_uses_full_sequential_ray_worker_range():
+ text=(ROOT/'scripts/run_calibration_probe_zero_step.py').read_text()
+ assert '"CALIBRATION_RAY_WORKER_PORT_MIN": "21000"' in text
+ assert '"CALIBRATION_RAY_WORKER_PORT_MAX": "21999"' in text
+ assert '21099' not in text

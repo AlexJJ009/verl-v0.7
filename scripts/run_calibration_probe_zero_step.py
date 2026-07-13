@@ -80,7 +80,6 @@ def phase_environment(rendered: dict[str, Any], phase: str, repetition: int, out
         if not stage3_model.is_dir() or proxy["rollout_model_parameter_count"] != stage3_workload["rollout_model_parameter_count_sum"]:
             raise RuntimeError("stage3 calibration proxy identity mismatch")
         proxy_kind = proxy["purpose"]
-    offset = ((0 if phase == "stage2" else 3) + repetition - 1) * 100
     phase_code = "2" if phase == "stage2" else "3"
     ray_tmpdir = Path("/data-1/tmp/verl_agent_scratch/r") / f"{phase_code}{repetition}"
     shutil.rmtree(ray_tmpdir, ignore_errors=True)
@@ -93,11 +92,11 @@ def phase_environment(rendered: dict[str, Any], phase: str, repetition: int, out
         "CALIBRATION_RAY_TMPDIR": str(ray_tmpdir),
         "CALIBRATION_TOTAL_TRAINING_STEPS": "0",
         "CALIBRATION_OPTIMIZER_ENABLED": "false",
-        "CALIBRATION_RAY_WORKER_PORT_MIN": str(21000 + offset),
-        "CALIBRATION_RAY_WORKER_PORT_MAX": str(21099 + offset),
-        "CALIBRATION_RAY_HEAD_PORT": str(22000 + offset),
-        "CALIBRATION_TCPSTORE_PORT_MIN": str(35000 + offset),
-        "CALIBRATION_TCPSTORE_PORT_MAX": str(35099 + offset),
+        "CALIBRATION_RAY_WORKER_PORT_MIN": "21000",
+        "CALIBRATION_RAY_WORKER_PORT_MAX": "21999",
+        "CALIBRATION_RAY_HEAD_PORT": "22000",
+        "CALIBRATION_TCPSTORE_PORT_MIN": "35000",
+        "CALIBRATION_TCPSTORE_PORT_MAX": "35999",
         "CALIBRATION_STAGE1_CKPT_DIR": stage1_source["source_checkpoint"],
         "CALIBRATION_STAGE1_MODEL2": stage2_sources["model2"]["path"],
         "CALIBRATION_STAGE1_RUN_PREFIX": stage1_source["stage1_run_prefix"],
