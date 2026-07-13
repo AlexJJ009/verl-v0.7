@@ -1,0 +1,48 @@
+{
+  "review_identity": {
+    "reviewer": "Independent final acceptance reviewer (Codex; GPT-5.5 medium requested, model selection not exposed)",
+    "review_type": "final-acceptance",
+    "goal_dir": "/data-1/code/verl/docs/joint_training/goals/experiment-execution-core-consolidation",
+    "plan_version": 1,
+    "plan_sha256": "b0929f0b0c910515c14140489d629c6103637c0ceb477c24e34185ddf4887ba8",
+    "base_commit": "390be933",
+    "candidate_commit": "97c1c1f596da4d1e977b252a411e9444029d9599",
+    "reviewed_head": "61f860f2a257d1c7270c97583b504b5684fe3869",
+    "later_prompt_runtime_only_commits": ["535a74d0", "61f860f2"],
+    "recipe_submodule": "fb49bccdfc7eba1474720338af4c346733a6f783"
+  },
+  "overall_verdict": "ACCEPTED",
+  "acceptance_rule": "ACCEPTED is valid because every applicable AC-01 through AC-09 is PASS.",
+  "per_ac": {
+    "AC-01": {"verdict": "PASS", "evidence": ["12 passed", "zero forbidden matches for CALIBRATION_|stage123|deployab in ray_trainer.py"]},
+    "AC-02": {"verdict": "PASS", "evidence": ["20 passed for manifest and manifest queue monitor contract"]},
+    "AC-03": {"verdict": "PASS", "evidence": ["10 passed for runner, deadline cleanup, runtime isolation"]},
+    "AC-04": {"verdict": "PASS", "evidence": ["18 passed for checker and calibration outcomes structured failures"]},
+    "AC-05": {"verdict": "PASS", "evidence": ["14 passed, 124 deselected for compat/migration/receipt/adoption/evidence selector"]},
+    "AC-06": {"verdict": "PASS", "evidence": ["full-cpu-gate-summary run_count=1, passed=146, failed=3 stale source-text assertions", "targeted replacement evidence: 10 passed, 22 passed, 23 passed"], "note": "Full suite was not rerun per final prompt."},
+    "AC-07": {"verdict": "PASS", "evidence": ["6 passed for PM2 CI keepalive tests", "check_pm2_ci_keepalive returned ok=true with no failures"]},
+    "AC-08": {"verdict": "PASS", "evidence": ["production 3763 -> 2259 <= 3000", "tests 4694 -> 2164 <= 4000", "active reliability docs 2091 -> 0 <= 650", "all three classes net-negative", "git diff --check passed", "retained >300-line files have inventory disposition"]},
+    "AC-09": {"verdict": "PASS", "evidence": ["plan sha256 matches frozen value", "candidate commit is ancestor of reviewed HEAD", "goal-plan-runtime validate-runtime passed", "protected assets are untracked/unstaged", "recipe submodule fb49bcc is clean"]}
+  },
+  "commands": [
+    {"command": "sha256sum docs/joint_training/goals/experiment-execution-core-consolidation/plan.md", "exit_code": 0, "relevant_output": "b0929f0b0c910515c14140489d629c6103637c0ceb477c24e34185ddf4887ba8"},
+    {"command": "git merge-base --is-ancestor 97c1c1f596da4d1e977b252a411e9444029d9599 HEAD && echo candidate-is-ancestor", "exit_code": 0, "relevant_output": "candidate-is-ancestor"},
+    {"command": "REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python -m pytest -q tests/joint_training/regression/test_validation_generation_logging.py tests/joint_training/regression/test_validation_reward_metadata.py", "exit_code": 0, "relevant_output": "12 passed, 8 warnings in 22.81s"},
+    {"command": "rg -n 'CALIBRATION_|stage123|deployab' verl/trainer/ppo/ray_trainer.py", "exit_code": 1, "relevant_output": "zero forbidden matches"},
+    {"command": "REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python -m pytest -q tests/experiment_workflow/test_experiment_manifest.py tests/experiment_workflow/test_manifest_queue_monitor_contract.py", "exit_code": 0, "relevant_output": "20 passed in 120.69s"},
+    {"command": "REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python -m pytest -q tests/experiment_workflow/test_operational_calibration_runner.py tests/experiment_workflow/test_validation_deadline_cleanup.py tests/experiment_workflow/test_operational_calibration_runtime_isolation.py", "exit_code": 0, "relevant_output": "10 passed in 0.11s"},
+    {"command": "REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python -m pytest -q tests/experiment_workflow/test_operational_calibration_checker.py tests/experiment_workflow/test_calibration_outcomes.py", "exit_code": 0, "relevant_output": "18 passed in 121.05s"},
+    {"command": "REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python -m pytest -q tests/experiment_workflow -k 'compat or migration or receipt or adoption or evidence'", "exit_code": 0, "relevant_output": "14 passed, 124 deselected in 24.62s"},
+    {"command": "REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python -m pytest -q tests/experiment_workflow/test_pm2_ci_keepalive.py", "exit_code": 0, "relevant_output": "6 passed in 0.71s"},
+    {"command": "REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/check_pm2_ci_keepalive.py --contract config/pm2/experiment-reliability-ci.json --repo-root . --require-no-systemd", "exit_code": 0, "relevant_output": "{\"failures\": [], \"ok\": true}"},
+    {"command": "git diff --numstat 390be933...HEAD -- scripts tests/experiment_workflow verl/trainer/ppo/ray_trainer.py recipe/on_policy_wdl_sft/code_task docs/joint_training/codereview/active docs/joint_training/manifests docs/joint_training/goals/experiment-execution-core-consolidation", "exit_code": 0, "relevant_output": "reviewed file-level deletion report"},
+    {"command": "git diff --check 390be933...HEAD", "exit_code": 0, "relevant_output": "no output"},
+    {"command": "goal-plan-runtime validate-runtime docs/joint_training/goals/experiment-execution-core-consolidation", "exit_code": 0, "relevant_output": "current_milestone=Milestone 6, goal_status=ACTIVE, plan_status=READY, all findings CLOSED"},
+    {"command": "git status --short", "exit_code": 0, "relevant_output": "protected assets untracked before reviewer write: .claude/skills/experiment-registry, docs/joint_training/plans/active/qwen3_1p7b_code_stage123_plateau_breakthrough.md, test_data/"}
+  ],
+  "blocking_in_scope_defects": [],
+  "deferred_suggestions": [],
+  "contract_contradictions": [],
+  "review_weakness": "AC-06 relies on the mandated audit of the sole recorded full-suite run plus focused replacements, not a fresh full-suite rerun.",
+  "external_services_used_as_evidence": false
+}
