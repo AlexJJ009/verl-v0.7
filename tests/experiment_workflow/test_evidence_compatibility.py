@@ -4,6 +4,7 @@ import importlib.util
 import json
 from pathlib import Path
 import sys
+import hashlib
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -17,11 +18,12 @@ def module():
 def result(kind: str, decision: str = "passed"):
     value = {"schema_version": 1, "result_type": kind, "manifest_sha256": "a" * 64, "decision": decision}
     if kind == "calibration_result":
+        policy_path = ROOT / "config/experiment_execution/calibration_policy_v1.json"
         value.update({
             "resource_profile_sha256": "b" * 64, "implementation_tree_sha256": "c" * 64,
-            "evidence_commit": "d" * 40, "workload_identity": {}, "policy_id": "stage123-calibration-policy-v1",
-            "policy_sha256": "e" * 64, "authorization_identity": {}, "started_at": "2026-01-01T00:00:00Z",
-            "completed_at": "2026-01-01T00:01:00Z", "phase_evidence": [], "prediction_comparison": {},
+            "evidence_commit": "d" * 40, "workload_identity": {"sha256": "f" * 64}, "policy_id": "stage123-calibration-policy-v1",
+            "policy_sha256": hashlib.sha256(policy_path.read_bytes()).hexdigest(), "authorization_identity": {"id": "auth"}, "started_at": "2026-01-01T00:00:00Z",
+            "completed_at": "2026-01-01T00:01:00Z", "phase_evidence": [{"phase": "stage2", "status": "passed"}, {"phase": "stage3", "status": "passed"}], "prediction_comparison": {"qualified": True},
             "cleanup": {"resources_released": True}, "failures": [],
         })
     return value

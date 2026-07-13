@@ -17,6 +17,6 @@ def main()->int:
     rendered=json.loads(subprocess.check_output([sys.executable,str(root/"scripts/experiment_manifest.py"),"render",str(a.manifest),"--format","json"],text=True))
     profile_hash=subprocess.check_output(["bash","-lc",f"source {a.resource_profile!s}; stage123_profile_hash"],text=True).strip()
     if rendered["resource_profile"]["sha256"]!=profile_hash: return fail("profile_hash","manifest/profile mismatch")
-    command=["bash",str(root/"recipe/on_policy_wdl_sft/code_task/run_code_task_operational_calibration_phase.sh"),"--manifest",str(a.manifest),"--phases",a.phases,"--repetitions",str(a.repetitions),"--training-steps","0","--optimizer-enabled","false","--scratch-root",str(a.scratch_root),"--manifest-sha256",rendered["manifest_sha256"],"--resource-profile-sha256",profile_hash]
+    command=[sys.executable,str(root/"scripts/run_calibration_probe_zero_step.py"),"--manifest",str(a.manifest),"--phases",a.phases,"--repetitions",str(a.repetitions),"--training-steps","0","--optimizer-enabled","false","--scratch-root",str(a.scratch_root),"--manifest-sha256",rendered["manifest_sha256"],"--resource-profile-sha256",profile_hash]
     print(json.dumps(command,separators=(",",":"))); return 0
 if __name__=="__main__": raise SystemExit(main())
