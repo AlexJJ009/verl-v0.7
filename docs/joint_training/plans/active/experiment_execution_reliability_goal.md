@@ -184,6 +184,44 @@ and complete fresh independent AC-01 through AC-30 acceptance.
 
 ### Current Blocking Condition
 
+#### Runtime-port isolation incident - 2026-07-13
+
+The current committed Stage1/Stage2 calibration queue at superproject `deae0c2b`
+completed Stage1 bootstrap repetition 0, then failed repetition 1 before
+`validation_ready`. Preserve both repetitions under
+`/data-2/experiment_registry/calibration_runs/deae0c2b_stage12` as diagnostic-only
+evidence. Ray-session logs prove that this is not a stale process from repetition 0:
+the repetition-1 Ray core worker PID 12329 bound its gRPC server to port `43063`
+before the FSDP process group attempted to create its TCPStore on the same port.
+Rank 0 then reported `EADDRINUSE`; the remaining ranks connected to the Ray gRPC
+listener and reported an invalid TCPStore ping value.
+
+The defect is a run-internal port-allocation TOCTOU in which
+`get_master_addr_port()` probes a free port with a temporary socket and releases it
+before TCPStore binds. A teardown delay alone does not fix it. Before another GPU
+probe or canonical cohort:
+
+1. obtain independent plan `READY` for AC-26A below;
+2. make the PPO colocated-worker path pass a calibration-supplied
+   `trainer.ray_master_port_range` into every applicable `RayWorkerGroup` as
+   `master_port_range`;
+3. configure the calibration-local Ray cluster's worker ports through a supported
+   Ray startup interface, not unsupported `ray.init()` kwargs and not runtime-env
+   variables; Ray worker ports and TCPStore ports must occupy disjoint controlled
+   ranges;
+4. keep the queue serial and require both pre-repetition and post-repetition quiet
+   gates for the run-owned tmux session, container, and controlled port ranges;
+5. never use global `ray stop --force` as run-owned cleanup, and fail closed when
+   ownership-scoped cleanup cannot prove release;
+6. treat port isolation as runtime safety policy, not as a model/data/GPU resource
+   profile input: the canonical L40S resource-profile hash must remain unchanged;
+7. add CPU behavior tests for PPO range propagation, supported Ray startup command
+   generation, disjoint ranges, busy-port rejection, queue blocking, ownership-only
+   cleanup, and unchanged resource-profile hash;
+8. obtain independent `READY FOR COMMIT`, commit, and obtain committed-state
+   `CPU ACCEPTED`; then issue fresh preflight evidence and run two consecutive
+   Stage1 diagnostic probes before creating a new canonical cohort.
+
 Outcome-schema-v2, validation eligibility, stable source UID routing, and PM2-only CI
 keepalive are committed and received fresh independent `CPU ACCEPTED` review at:
 
@@ -1414,6 +1452,45 @@ cleanup, and the historical 76-minute step-0 trace. Only complete cleanup report
 `resources_released=true`; the legacy run fixture also proves release gate blocked,
 zero matching SQLite rows/W&B sync markers, and no residual runtime ownership.
 
+#### AC-26A - Calibration Runtime Ports Are Ownership-Isolated
+
+- Given the local Docker harness uses host networking and a calibration repetition
+  creates both Ray worker gRPC listeners and an FSDP TCPStore,
+- When a Stage1, Stage2, or Stage3 bootstrap or acceptance repetition starts and
+  terminates,
+- Then Ray worker listeners use a calibration-local controlled range and every PPO
+  colocated `RayWorkerGroup` receives a disjoint controlled TCPStore range through
+  `master_port_range`. The ranges are supplied through supported runtime interfaces,
+  remain outside the canonical L40S resource-profile hash, and are recorded in local
+  runtime evidence. Before launch and after termination, the queue proves that the
+  run-owned tmux session and container are absent and both controlled ranges are
+  quiet. A busy port, residual run-owned container/session, unsupported Ray argument,
+  overlapping range, or incomplete ownership-scoped cleanup blocks the queue before
+  the next repetition. Cleanup never invokes global `ray stop --force`, never kills
+  an unrelated Ray process/container/session, and never claims release from process
+  name matching alone.
+
+Verification:
+
+```bash
+python3 -m pytest -q \
+  tests/experiment_workflow/test_operational_calibration_runner.py \
+  tests/experiment_workflow/test_operational_calibration_runtime_isolation.py \
+  tests/experiment_workflow/test_validation_deadline_cleanup.py
+```
+
+Expected evidence: fixtures prove `trainer.ray_master_port_range` reaches the PPO
+colocated `RayWorkerGroup` constructor; the generated calibration command uses a
+Ray-version-supported worker-port mechanism; Ray and TCPStore ranges are disjoint;
+busy controlled ports and residual run-owned resources prevent the next repetition;
+quiet resources allow it; cleanup contains no global Ray stop; an unrelated listener
+and container survive; and the canonical Stage123 L40S resource-profile hash is byte
+identical before and after runtime isolation is enabled. After committed-state CPU
+acceptance, two consecutive Stage1 diagnostic probes in one serial queue must both
+reach complete validation metrics without `EADDRINUSE`, invalid TCPStore ping,
+timeout, fatal termination, or residual run-owned runtime before AC-19 calibration
+may resume.
+
 ### AC-27 - Notification Policy Is an Event State Machine
 
 - Given local fake WxPusher delivery and run-state fixtures,
@@ -1611,22 +1688,30 @@ the commits recorded in the Resume Snapshot. On resume, execute this remaining o
    provenance schema/hash, source-dependency admission, Stage3 dynamic-output gate, and
    sandbox interfaces. Commit recipe first, run focused/fast/full/PM2/isolation/
    transaction gates, and obtain fresh independent `CPU ACCEPTED`.
-6. Generate fresh machine, budget, and preflight evidence bound to that committed state.
+6. Obtain independent `READY` for AC-26A, implement calibration-local disjoint Ray
+   worker/TCPStore port domains plus ownership-scoped inter-repetition quiet gates,
+   run the focused runtime-isolation and cleanup tests, and obtain independent
+   committed-state `CPU ACCEPTED`. Do not alter the canonical L40S resource-profile
+   hash and do not use global `ray stop --force`.
+7. Generate fresh machine, budget, and preflight evidence bound to that committed state.
    Historical receipts must not authorize launch.
-7. In a completely new calibration root, run exactly one Stage1 bootstrap probe in tmux.
+8. In a completely new diagnostic root, run two consecutive Stage1 bootstrap probes
+   in one serial tmux queue. Both must pass AC-26A. The second probe specifically proves
+   that repetition transition does not reproduce the `43063` collision.
+9. In a completely new canonical calibration root, run exactly one Stage1 bootstrap probe in tmux.
    Only if UID, deadline, telemetry, timeout, truncation (`<= 0.01`), score, memory, and
    cleanup hard gates pass may the remaining Stage1 repetitions and Stage2 calibration
    proceed. A failed probe remains diagnostic and does not unlock the queue.
-8. Complete six eligible Stage1/Stage2 bootstrap repetitions, freeze their history,
+10. Complete six eligible Stage1/Stage2 bootstrap repetitions, freeze their history,
    generate their prediction contract, and run three fresh Stage1/Stage2 acceptance
    repetitions. Checker may issue only AC-30's `stage12_calibrated` limited receipt for
    the named 20-step Stage2 producer.
-9. Run the authorized Stage2 producer. Materialize/hash/provenance-bind its model2,
+11. Run the authorized Stage2 producer. Materialize/hash/provenance-bind its model2,
    regenerate Stage3 descriptor and preflight evidence, then complete six Stage3
    bootstrap and three fresh Stage3 acceptance repetitions.
-10. Assemble the complete three-phase candidate and require the original checker-owned
+12. Assemble the complete three-phase candidate and require the original checker-owned
     `deployable` receipt. A limited receipt never satisfies this step.
-11. A fresh independent Reviewer executes every AC-01 through AC-30 command, the PM2
+13. A fresh independent Reviewer executes every AC-01 through AC-30 plus AC-26A command, the PM2
    keepalive checks, and the completion-state checker from committed code.
 
 No milestone may start until all required ACs from the previous milestone pass.
