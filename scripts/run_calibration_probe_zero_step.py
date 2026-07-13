@@ -67,12 +67,18 @@ def phase_environment(rendered: dict[str, Any], phase: str, repetition: int, out
     runs = {item["phase"]: item for item in rendered["runs"]}
     stage2_sources = {item["role"]: item for item in rendered["calibration_workloads"]["stage2"]["model_sources"]}
     stage1_source = json.loads((Path(stage2_sources["model2"]["path"]) / "stage1_source.json").read_text())
-    stage3_source = rendered["calibration_workloads"]["stage3"]["model_sources"][0]
+    stage3_workload = rendered["calibration_workloads"]["stage3"]
+    stage3_source = stage3_workload["model_sources"][0]
     stage3_model = Path(stage3_source["path"])
     proxy_kind = "materialized_manifest_source"
     if not stage3_model.is_dir():
-        stage3_model = Path(stage2_sources["model2"]["path"])
-        proxy_kind = "pending_stage2_handoff_same_parameter_count_proxy"
+        proxy = stage3_workload.get("calibration_proxy")
+        if stage3_source.get("state") != "pending" or not proxy:
+            raise RuntimeError("stage3 pending source has no explicit calibration proxy")
+        stage3_model = Path(proxy["path"])
+        if not stage3_model.is_dir() or proxy["rollout_model_parameter_count"] != stage3_workload["rollout_model_parameter_count_sum"]:
+            raise RuntimeError("stage3 calibration proxy identity mismatch")
+        proxy_kind = proxy["purpose"]
     offset = ((0 if phase == "stage2" else 3) + repetition - 1) * 100
     env = {
         "QWEN3_1P7B_MODEL_PATH": rendered["paths"]["base_model"],
@@ -142,6 +148,35 @@ def read_metrics(output: Path) -> tuple[dict[str, Any], list[str]]:
     return {}, [str(item) for item in files]
 
 
+def generation_summary(paths: list[str]) -> tuple[int, int]:
+    count = truncated = 0
+    for path in paths:
+        for line in Path(path).read_text().splitlines():
+            try:
+                value = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            count += 1
+            status = str(value.get("code_reward_status", "")).lower()
+            truncated += int(status in {"truncated", "max_length"} or value.get("finish_reason") == "length")
+    return count, truncated
+
+
+def owned_cleanup(output: Path, process: subprocess.Popen[str]) -> dict[str, Any]:
+    ray_root = output / "ray"
+    matches = []
+    result = subprocess.run(["ps", "-eo", "pid=,args="], text=True, capture_output=True, check=False)
+    for line in result.stdout.splitlines():
+        if str(ray_root) in line:
+            matches.append(line.strip())
+    return {
+        "resources_released": process.poll() is not None and not matches,
+        "child_process_released": process.poll() is not None,
+        "owned_ray_root": str(ray_root),
+        "owned_ray_processes": matches,
+    }
+
+
 def run_repetition(rendered: dict[str, Any], phase: str, repetition: int, root: Path, splits: dict[str, Path], timeout: int) -> dict[str, Any]:
     rep_root = root / "runs" / phase / f"rep{repetition}"
     output = rep_root / "output"
@@ -174,12 +209,13 @@ def run_repetition(rendered: dict[str, Any], phase: str, repetition: int, root: 
                 os.killpg(process.pid, signal.SIGKILL)
                 returncode = process.wait()
         sampler.join(timeout=5)
-    subprocess.run(["ray", "stop", "--force"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
     metrics, metric_files = read_metrics(output)
     checkpoint_files = [str(path) for path in (output / "checkpoints").glob("**/*") if path.is_file()]
     generations = [str(path) for path in (output / "logs" / "validation").glob("**/*.jsonl")]
+    generation_count, truncated_count = generation_summary(generations)
+    cleanup = owned_cleanup(output, process)
     elapsed = time.time() - start
-    status = "passed" if returncode == 0 and REQUIRED_METRICS <= metrics.keys() and not checkpoint_files else "failed"
+    status = "passed" if returncode == 0 and REQUIRED_METRICS <= metrics.keys() and not checkpoint_files and cleanup["resources_released"] else "failed"
     value = {
         "schema_version": 1,
         "phase": phase,
@@ -193,7 +229,14 @@ def run_repetition(rendered: dict[str, Any], phase: str, repetition: int, root: 
         "formal_checkpoint_files": checkpoint_files,
         "metrics_files": metric_files,
         "validation_generation_files": generations,
-        "metrics": {key: metrics[key] for key in sorted(REQUIRED_METRICS & metrics.keys())},
+        "metrics": {
+            "validation_elapsed_seconds": metrics.get("timing_s/testing"),
+            **{key: metrics[key] for key in sorted(REQUIRED_METRICS & metrics.keys())},
+        },
+        "resources": json.loads(resources_path.read_text()) if resources_path.is_file() else None,
+        "cleanup": cleanup,
+        "generation_count": generation_count,
+        "truncated_count": truncated_count,
         "score_complete": REQUIRED_METRICS <= metrics.keys(),
         "stage3_proxy_kind": env_delta.get("CALIBRATION_STAGE3_PROXY_KIND") if phase == "stage3" else None,
     }
@@ -247,34 +290,45 @@ def main() -> int:
     }
     write_json(run_root / "probe-spec.json", spec)
     started = time.time()
-    results = []
-    failures = []
+    phase_reports = []
     deadline = int(rendered["calibration_policy"]["validation_deadline_seconds"])
     for phase in phases:
+        repetitions = []
         for repetition in range(1, args.repetitions + 1):
             result = run_repetition(rendered, phase, repetition, run_root, splits, deadline)
-            results.append(result)
+            repetitions.append(result)
             if result["status"] != "passed":
-                failures.append({"code": "phase_repetition_failed", "message": "calibration repetition failed", "context": {"phase": phase, "repetition": repetition}})
                 break
-        if failures:
+        phase_reports.append({"phase": phase, "profile_hash": args.resource_profile_sha256, "repetitions": repetitions})
+        if repetitions[-1]["status"] != "passed":
             break
-    report = {
+    candidate = {
         "schema_version": 1,
         "result_type": "bounded_calibration_probe",
-        "status": "passed" if not failures and len(results) == len(phases) * args.repetitions else "failed",
+        "authorization_scope": "full",
+        "evidence_class": "infrastructure_calibration",
+        "decision": "candidate",
+        "manifest_sha256": args.manifest_sha256,
+        "contract": {"validation_deadline_seconds": deadline},
+        "phases": phase_reports,
         "started_at_epoch": started,
         "completed_at_epoch": time.time(),
         "elapsed_seconds": time.time() - started,
         "probe_spec": spec,
-        "phase_repetitions": results,
-        "failures": failures,
-        "cleanup": {"ray_stopped": subprocess.run(["ray", "status"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode != 0},
     }
+    write_json(run_root / "probe-candidate.json", candidate)
+    checked = subprocess.run(
+        [sys.executable, str(ROOT / "scripts/check_code_task_operational_calibration.py"), "--report", str(run_root / "probe-candidate.json"), "--manifest", str(args.manifest)],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    verification = json.loads(checked.stdout)
+    report = {**candidate, "status": "passed" if verification["ok"] else "failed", "verification": verification, "failures": verification["failures"]}
     write_json(run_root / "probe-report.json", report)
     write_json(args.scratch_root / "latest-probe.json", {"run_root": str(run_root), "report": str(run_root / "probe-report.json"), "status": report["status"]})
-    print(json.dumps({"ok": report["status"] == "passed", "probe_report": str(run_root / "probe-report.json")}, sort_keys=True))
-    return 0 if report["status"] == "passed" else 1
+    print(json.dumps({"ok": verification["ok"], "probe_report": str(run_root / "probe-report.json")}, sort_keys=True))
+    return 0 if verification["ok"] else 1
 
 
 if __name__ == "__main__":

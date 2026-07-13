@@ -71,11 +71,11 @@ def load_manifest(path: Path) -> dict[str, Any]:
 
 
 def expected_phases(manifest: dict[str, Any], authorization_scope: str) -> list[str]:
-    phases = list(manifest["calibration_workloads"])
+    phases = [item["phase"] for item in manifest["runs"]]
     if authorization_scope == "full":
         return phases
     if authorization_scope == "stage12_producer":
-        return phases[:2]
+        return ["stage1", "stage2"]
     raise ValueError(f"unsupported authorization scope: {authorization_scope}")
 
 
@@ -92,8 +92,12 @@ def validate_repetition(result: ValidationResult, phase: str, index: int, repeti
     if not isinstance(resources, dict):
         result.add("resources_missing", "resource evidence is missing", **context)
     cleanup = repetition.get("cleanup")
-    if cleanup is not None and not cleanup.get("resources_released", False):
+    if not isinstance(cleanup, dict) or not cleanup.get("resources_released", False):
         result.add("cleanup_failed", "runtime resources were not released", **context)
+    if repetition.get("truncated_count", 0):
+        result.add("response_truncation", "calibration responses were truncated", count=repetition.get("truncated_count"), **context)
+    if repetition.get("score_complete") is not True:
+        result.add("score_incomplete", "calibration score evidence is incomplete", **context)
 
 
 def check(

@@ -29,11 +29,13 @@ def repetition(status="passed", *, timed_out=False, cleanup=True):
         "metrics": {"validation_elapsed_seconds": 10.0},
         "resources": {"peak_rss_gib": 2.0},
         "cleanup": {"resources_released": cleanup},
+        "score_complete": True,
+        "truncated_count": 0,
     }
 
 
 def report(data):
-    phases = list(data["calibration_workloads"])
+    phases = [item["phase"] for item in data["runs"]]
     return {
         "authorization_scope": "full",
         "evidence_class": "infrastructure_calibration",

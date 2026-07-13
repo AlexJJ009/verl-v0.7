@@ -45,3 +45,12 @@ def test_phase_runner_is_zero_step_val_only_and_cleans_ray():
  assert 'CALIBRATION_TOTAL_TRAINING_STEPS:=0' in text
  assert 'CALIBRATION_OPTIMIZER_ENABLED:=false' in text
  assert 'ray stop --force' in text
+ assert '--temp-dir="$RAY_TMPDIR"' in text
+
+def test_stage3_proxy_is_explicit_and_hash_bound():
+ rendered=json.loads(subprocess.check_output([sys.executable,str(ROOT/'scripts/experiment_manifest.py'),'render',str(ROOT/'recipe/on_policy_wdl_sft/experiment_manifest/stage123.yaml'),'--format','json'],text=True))
+ workload=rendered['calibration_workloads']['stage3']; proxy=workload['calibration_proxy']
+ assert workload['model_sources'][0]['state']=='pending'
+ assert proxy['purpose']=='pending_stage2_handoff_runtime_resource_proxy'
+ assert proxy['rollout_model_parameter_count']==workload['rollout_model_parameter_count_sum']
+ assert len(proxy['artifact_sha256'])==64

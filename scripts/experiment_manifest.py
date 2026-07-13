@@ -128,6 +128,14 @@ def validate_policy_v1(result: dict) -> None:
             _policy_error("parameter_counts", f"{phase}: calibration parameter counts mismatch", phase=phase)
         if workload["log2_rollout_model_parameter_count_sum"] != round(math.log2(sum(counts)), 6):
             _policy_error("parameter_log2", f"{phase}: calibration log2 parameter count mismatch", phase=phase)
+        proxy = workload.get("calibration_proxy")
+        if proxy is not None:
+            if phase != "stage3":
+                _policy_error("calibration_proxy_scope", "calibration proxy is allowed only for Stage3", phase=phase)
+            if proxy["rollout_model_parameter_count"] != workload["rollout_model_parameter_count_sum"]:
+                _policy_error("calibration_proxy_parameter_count", "calibration proxy parameter count mismatch", phase=phase)
+            if artifact_sha256(Path(proxy["path"])) != proxy["artifact_sha256"]:
+                _policy_error("calibration_proxy_hash", "calibration proxy artifact hash mismatch", phase=phase)
         names = [item["name"] for item in workload["datasets"]]
         if names != result["semantics"]["validation_datasets"]:
             _policy_error("dataset_order", f"{phase}: calibration dataset order mismatch", phase=phase, datasets=names)
