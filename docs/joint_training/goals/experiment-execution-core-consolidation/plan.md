@@ -209,13 +209,24 @@ Protected user assets are outside this Goal and must remain unstaged:
 6. Generated final-review prompt, independent AC-01..AC-09 acceptance, ledger update,
    and runtime validation.
 
-Milestones are hard ordered. A later milestone cannot start with an unresolved blocker.
+Milestones are hard ordered. Starting this Goal authorizes the complete Milestone 1-6
+execution envelope, not one isolated milestone. After a milestone's checks and required
+independent review pass and runtime validation succeeds, the implementer automatically
+records completion and starts the next milestone without requesting user approval.
+A later milestone cannot start with an unresolved blocker.
 
 ## Runtime Contract
 
 - Implementation is unauthorized until Plan v1 validates, an independent reviewer
-  returns `READY`, that verdict is appended to `runtime.jsonl`, and runtime validates.
-- Only the authorized milestone may be implemented.
+  returns `READY`, that verdict is appended to `runtime.jsonl`, runtime validates, and
+  the user explicitly starts this Goal.
+- One user start authorizes autonomous execution of Milestones 1-6. It does not
+  authorize deferred Goals, GPU work, real external services, protected-file changes,
+  or a changed Definition of Done.
+- The implementer proceeds serially and automatically transitions after the current
+  milestone's checks and required independent review pass and runtime validates.
+- Routine `IN_SCOPE` findings, implementation choices, test failures, and compatibility
+  work are resolved autonomously inside the frozen ACs; they do not require user input.
 - Validate runtime before implementation, after finding classification, before a
   milestone transition, and before acceptance.
 - Classify findings before acting: `IN_SCOPE`, `DEFERRED`, `CONTRADICTION`, or
@@ -261,6 +272,10 @@ Milestones are hard ordered. A later milestone cannot start with an unresolved b
 - Deletion removes accepted behavior without a replacement behavior test.
 - Compatibility would silently accept stale evidence as current authority.
 - GPU, real external service, or protected-file modification appears necessary.
+
+Only these stop conditions require user input. A normal milestone boundary, passing
+review, routine in-scope defect, or choice among implementations consistent with the
+frozen ACs is not a human approval gate.
 
 ## Deferred Serial Goals
 
