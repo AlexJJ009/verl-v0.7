@@ -40,3 +40,6 @@
 {"event":"FINDING_FIX_PROPOSED","finding_id":"F-M3-01","fix":"Register dynamically loaded execution core modules in sys.modules before exec_module","seq":40,"time":"2026-07-13T05:25:45.009288Z"}
 {"event":"FINDING_REVIEWED","finding_id":"F-M3-01","review":"focused-test-rerun","seq":41,"summary":"AC-03 fake adapter/clock/state suite passes 10/10","time":"2026-07-13T05:26:13.955569Z","verdict":"PASS"}
 {"event":"FINDING_CLOSED","finding_id":"F-M3-01","resolution":"Dynamic loaders register modules before dataclass execution","review":"focused-test-rerun","seq":42,"time":"2026-07-13T05:26:14.002331Z"}
+{"event":"FINDING_OPENED","finding_id":"F-M3-02","seq":43,"source":"review:milestone-3-review-01","summary":"calibration_outcomes exposes free-form ValueError text and tests match messages instead of stable structured fields","time":"2026-07-13T05:37:56.670797Z"}
+{"classification":"IN_SCOPE","event":"FINDING_CLASSIFIED","finding_id":"F-M3-02","reason":"AC-04 explicitly requires validators and tests to use stable code, message, and context fields rather than concatenated strings","seq":44,"time":"2026-07-13T05:37:56.714549Z"}
+{"event":"FINDING_FIX_PROPOSED","finding_id":"F-M3-02","fix":"Introduce OutcomeValidationError with stable code/message/context and update outcomes tests to assert code/context only","seq":45,"time":"2026-07-13T05:38:31.013246Z"}

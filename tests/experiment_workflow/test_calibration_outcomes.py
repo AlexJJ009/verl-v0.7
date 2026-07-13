@@ -70,28 +70,31 @@ def test_outcomes_use_nearest_rank_and_submitted_denominator(tmp_path):
 
 
 @pytest.mark.parametrize(
-    ("rows", "message"),
+    ("rows", "code"),
     [
-        ([row("a", 10, False, "unknown", 1)], "expected 3 submitted"),
-        ([row("a", 10, False, "unknown", 1)] * 3, "duplicate stable UIDs"),
-        ([row("a", 10, False, "unknown", 1), row("b", 20, True, "stop", 1), row("c", 30, True, "stop", 1)], "incomplete response_finish_reason"),
-        ([row("a", 10, False, "stop", 1), row("b", 20, True, "stop", 1), row("c", 30, True, "stop", 1)], "stop finish reason without EOS"),
+        ([row("a", 10, False, "unknown", 1)], "submitted_row_count"),
+        ([row("a", 10, False, "unknown", 1)] * 3, "stable_uid"),
+        ([row("a", 10, False, "unknown", 1), row("b", 20, True, "stop", 1), row("c", 30, True, "stop", 1)], "finish_reason"),
+        ([row("a", 10, False, "stop", 1), row("b", 20, True, "stop", 1), row("c", 30, True, "stop", 1)], "stop_without_eos"),
     ],
 )
-def test_outcomes_fail_closed_on_incomplete_evidence(tmp_path, rows, message):
+def test_outcomes_fail_closed_on_incomplete_evidence(tmp_path, rows, code):
     module = load()
     path = tmp_path / "generation.jsonl"
     write(path, rows)
-    with pytest.raises(ValueError, match=message):
+    with pytest.raises(module.OutcomeValidationError) as raised:
         module.load_generation_outcomes(path, workload())
+    assert raised.value.code == code
+    assert raised.value.context["path"] == str(path)
 
 
 def test_outcomes_reject_wrong_uid_order_and_dataset_identity(tmp_path):
     module = load(); path = tmp_path / "generation.jsonl"
     rows = [row("b", 10, True, "stop", 1), row("a", 20, True, "stop", 1), row("c", 30, True, "stop", 1)]
     write(path, rows)
-    with pytest.raises(ValueError, match="ordered eligible UID hash mismatch"):
+    with pytest.raises(module.OutcomeValidationError) as raised:
         module.load_generation_outcomes(path, workload())
+    assert raised.value.code == "uid_order_hash"
 
 
 def test_outcomes_record_exact_truncation_counts_by_dataset(tmp_path):
@@ -108,5 +111,7 @@ def test_outcomes_record_exact_truncation_counts_by_dataset(tmp_path):
     }
     rows[0]["data_source"] = "unknown"
     write(path, rows)
-    with pytest.raises(ValueError, match="unknown validation data_source"):
+    with pytest.raises(module.OutcomeValidationError) as raised:
         module.load_generation_outcomes(path, workload())
+    assert raised.value.code == "data_source"
+    assert raised.value.context["data_source"] == "unknown"

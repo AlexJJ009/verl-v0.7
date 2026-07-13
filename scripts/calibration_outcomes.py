@@ -20,13 +20,25 @@ CONTINUOUS_OUTCOMES = (
 RATE_OUTCOMES = ("truncation_rate", "scorer_timeout_rate")
 
 
+class OutcomeValidationError(ValueError):
+    def __init__(self, code: str, message: str, **context: object) -> None:
+        super().__init__(message)
+        self.code = code
+        self.message = message
+        self.context = context
+
+
+def invalid(code: str, message: str, **context: object) -> None:
+    raise OutcomeValidationError(code, message, **context)
+
+
 def canonical_json(value: object) -> bytes:
     return (json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n").encode()
 
 
 def nearest_rank(values: list[float], quantile: float) -> float:
     if not values or not 0 < quantile <= 1:
-        raise ValueError("nearest-rank requires values and 0 < quantile <= 1")
+        invalid("nearest_rank", "nearest-rank requires values and 0 < quantile <= 1", value_count=len(values), quantile=quantile)
     ordered = sorted(values)
     return ordered[math.ceil(quantile * len(ordered)) - 1]
 
@@ -36,22 +48,22 @@ def load_generation_outcomes(path: Path, workload: dict) -> dict:
     eligibility = workload["validation_eligibility"]
     expected = int(eligibility["submitted_prompt_count"])
     if len(rows) != expected:
-        raise ValueError(f"{path}: expected {expected} submitted rows, found {len(rows)}")
+        invalid("submitted_row_count", "submitted row count mismatch", path=str(path), expected=expected, actual=len(rows))
     uids = [row.get("uid") for row in rows]
     if any(not isinstance(uid, str) or not uid for uid in uids) or len(set(uids)) != len(uids):
-        raise ValueError(f"{path}: missing or duplicate stable UIDs")
+        invalid("stable_uid", "missing or duplicate stable UIDs", path=str(path))
     expected_names = [item["name"] for item in workload["datasets"]]
     by_dataset = {name: [] for name in expected_names}
     rows_by_dataset = {name: [] for name in expected_names}
     for row in rows:
         name = row.get("data_source")
         if name not in by_dataset:
-            raise ValueError(f"{path}: unknown validation data_source: {name!r}")
+            invalid("data_source", "unknown validation data source", path=str(path), data_source=name)
         by_dataset[name].append(row["uid"])
         rows_by_dataset[name].append(row)
     actual_counts = {name: len(by_dataset[name]) for name in expected_names}
     if actual_counts != eligibility["per_dataset_eligible_counts"]:
-        raise ValueError(f"{path}: eligible UID dataset counts mismatch")
+        invalid("dataset_counts", "eligible UID dataset counts mismatch", path=str(path), expected=eligibility["per_dataset_eligible_counts"], actual=actual_counts)
     uid_doc = {
         "schema_version": 1,
         "datasets": [
@@ -61,29 +73,29 @@ def load_generation_outcomes(path: Path, workload: dict) -> dict:
     }
     actual_uid_sha256 = hashlib.sha256(canonical_json(uid_doc)).hexdigest()
     if actual_uid_sha256 != eligibility["ordered_eligible_uid_sha256"]:
-        raise ValueError(f"{path}: ordered eligible UID hash mismatch")
+        invalid("uid_order_hash", "ordered eligible UID hash mismatch", path=str(path), expected=eligibility["ordered_eligible_uid_sha256"], actual=actual_uid_sha256)
 
     counts = [row.get("response_token_count") for row in rows]
     eos = [row.get("response_eos_present") for row in rows]
     reasons = [row.get("response_finish_reason") for row in rows]
     if any(not isinstance(value, int) or isinstance(value, bool) or value < 0 for value in counts):
-        raise ValueError(f"{path}: invalid response_token_count")
+        invalid("response_token_count", "invalid response token count", path=str(path))
     if any(not isinstance(value, bool) for value in eos):
-        raise ValueError(f"{path}: invalid response_eos_present")
+        invalid("response_eos", "invalid response EOS evidence", path=str(path))
     if any(value not in {"stop", "length"} for value in reasons):
-        raise ValueError(f"{path}: incomplete response_finish_reason telemetry")
+        invalid("finish_reason", "incomplete response finish reason telemetry", path=str(path))
     for count, has_eos, reason in zip(counts, eos, reasons, strict=True):
         if reason == "stop" and not has_eos:
-            raise ValueError(f"{path}: stop finish reason without EOS")
+            invalid("stop_without_eos", "stop finish reason without EOS", path=str(path))
         if reason == "length" and (has_eos or count != 8192):
-            raise ValueError(f"{path}: invalid length finish evidence")
+            invalid("length_finish", "invalid length finish evidence", path=str(path), token_count=count, has_eos=has_eos)
 
     latencies = [row.get("code_reward_latency_seconds") for row in rows]
     timeouts = [row.get("code_reward_timeout") for row in rows]
     if any(not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value) or value < 0 for value in latencies):
-        raise ValueError(f"{path}: invalid scorer latency")
+        invalid("scorer_latency", "invalid scorer latency", path=str(path))
     if any(value not in (0, 1, False, True) for value in timeouts):
-        raise ValueError(f"{path}: invalid scorer timeout")
+        invalid("scorer_timeout", "invalid scorer timeout", path=str(path))
 
     truncation_by_dataset = {}
     for name in expected_names:
