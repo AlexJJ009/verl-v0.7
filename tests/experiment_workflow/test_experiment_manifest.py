@@ -61,6 +61,27 @@ def test_stage3_pending_producer_final_step_drift_is_rejected():
         tool.normalize(data)
 
 
+def test_pending_producer_follows_mutated_manifest_final_step_without_source_constant():
+    tool = module(); data = tool.load(MANIFEST)
+    producer_run = next(item for item in data["runs"] if item["id"] == "frac25-stage2")
+    producer_run["final_step"] = 21
+    source = data["calibration_workloads"]["stage3"]["model_sources"][0]
+    source["producer"]["final_step"] = 21
+    assert tool.normalize(data)["runs"][0]["final_step"] == 21
+
+
+def test_manifest_policy_errors_have_stable_code_message_and_context():
+    tool = module(); data = tool.load(MANIFEST)
+    data["runs"][1]["source"]["run_id"] = "missing"
+    with pytest.raises(tool.ManifestPolicyError) as raised:
+        tool.normalize(data)
+    assert raised.value.as_dict() == {
+        "code": "missing_source_run",
+        "message": "missing source run for frac25-stage3",
+        "context": {"run_id": "frac25-stage3", "source_run_id": "missing"},
+    }
+
+
 def test_stage1_base_substitution_and_provenance_drift_are_rejected():
     tool = module(); data = tool.load(MANIFEST)
     source = data["calibration_workloads"]["stage1"]["model_sources"][0]

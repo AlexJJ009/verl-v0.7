@@ -5,6 +5,7 @@ import numpy as np
 from pathlib import Path
 
 from verl.trainer.ppo.ray_trainer import (
+    RecordingValidationObserver,
     RayPPOTrainer,
     build_response_telemetry,
     build_validation_generation_samples,
@@ -145,6 +146,21 @@ def test_validation_identity_prefers_stable_source_uid_when_present():
         }
     )
     assert identities.tolist() == ["source-a", "source-b"]
+
+
+def test_recording_validation_observer_preserves_stable_identity_and_events():
+    observer = RecordingValidationObserver()
+    identities = validation_sample_identities(
+        {"uid": np.array(["request-a"]), "source_uid": np.array(["source-a"])}
+    )
+    observer.record("batch_started", sample_identities=identities.tolist())
+    observer.record("generation_complete", batch_index=1, total_batches=1)
+    observer.record("metrics_complete", elapsed_seconds=1.25)
+    assert observer.events == [
+        {"event": "batch_started", "sample_identities": ["source-a"]},
+        {"event": "generation_complete", "batch_index": 1, "total_batches": 1},
+        {"event": "metrics_complete", "elapsed_seconds": 1.25},
+    ]
 
 
 def test_maybe_log_val_generations_prints_subset_and_logs_full_tracking(capsys):

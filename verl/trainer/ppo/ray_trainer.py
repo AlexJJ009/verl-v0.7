@@ -88,6 +88,24 @@ TEST_STEP_LOG_PREFIXES = (
     "val-aux/",
 )
 
+
+class ValidationObserver:
+    """Minimal observer for generic validation lifecycle events."""
+
+    def record(self, event: str, **context: Any) -> None:
+        pass
+
+
+class RecordingValidationObserver(ValidationObserver):
+    def __init__(self) -> None:
+        self.events: list[dict[str, Any]] = []
+
+    def record(self, event: str, **context: Any) -> None:
+        self.events.append({"event": event, **context})
+
+
+_NULL_VALIDATION_OBSERVER = ValidationObserver()
+
 WDL_SFT_REWARD_LABEL_LOSS_MODES = {"wdl_sft", "wdl_sft_is"}
 WDL_GROUP_ADV_IS_LOSS_MODE = "wdl_group_adv_is"
 
@@ -549,6 +567,7 @@ class RayPPOTrainer:
         collate_fn=None,
         train_sampler: Optional[Sampler] = None,
         device_name=None,
+        validation_observer: ValidationObserver | None = None,
     ):
         """
         Initialize distributed PPO trainer with Ray backend.
@@ -572,6 +591,7 @@ class RayPPOTrainer:
         self.tokenizer = tokenizer
         self.processor = processor
         self.config = config
+        self.validation_observer = validation_observer or _NULL_VALIDATION_OBSERVER
 
         self.hybrid_engine = config.actor_rollout_ref.hybrid_engine
         assert self.hybrid_engine, "Currently, only support hybrid engine"
@@ -893,43 +913,12 @@ class RayPPOTrainer:
         sample_uids = []
         sample_source_uids = []
         sample_data_sources = []
-        validation_timeline_file = os.environ.get("CALIBRATION_VALIDATION_TIMELINE_FILE")
-
-        def record_validation_event(event: str, **fields: Any) -> None:
-            if not validation_timeline_file:
-                return
-            timeline_path = os.path.abspath(validation_timeline_file)
-            os.makedirs(os.path.dirname(timeline_path), exist_ok=True)
-            row = {"schema_version": 1, "event": event, "monotonic_seconds": time.monotonic(), **fields}
-            with open(timeline_path, "a", encoding="utf-8") as handle:
-                handle.write(json.dumps(row, sort_keys=True) + "\n")
+        validation_observer = getattr(self, "validation_observer", _NULL_VALIDATION_OBSERVER)
 
         total_val_batches = len(self.val_dataloader)
         for batch_idx, test_data in enumerate(self.val_dataloader, start=1):
             test_batch = DataProto.from_single_dict(test_data)
             prompt_count = len(test_batch)
-            validation_ready_file = os.environ.get("CALIBRATION_VALIDATION_READY_FILE")
-            if validation_ready_file and batch_idx == 1:
-                ready_path = os.path.abspath(validation_ready_file)
-                os.makedirs(os.path.dirname(ready_path), exist_ok=True)
-                tmp_path = f"{ready_path}.tmp.{os.getpid()}"
-                with open(tmp_path, "w", encoding="utf-8") as handle:
-                    json.dump(
-                        {
-                            "schema_version": 1,
-                            "prompt_count": prompt_count,
-                            "total_validation_batches": total_val_batches,
-                        },
-                        handle,
-                        sort_keys=True,
-                    )
-                    handle.write("\n")
-                os.replace(tmp_path, ready_path)
-                record_validation_event(
-                    "validation_ready",
-                    prompt_count=prompt_count,
-                    total_validation_batches=total_val_batches,
-                )
             print(
                 f"validation batch {batch_idx}/{total_val_batches} start: "
                 f"prompts={prompt_count}, repeat_times={self.config.actor_rollout_ref.rollout.val_kwargs.n}, "
@@ -940,6 +929,15 @@ class RayPPOTrainer:
                 test_batch.non_tensor_batch["uid"] = np.array(
                     [str(uuid.uuid4()) for _ in range(len(test_batch.batch))], dtype=object
                 )
+            validation_observer.record(
+                "batch_started",
+                batch_index=batch_idx,
+                total_batches=total_val_batches,
+                sample_identities=[
+                    _normalize_validation_generation_value(identity)
+                    for identity in validation_sample_identities(test_batch.non_tensor_batch)
+                ],
+            )
 
             # repeat test batch
             test_batch = test_batch.repeat(
@@ -976,10 +974,10 @@ class RayPPOTrainer:
             test_output_gen_batch = unpad_dataproto(test_output_gen_batch_padded, pad_size=pad_size)
 
             print(f"validation batch {batch_idx}/{total_val_batches} generation end")
-            record_validation_event(
+            validation_observer.record(
                 "generation_complete",
                 batch_index=batch_idx,
-                total_validation_batches=total_val_batches,
+                total_batches=total_val_batches,
             )
 
             test_batch = test_batch.union(test_output_gen_batch)
@@ -2007,23 +2005,10 @@ class RayPPOTrainer:
                 val_metrics = self._validate()
             assert val_metrics, f"{val_metrics=}"
             val_metrics["timing_s/testing"] = initial_validation_timing["testing"]
-            timeline_file = os.environ.get("CALIBRATION_VALIDATION_TIMELINE_FILE")
-            if timeline_file:
-                timeline_path = os.path.abspath(timeline_file)
-                os.makedirs(os.path.dirname(timeline_path), exist_ok=True)
-                with open(timeline_path, "a", encoding="utf-8") as handle:
-                    handle.write(
-                        json.dumps(
-                            {
-                                "schema_version": 1,
-                                "event": "metrics_complete",
-                                "monotonic_seconds": time.monotonic(),
-                                "validation_elapsed_seconds": initial_validation_timing["testing"],
-                            },
-                            sort_keys=True,
-                        )
-                        + "\n"
-                    )
+            getattr(self, "validation_observer", _NULL_VALIDATION_OBSERVER).record(
+                "metrics_complete",
+                elapsed_seconds=initial_validation_timing["testing"],
+            )
             pprint(f"Initial validation metrics: {val_metrics}")
             logger.log(data=val_metrics, step=self.global_steps)
             if self.config.trainer.get("val_only", False):

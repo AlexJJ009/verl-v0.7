@@ -35,92 +35,116 @@ def load(path: Path) -> dict:
     return data
 
 
-def normalize(data: dict) -> dict:
+class ManifestPolicyError(ValueError):
+    def __init__(self, code: str, message: str, **context: object) -> None:
+        super().__init__(message)
+        self.code = code
+        self.message = message
+        self.context = context
+
+    def as_dict(self) -> dict[str, object]:
+        return {"code": self.code, "message": self.message, "context": self.context}
+
+
+def _policy_error(code: str, message: str, **context: object) -> None:
+    raise ManifestPolicyError(code, message, **context)
+
+
+def canonicalize(data: dict) -> dict:
     result = json.loads(json.dumps(data, sort_keys=True))
     result["runs"] = sorted(result["runs"], key=lambda item: item["order"])
-    prefixes = [item["run_prefix"] for item in result["runs"]]
-    ids = [item["id"] for item in result["runs"]]
-    tmux = [item["tmux_name"] for item in result["runs"]]
-    for label, values in (("run_prefix", prefixes), ("id", ids), ("tmux_name", tmux)):
+    for label in ("run_prefix", "id", "tmux_name"):
+        values = [item[label] for item in result["runs"]]
         if len(values) != len(set(values)):
-            raise ValueError(f"duplicate {label}")
-    known = set(ids)
+            _policy_error("duplicate_identity", f"duplicate {label}", field=label)
+    return result
+
+
+def validate_policy_v1(result: dict) -> None:
+    runs_by_id = {item["id"]: item for item in result["runs"]}
+    runs_by_phase: dict[str, list[dict]] = {}
     for item in result["runs"]:
-        if item["phase"] == "stage3" and item["source"].get("run_id") not in known:
-            raise ValueError(f"missing source run for {item['id']}")
+        runs_by_phase.setdefault(item["phase"], []).append(item)
+        source_run_id = item.get("source", {}).get("run_id")
+        if source_run_id is not None and source_run_id not in runs_by_id:
+            _policy_error("missing_source_run", f"missing source run for {item['id']}", run_id=item["id"], source_run_id=source_run_id)
         if not item["artifact_dir"].startswith("/data-2/"):
-            raise ValueError(f"artifact_dir must use /data-2: {item['id']}")
+            _policy_error("artifact_mount", f"artifact_dir must use /data-2: {item['id']}", run_id=item["id"], artifact_dir=item["artifact_dir"])
+
     workloads = result["calibration_workloads"]
     artifact_sha256, file_sha256 = _load_workload_hashing()
-    expected = {
-        "stage1": ("sft_checkpoint", ["rollout"], 1),
-        "stage2": ("fixed_model2_joint_rollout", ["model1", "model2"], 2),
-        "stage3": ("stage2_model2_handoff", ["rollout"], 1),
-    }
     shared_eligibility = None
-    for phase, (provenance, roles, count) in expected.items():
-        workload = workloads[phase]
-        if workload["phase"] != phase or workload["model_provenance_class"] != provenance:
-            raise ValueError(f"{phase}: calibration workload identity mismatch")
-        if [item["role"] for item in workload["model_sources"]] != roles:
-            raise ValueError(f"{phase}: calibration model source roles mismatch")
-        for source in workload["model_sources"]:
+    for phase, workload in workloads.items():
+        if workload["phase"] != phase:
+            _policy_error("workload_phase", f"{phase}: calibration workload identity mismatch", phase=phase, declared_phase=workload["phase"])
+        sources = workload["model_sources"]
+        for source in sources:
             if source["state"] == "pending":
-                if phase != "stage3":
-                    raise ValueError(f"{phase}: pending model source is forbidden")
-                producer = source["producer"]
-                run = next((item for item in result["runs"] if item["id"] == producer["run_id"]), None)
-                if run is None or run["phase"] != "stage2" or run["final_step"] != producer["final_step"]:
-                    raise ValueError("stage3: pending producer identity mismatch")
-                stage3_run = next((item for item in result["runs"] if item["phase"] == "stage3" and item["source"].get("run_id") == run["id"]), None)
-                if stage3_run is None or producer["provenance_path"] != stage3_run["provenance_file"]:
-                    raise ValueError("stage3: pending provenance path mismatch")
-                if source["path"] != producer["output_path"]:
-                    raise ValueError("stage3: pending output path mismatch")
-            elif phase == "stage3":
                 producer = source.get("producer")
+                if not producer:
+                    _policy_error("pending_producer_missing", f"{phase}: pending model source requires producer", phase=phase, role=source["role"])
+                run = runs_by_id.get(producer["run_id"])
+                if run is None or run["final_step"] != producer["final_step"]:
+                    _policy_error("pending_producer_identity", f"{phase}: pending producer identity mismatch", phase=phase, producer=producer)
+                consumers = [item for item in runs_by_phase.get(phase, []) if item.get("source", {}).get("run_id") == run["id"]]
+                if not consumers or all(producer["provenance_path"] != item["provenance_file"] for item in consumers):
+                    _policy_error("pending_provenance_path", f"{phase}: pending provenance path mismatch", phase=phase, producer=producer)
+                if source["path"] != producer["output_path"]:
+                    _policy_error("pending_output_path", f"{phase}: pending output path mismatch", phase=phase, source_path=source["path"], output_path=producer["output_path"])
+            elif any(item.get("source", {}).get("run_id") for item in runs_by_phase.get(phase, [])):
+                producer = source.get("producer")
+                run = runs_by_id.get(producer["run_id"]) if producer else None
                 provenance = source.get("provenance")
-                if not producer or not provenance or producer["final_step"] != 20:
-                    raise ValueError("stage3 materialized source requires current producer binding")
-            elif phase == "stage1":
-                if source["path"] != result["paths"]["stage1_init_model"]:
-                    raise ValueError("stage1: init model path mismatch")
+                if not producer or run is None or not provenance or producer["final_step"] != run["final_step"]:
+                    _policy_error("materialized_producer_binding", f"{phase} materialized source requires current producer binding", phase=phase, producer=producer)
+            if phase == "stage1" and source["path"] != result["paths"]["stage1_init_model"]:
+                _policy_error("stage1_init_path", "stage1: init model path mismatch", source_path=source["path"], manifest_path=result["paths"]["stage1_init_model"])
+            if phase == "stage1":
                 provenance = source.get("provenance")
                 if not provenance or provenance["path"] != result["paths"]["stage1_init_provenance"]:
-                    raise ValueError("stage1: init provenance path mismatch")
+                    _policy_error("stage1_provenance_path", "stage1: init provenance path mismatch", phase=phase)
             if source["state"] == "materialized":
                 path = Path(source["path"])
                 if artifact_sha256(path) != source["artifact_sha256"]:
-                    raise ValueError(f"{phase}: model artifact hash mismatch: {source['role']}")
+                    _policy_error("artifact_hash", f"{phase}: model artifact hash mismatch: {source['role']}", phase=phase, role=source["role"])
                 provenance = source.get("provenance")
                 if provenance is not None and file_sha256(Path(provenance["path"])) != provenance["sha256"]:
-                    raise ValueError(f"{phase}: model provenance hash mismatch: {source['role']}")
+                    _policy_error("provenance_hash", f"{phase}: model provenance hash mismatch: {source['role']}", phase=phase, role=source["role"])
         counts = workload["rollout_model_parameter_counts"]
-        if len(counts) != count or sum(counts) != workload["rollout_model_parameter_count_sum"]:
-            raise ValueError(f"{phase}: calibration parameter counts mismatch")
+        if len(counts) != len(sources) or sum(counts) != workload["rollout_model_parameter_count_sum"]:
+            _policy_error("parameter_counts", f"{phase}: calibration parameter counts mismatch", phase=phase)
         if workload["log2_rollout_model_parameter_count_sum"] != round(math.log2(sum(counts)), 6):
-            raise ValueError(f"{phase}: calibration log2 parameter count mismatch")
+            _policy_error("parameter_log2", f"{phase}: calibration log2 parameter count mismatch", phase=phase)
         names = [item["name"] for item in workload["datasets"]]
         if names != result["semantics"]["validation_datasets"]:
-            raise ValueError(f"{phase}: calibration dataset order mismatch")
+            _policy_error("dataset_order", f"{phase}: calibration dataset order mismatch", phase=phase, datasets=names)
         for dataset in workload["datasets"]:
-            if dataset["sha256"] != result["semantics"]["validation_dataset_hashes"][dataset["name"]]:
-                raise ValueError(f"{phase}: calibration dataset hash mismatch: {dataset['name']}")
+            expected_hash = result["semantics"]["validation_dataset_hashes"].get(dataset["name"])
+            if dataset["sha256"] != expected_hash:
+                _policy_error("dataset_hash", f"{phase}: calibration dataset hash mismatch: {dataset['name']}", phase=phase, dataset=dataset["name"])
             if sum(dataset["difficulty_stratum_counts"].values()) != dataset["row_count"]:
-                raise ValueError(f"{phase}: difficulty stratum count mismatch: {dataset['name']}")
+                _policy_error("dataset_strata", f"{phase}: difficulty stratum count mismatch: {dataset['name']}", phase=phase, dataset=dataset["name"])
         eligibility = workload["validation_eligibility"]
         eligible_counts = eligibility["per_dataset_eligible_counts"]
         if set(eligible_counts) != set(names):
-            raise ValueError(f"{phase}: eligibility dataset identity mismatch")
+            _policy_error("eligibility_datasets", f"{phase}: eligibility dataset identity mismatch", phase=phase)
         if eligibility["submitted_prompt_count"] != sum(eligible_counts.values()):
-            raise ValueError(f"{phase}: submitted prompt count mismatch")
+            _policy_error("submitted_prompt_count", f"{phase}: submitted prompt count mismatch", phase=phase)
         source_counts = {item["name"]: item["row_count"] for item in workload["datasets"]}
         if any(eligible_counts[name] > source_counts[name] for name in names):
-            raise ValueError(f"{phase}: eligible count exceeds source row count")
+            _policy_error("eligible_count", f"{phase}: eligible count exceeds source row count", phase=phase)
         if shared_eligibility is None:
             shared_eligibility = eligibility
         elif eligibility != shared_eligibility:
-            raise ValueError(f"{phase}: validation eligibility differs across phases")
+            _policy_error("eligibility_phase_drift", f"{phase}: validation eligibility differs across phases", phase=phase)
+
+
+def normalize(data: dict) -> dict:
+    result = canonicalize(data)
+    policy_version = result.get("schema_version")
+    if policy_version != 1:
+        _policy_error("unsupported_policy_version", f"unsupported manifest policy version: {policy_version}", policy_version=policy_version)
+    validate_policy_v1(result)
     canonical = json.dumps(result, sort_keys=True, separators=(",", ":")).encode()
     result["manifest_sha256"] = hashlib.sha256(canonical).hexdigest()
     return result
