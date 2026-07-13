@@ -144,7 +144,7 @@ def check(
         if not repetitions:
             result.add("repetitions_missing", "phase has no calibration repetitions", phase=phase)
         for index, repetition in enumerate(repetitions):
-            validate_repetition(result, phase, index, repetition)
+            validate_repetition(result, phase, repetition.get("repetition", index + 1), repetition)
     expected_deadline = manifest.get("calibration_policy", {}).get("validation_deadline_seconds")
     actual_deadline = report.get("contract", {}).get("validation_deadline_seconds")
     if actual_deadline != expected_deadline:

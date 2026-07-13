@@ -85,6 +85,19 @@ def test_repetition_failure_codes_cover_timeout_exit_metrics_and_cleanup():
     }
 
 
+def test_repetition_failure_context_uses_one_based_evidence_identity():
+    checker = module(); data = manifest(); candidate = report(data)
+    candidate["phases"][1]["repetitions"] = [
+        {**repetition("passed"), "repetition": 1},
+        {**repetition("passed"), "repetition": 2},
+        {**repetition("failed", timed_out=True), "repetition": 3},
+    ]
+    result = checker.check(candidate, data)
+    failures = [item for item in result["failures"] if item["code"] in {"repetition_timeout", "repetition_status"}]
+    assert failures and all(item["context"]["phase"] == "stage3" for item in failures)
+    assert all(item["context"]["repetition"] == 3 for item in failures)
+
+
 def test_message_formatting_does_not_change_decision_semantics():
     checker = module()
     first = checker.ValidationResult(); first.add("child_exit", "child failed", returncode=9)
