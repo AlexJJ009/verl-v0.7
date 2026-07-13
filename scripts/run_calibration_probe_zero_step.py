@@ -13,6 +13,7 @@ import sys
 import threading
 import time
 from typing import Any
+import re
 
 ROOT = Path(__file__).resolve().parents[1]
 PHASE_SCRIPT = ROOT / "recipe/on_policy_wdl_sft/code_task/run_code_task_operational_calibration_phase.sh"
@@ -149,7 +150,17 @@ def read_metrics(output: Path) -> tuple[dict[str, Any], list[str]]:
                 continue
             if REQUIRED_METRICS <= data.keys():
                 return data, [str(item) for item in files]
-    return {}, [str(item) for item in files]
+    log_files = sorted((output / "logs").glob("CALIBRATION-*.log"))
+    for path in log_files:
+        text = path.read_text(errors="replace")
+        data: dict[str, Any] = {}
+        for key in REQUIRED_METRICS:
+            matches = re.findall(rf"['\"]{re.escape(key)}['\"]:\s*(-?[0-9]+(?:\.[0-9]+)?)", text)
+            if matches:
+                data[key] = float(matches[-1])
+        if REQUIRED_METRICS <= data.keys():
+            return data, [str(path)]
+    return {}, [str(item) for item in (*files, *log_files)]
 
 
 def generation_summary(paths: list[str]) -> tuple[int, int]:
