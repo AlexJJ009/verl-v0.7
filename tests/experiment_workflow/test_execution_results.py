@@ -68,3 +68,11 @@ def test_launch_renderer_is_deterministic_and_contains_no_secrets(tmp_path: Path
     assert "ALLOW_QWEN3_1P7B_STAGE123_TRAINING=1" in rendered
     assert "frac50" not in rendered.lower()
     assert "token" not in rendered.lower()
+
+
+def test_launch_requires_accepted_bundle(tmp_path: Path, capsys) -> None:
+    tool = module(); path, value = bundle(tool, tmp_path)
+    assert tool.admission_main(["render-launch", "--bundle", str(path), "--repo-host", str(ROOT)]) == 1
+    value["acceptance"] = {"decision": "accepted", "bundle_sha256": value["bundle_sha256"]}
+    path.write_text(json.dumps(value))
+    assert tool.admission_main(["render-launch", "--bundle", str(path), "--repo-host", str(ROOT)]) == 0

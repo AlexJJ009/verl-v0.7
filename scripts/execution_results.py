@@ -225,7 +225,7 @@ def admission_main(argv: list[str]) -> int:
         if expected_hash != actual_hash:
             decision = EvidenceDecision(False, "bundle_hash", "admission bundle hash mismatch", {"expected": expected_hash, "actual": actual_hash})
         else:
-            decision = validate_admission_bundle(bundle, require_accepted=getattr(args, "require_accepted", False))
+            decision = validate_admission_bundle(bundle, require_accepted=args.action == "render-launch" or getattr(args, "require_accepted", False))
         if args.action == "validate":
             print(json.dumps(decision.as_dict(), sort_keys=True))
             return 0 if decision.authorized else 1

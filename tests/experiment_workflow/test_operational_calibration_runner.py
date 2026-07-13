@@ -73,6 +73,7 @@ def test_failed_child_is_structured_and_release_stays_failed(tmp_path: Path) -> 
     tool = module(); state = tool.ExecutionCore(tmp_path, FakeAdapter([7]), FakeClock()).run(spec(tool))
     assert state.status == "failed"
     assert state.failure == {"code": "child_exit", "message": "child process exited unsuccessfully", "context": {"returncode": 7}}
+    assert state.cleanup["resources_released"] is True
 
 
 def test_deadline_terminates_owned_child_and_records_cleanup(tmp_path: Path) -> None:
@@ -126,3 +127,22 @@ def test_frozen_recovery_allows_only_one_qualified_resume() -> None:
     assert tool.recovery_decision(state, spec_value, "checkpoint_available_child_exit", False)["resume"] is False
     state.attempt = 2
     assert tool.recovery_decision(state, spec_value, "host_interruption", True)["resume"] is False
+
+
+def test_terminal_failure_does_not_restart_without_explicit_resume(tmp_path: Path) -> None:
+    tool = module(); adapter = FakeAdapter([7, 0]); core = tool.ExecutionCore(tmp_path, adapter, FakeClock())
+    failed = core.run(spec(tool, "terminal"))
+    assert failed.status == "failed"
+    assert core.run(spec(tool, "terminal")).attempt == 1
+    assert len([call for call in adapter.calls if call[0] == "start"]) == 1
+
+
+def test_policy_loaded_resume_enforces_max_attempts(tmp_path: Path) -> None:
+    tool = module(); policy = tmp_path / "policy.json"
+    policy.write_text(json.dumps({"schema_version": 1, "max_attempts": 2, "resumable_failure_codes": ["host_interruption"]}))
+    assert tool.load_recovery_policy(policy) == (2, ("host_interruption",))
+    adapter = FakeAdapter([0]); core = tool.ExecutionCore(tmp_path, adapter, FakeClock())
+    state = tool.ExecutionState(1, "recover", "failed", 1, failure=tool.failure("host_interruption", "lost host"), max_attempts=2)
+    tool.atomic_write(tmp_path / "recover.json", tool.asdict(state))
+    recovered = core.resume(tool.RunSpec("recover", ["fake", "command"], 2, env={"FIXTURE": "yes"}, max_attempts=2, resumable_failure_codes=("host_interruption",)))
+    assert recovered.status == "succeeded" and recovered.attempt == 2

@@ -142,6 +142,18 @@ def recovery_decision(state: ExecutionState, spec: RunSpec, failure_code: str, c
     }
 
 
+def load_recovery_policy(path: Path | None) -> tuple[int, tuple[str, ...]]:
+    if path is None:
+        return 1, ()
+    value = json.loads(path.read_text())
+    codes = value.get("resumable_failure_codes")
+    if value.get("schema_version") != 1 or not isinstance(value.get("max_attempts"), int):
+        raise ValueError("unsupported recovery policy")
+    if value["max_attempts"] < 1 or not isinstance(codes, list) or not all(isinstance(item, str) for item in codes):
+        raise ValueError("invalid recovery policy")
+    return value["max_attempts"], tuple(codes)
+
+
 class ExecutionCore:
     def __init__(self, state_root: Path, adapter: ChildAdapter, clock: Clock | None = None) -> None:
         self.state_root = state_root
@@ -170,7 +182,7 @@ class ExecutionCore:
 
     def run(self, spec: RunSpec) -> ExecutionState:
         state = load_state(self.state_path(spec.run_id), spec.run_id)
-        if state.status == "succeeded":
+        if state.status in TERMINAL_STATES:
             return state
         if state.status == "running" and state.child_id is not None:
             return self.resume(spec, state)
@@ -195,7 +207,17 @@ class ExecutionCore:
     def resume(self, spec: RunSpec, state: ExecutionState | None = None) -> ExecutionState:
         state = state or load_state(self.state_path(spec.run_id), spec.run_id)
         if state.status in TERMINAL_STATES:
-            return state
+            failure_code = (state.failure or {}).get("code", "")
+            checkpoint_available = failure_code == "checkpoint_available_child_exit"
+            decision = recovery_decision(state, spec, failure_code, checkpoint_available)
+            if not decision["resume"]:
+                state.transitions.append({"from": state.status, "to": state.status, "at": self.clock.now(), "recovery": decision})
+                self.persist(state)
+                return state
+            state.resume_from_checkpoint = decision["resume_from_checkpoint"]
+            transition(state, "pending", self.clock.now(), child_id=None, completed_at=None, cleanup=None)
+            self.persist(state)
+            return self.run(spec)
         if state.status != "running" or state.child_id is None or state.deadline_at is None:
             transition(
                 state,
@@ -213,11 +235,14 @@ class ExecutionCore:
                 if returncode == 0:
                     transition(state, "succeeded", now, completed_at=now)
                 else:
+                    cleanup = self.adapter.terminate(state.child_id, spec.cleanup_grace_seconds)
+                    status = "failed" if cleanup.get("resources_released") else "cleanup_failed"
                     transition(
                         state,
-                        "failed",
+                        status,
                         now,
                         completed_at=now,
+                        cleanup=cleanup,
                         failure=failure("child_exit", "child process exited unsuccessfully", returncode=returncode),
                     )
                 self.persist(state)
@@ -252,6 +277,7 @@ def main() -> int:
     parser.add_argument("--state-root", type=Path, default=Path(os.environ.get("CALIBRATION_STATE_ROOT", "/data-1/tmp/verl_agent_scratch/experiment_workflow/state")))
     parser.add_argument("--timeout-seconds", type=float, default=float(os.environ.get("CALIBRATION_DEADLINE_SECONDS", "1800")))
     parser.add_argument("--command-json", default=os.environ.get("CALIBRATION_CHILD_COMMAND_JSON"))
+    parser.add_argument("--recovery-policy", type=Path)
     parser.add_argument("--resume", action="store_true")
     args, legacy = parser.parse_known_args()
     command_json = args.command_json
@@ -260,7 +286,8 @@ def main() -> int:
         print(json.dumps({"ok": False, "failure": result}, sort_keys=True))
         return 2
     try:
-        spec = RunSpec(args.run_id, parse_command(command_json), args.timeout_seconds)
+        max_attempts, resumable_codes = load_recovery_policy(args.recovery_policy)
+        spec = RunSpec(args.run_id, parse_command(command_json), args.timeout_seconds, max_attempts=max_attempts, resumable_failure_codes=resumable_codes)
         core = ExecutionCore(args.state_root, SubprocessAdapter())
         state = core.resume(spec) if args.resume else core.run(spec)
     except (OSError, ValueError, json.JSONDecodeError) as exc:
