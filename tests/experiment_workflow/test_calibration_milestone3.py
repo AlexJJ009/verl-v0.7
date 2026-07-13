@@ -76,6 +76,15 @@ def test_probe_uses_full_sequential_ray_worker_range():
  assert '"CALIBRATION_RAY_WORKER_PORT_MAX": "21999"' in text
  assert '21099' not in text
 
+def test_probe_reaps_adopted_ray_descendants(monkeypatch):
+ m=load('run_calibration_probe_reaper',ROOT/'scripts/run_calibration_probe_zero_step.py')
+ waits=iter([(101,0),(102,0),(0,0)])
+ monkeypatch.setattr(m.os,'waitpid',lambda *_: next(waits))
+ assert m.reap_adopted_children()==2
+ text=(ROOT/'scripts/run_calibration_probe_zero_step.py').read_text()
+ assert 'PR_SET_CHILD_SUBREAPER = 36' in text
+ assert 'enable_child_subreaper()' in text
+
 def test_file_logger_metrics_are_discovered(tmp_path):
  m=load('run_calibration_probe_metrics',ROOT/'scripts/run_calibration_probe_zero_step.py')
  logs=tmp_path/'logs'; logs.mkdir()

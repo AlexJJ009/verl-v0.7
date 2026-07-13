@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import argparse
 import ast
+import ctypes
+import errno
 import hashlib
 import json
 import os
@@ -28,6 +30,7 @@ REQUIRED_METRICS = {
     "val-core/MBPP+/acc/pass@1",
     "val-core/LiveCodeBench/acc/pass@1",
 }
+PR_SET_CHILD_SUBREAPER = 36
 
 
 def sha256(path: Path) -> str:
@@ -41,6 +44,29 @@ def sha256(path: Path) -> str:
 def write_json(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n")
+
+
+def enable_child_subreaper() -> None:
+    libc = ctypes.CDLL(None, use_errno=True)
+    if libc.prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0) != 0:
+        error = ctypes.get_errno()
+        raise OSError(error, os.strerror(error))
+
+
+def reap_adopted_children() -> int:
+    reaped = 0
+    while True:
+        try:
+            child, _ = os.waitpid(-1, os.WNOHANG)
+        except ChildProcessError:
+            return reaped
+        except OSError as error:
+            if error.errno == errno.ECHILD:
+                return reaped
+            raise
+        if child == 0:
+            return reaped
+        reaped += 1
 
 
 def load_manifest(path: Path) -> dict[str, Any]:
@@ -247,7 +273,9 @@ def run_repetition(rendered: dict[str, Any], phase: str, repetition: int, root: 
     checkpoint_files = [str(path) for path in (output / "checkpoints").glob("**/*") if path.is_file()]
     generations = [str(path) for path in (output / "logs" / "validation").glob("**/*.jsonl")]
     generation_count, truncated_count = generation_summary(generations)
+    reaped_descendants = reap_adopted_children()
     cleanup = owned_cleanup(Path(env_delta["CALIBRATION_RAY_TMPDIR"]), process)
+    cleanup["reaped_descendant_count"] = reaped_descendants
     elapsed = time.time() - start
     status = "passed" if returncode == 0 and REQUIRED_METRICS <= metrics.keys() and not checkpoint_files and cleanup["resources_released"] else "failed"
     value = {
@@ -289,6 +317,7 @@ def main() -> int:
     parser.add_argument("--manifest-sha256", required=True)
     parser.add_argument("--resource-profile-sha256", required=True)
     args = parser.parse_args()
+    enable_child_subreaper()
     phases = args.phases.split(",")
     if phases != ["stage2", "stage3"]:
         raise SystemExit("phase_set")
