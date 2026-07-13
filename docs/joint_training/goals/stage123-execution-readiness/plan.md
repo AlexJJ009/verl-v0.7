@@ -60,13 +60,12 @@ started.
 - The manifest, resource profile, passed calibration result, and
   `implementation_tree_sha256` are immutable inputs.
 - `implementation_tree_sha256` always means the predecessor's frozen
-  `stage123-implementation-tree-v1` canonical JSONL algorithm, including the
-  superproject recipe gitlink record and selected recipe blob records. Readiness
-  uses the exact no-glob lists in
-  `config/experiment_execution/stage123_implementation_tree_v1.json`, independently
-  reruns `scripts/implementation_tree_identity.py`, and compares both canonical
-  JSONL and SHA256 before using calibration evidence. A path-list change is a
-  production-tree change and returns to Calibration.
+  `stage123-implementation-boundary-v1` canonical JSONL over the complete Git tree
+  objects for `config/experiment_execution`, `scripts`, and `verl`, plus the entire
+  recipe gitlink commit. Readiness uses the exact boundary manifest at
+  `config/experiment_execution/stage123_implementation_boundary_v1.json`, reruns
+  `scripts/implementation_tree_identity.py`, and compares canonical JSONL and SHA256.
+  A covered-root, recipe-commit, or boundary-manifest change returns to Calibration.
 - Generic admission validation checks shared bindings and result classes without
   hard-coding Stage123 run facts.
 - Experiment-specific deployability policy is versioned and manifest-owned.
@@ -101,9 +100,10 @@ started.
 - Verification command:
   `REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python -m pytest -q tests/experiment_workflow/test_calibration_outcomes.py tests/experiment_workflow/test_experiment_manifest.py`
 - Additional verification command:
-  `REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/implementation_tree_identity.py --repo-root /data-1/code/verl --path-manifest config/experiment_execution/stage123_implementation_tree_v1.json --format json --compare docs/joint_training/goals/calibration-qualification/implementation-tree.jsonl`
+  `REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/implementation_tree_identity.py --repo-root /data-1/code/verl --boundary-manifest config/experiment_execution/stage123_implementation_boundary_v1.json --format json --compare docs/joint_training/goals/calibration-qualification/implementation-tree.jsonl`
 - Expected evidence: exact canonical-tree comparison and mutation failures, including
-  gitlink, recipe blob, executable-mode, symlink, dirty-path, and ordering cases.
+  covered-root tree, recipe gitlink/HEAD, tracked or untracked dirty path, boundary
+  manifest, and ordering cases.
 
 ### AC-02 - Fresh Preflight Covers Deployability
 

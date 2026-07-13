@@ -83,74 +83,48 @@ prediction.
   manifest, and execution-core Python; admission gate; queue; monitor; and phase
   wrappers. Readiness may add Goal evidence and scratch results, but any change to
   this production tree invalidates calibration and requires a new result.
-- Canonical tree hashing is version `stage123-implementation-tree-v1` and is computed
+- Canonical tree hashing is version `stage123-implementation-boundary-v1` and is computed
   by the in-scope command
   `python scripts/implementation_tree_identity.py --repo-root /data-1/code/verl --format json`.
   The command emits UTF-8 JSON Lines with sorted keys and exactly one terminal LF.
-  Records are ordered by bytewise UTF-8 `path` and contain:
-  `{"path":...,"repo":"superproject|recipe","mode":...,"blob_sha1":...}`.
-  For ordinary tracked files, `mode` and `blob_sha1` are taken from
-  `git ls-files --stage`. Symlinks therefore use mode `120000` and hash their link
-  target blob. The recipe submodule adds a first record
-  `{"path":"recipe","repo":"superproject","mode":"160000","gitlink_commit":...}`
-  using the superproject gitlink, followed by the selected recipe production paths
-  using `git -C recipe ls-files --stage`. The command fails unless the checked-out
-  recipe `HEAD` equals the gitlink commit and both repositories are clean for all
-  selected production paths. `implementation_tree_sha256` is SHA256 of the emitted
-  canonical JSONL bytes. The JSONL itself is retained with calibration evidence so
-  a reviewer can independently recompute and diff it.
-- The versioned path inventory is
-  `config/experiment_execution/stage123_implementation_tree_v1.json`. It contains
-  exactly the following lists, uses no glob, directory walk, import discovery, or
-  runtime expansion, and is itself the first superproject path in the hash:
+  Records are ordered by bytewise UTF-8 `path`. The versioned boundary manifest is
+  `config/experiment_execution/stage123_implementation_boundary_v1.json`, is itself
+  inside the `config/experiment_execution` tree, and contains exactly:
 
-```text
-superproject_paths:
-  config/experiment_execution/stage123_implementation_tree_v1.json
-  scripts/implementation_tree_identity.py
-  scripts/render_calibration_probe_command.py
-  scripts/experiment_manifest.py
-  scripts/experiment_execution_core.py
-  scripts/execution_results.py
-  scripts/calibration_outcomes.py
-  scripts/calibration_timing.py
-  scripts/check_code_task_operational_calibration.py
-  scripts/check_calibration_prediction_contract.py
-  scripts/check_code_task_preflight_budget.py
-  scripts/experiment_failure_classifier.py
-  scripts/stage123_manifest_monitor.py
-  scripts/stage123_manifest_release_dispatch.sh
-  scripts/training_result_release_gate.py
-  scripts/code_task_training_release_hook.sh
-  scripts/validation_deadline_controller.py
-  scripts/l40s/run_train.sh
-  verl/trainer/ppo/ray_trainer.py
-
-recipe_paths:
-  on_policy_wdl_sft/experiment_manifest/schema.json
-  on_policy_wdl_sft/experiment_manifest/stage123.yaml
-  on_policy_wdl_sft/code_task/calibration_workload_descriptor.py
-  on_policy_wdl_sft/code_task/qwen3_1p7b_stage123_resource_profile.sh
-  on_policy_wdl_sft/code_task/stage123_manifest_gate.sh
-  on_policy_wdl_sft/code_task/stage123_preflight.py
-  on_policy_wdl_sft/code_task/stage123_gpu_idle_watchdog.py
-  on_policy_wdl_sft/code_task/run_code_task_qwen3_1p7b_stage123_queue.sh
-  on_policy_wdl_sft/code_task/monitor_code_task_qwen3_1p7b_stage123_notify.sh
-  on_policy_wdl_sft/code_task/run_s1_code_qwen3_1p7b_stage123_common.sh
-  on_policy_wdl_sft/code_task/run_s2_code_qwen3_1p7b_stage123_common.sh
-  on_policy_wdl_sft/code_task/run_s3_code_qwen3_1p7b_stage123_common.sh
-  on_policy_wdl_sft/code_task/run_s1_code_base.sh
-  on_policy_wdl_sft/code_task/run_s2_code_kodcode_qwen3_1p7b_instruct_ctx8k_p40_common.sh
-  on_policy_wdl_sft/code_task/run_s2_code_model2_rollout_common.sh
-  on_policy_wdl_sft/ablation_single_model/_common_ablation.sh
-  on_policy_wdl_sft/staged_v1/_run_stage2_model2_rollout_common.sh
+```json
+{
+  "schema_version": 1,
+  "algorithm": "stage123-implementation-boundary-v1",
+  "superproject_tree_roots": [
+    "config/experiment_execution",
+    "scripts",
+    "verl"
+  ],
+  "submodules": [
+    {"path": "recipe", "coverage": "entire_gitlink_commit"}
+  ]
+}
 ```
 
-The identity command validates that its built-in schema/version and the literal
-path lists match this Plan, that every path is tracked in the declared repository,
-and that no duplicate or cross-repository path exists. Adding, removing, renaming,
-or substituting a production path requires a Plan amendment and fresh review before
-calibration; the implementer may not silently change the list to make tests pass.
+  Each superproject record is
+  `{"kind":"git_tree","path":...,"tree_sha1":...}` using
+  `git rev-parse HEAD:<path>`. This covers every tracked descendant recursively,
+  including modes, symlinks, current and future direct/transitive dependencies, and
+  the identity tool itself. The recipe record is
+  `{"gitlink_commit":...,"kind":"gitlink","mode":"160000","path":"recipe"}`
+  from `git ls-files --stage recipe`; the entire recipe commit is covered rather than
+  a selected file subset. The command fails unless recipe `HEAD` equals the gitlink,
+  the boundary manifest matches the literal contract above, and the superproject
+  roots and recipe checkout are clean. Untracked files below a covered root also
+  fail closed. Goal evidence under `docs/joint_training/goals/` is deliberately
+  outside the production boundary, so Readiness may append evidence without
+  invalidating calibration. Runtime image/dependency identity is separately bound
+  by calibration and preflight evidence.
+
+  `implementation_tree_sha256` is SHA256 of the emitted canonical JSONL bytes. The
+  JSONL is retained with calibration evidence for independent recomputation. Any
+  change under a covered root or any recipe commit change requires recalibration;
+  changing the boundary manifest requires formal Plan amendment and fresh review.
 - `calibration_result.json` includes at least: schema/result type, decision,
   manifest SHA256, resource-profile SHA256, implementation-tree SHA256, evidence
   commit, workload identity,
@@ -281,7 +255,7 @@ phase set, and manifest/profile hashes, then emits argv JSON without executing i
 - Verification command:
   `goal-plan-runtime validate-runtime docs/joint_training/goals/calibration-qualification`
 - Additional verification command:
-  `REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/implementation_tree_identity.py --repo-root /data-1/code/verl --path-manifest config/experiment_execution/stage123_implementation_tree_v1.json --format json --output /data-1/tmp/verl_agent_scratch/experiment_workflow/calibration/implementation-tree.jsonl`
+  `REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/implementation_tree_identity.py --repo-root /data-1/code/verl --boundary-manifest config/experiment_execution/stage123_implementation_boundary_v1.json --format json --output /data-1/tmp/verl_agent_scratch/experiment_workflow/calibration/implementation-tree.jsonl`
 - Expected evidence: reviewer-owned recomputation of the canonical JSONL and SHA256,
   `acceptance.md`, `ACCEPTANCE_COMPLETED=PASS`, and runtime validation success.
 
