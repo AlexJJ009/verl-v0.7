@@ -169,7 +169,7 @@ Protected user assets are outside this Goal and must remain unstaged:
   frozen path-class budgets below.
 - Then: redundant active classes are absent; production is at most 3,000 lines from a
   3,763-line baseline, workflow tests are at most 4,000 lines from a 4,694-line
-  baseline, and active reliability review/docs are at most 650 lines from a 1,638-line
+  baseline, and active reliability review/docs are at most 650 lines from a 2,091-line
   baseline. Each class must independently have more deletions than additions, so
   document deletion cannot subsidize production or test growth. Each retained file
   above 300 lines requires an inventory justification.
