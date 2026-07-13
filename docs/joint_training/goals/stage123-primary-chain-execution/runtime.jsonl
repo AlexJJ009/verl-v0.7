@@ -1,0 +1,2 @@
+{"actor":"Codex plan author","event":"PLAN_CREATED","plan_sha256":"60632486d7be7a89689816fc6df4cb11eca8c1fc2064899c994be810cf115722","plan_version":1,"seq":1,"time":"2026-07-13T09:00:51.754857Z"}
+{"actor":"Codex plan author","event":"PLAN_AMENDED","plan_sha256":"8f7393c82b161ec8125030d58b7b13fae18cf6af4ef307aad63c62ede2725ee8","plan_version":1,"reason":"Replace initialization template with serial post-consolidation Goal contract and explicit governance rules","seq":2,"time":"2026-07-13T09:05:09.153125Z"}
