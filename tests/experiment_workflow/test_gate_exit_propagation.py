@@ -15,8 +15,9 @@ def test_socket_deny_layer_blocks_attempted_network():
     result=subprocess.run(['python3','-c','import socket_deny,socket; socket.socket()'],env=env,capture_output=True,text=True)
     assert result.returncode!=0 and 'network disabled' in result.stderr
 
-def test_full_gate_wires_queue_and_monitor_to_same_fresh_scratch():
+def test_full_gate_runs_one_nonduplicative_cpu_suite():
     text=(ROOT/'scripts/check_experiment_workflow_full.sh').read_text()
-    assert 'rm -rf "$SCRATCH"' in text
-    assert 'STAGE123_SCRATCH_ROOT="$SCRATCH"' in text
-    assert '--manifest "$SCRATCH/stage123.normalized.json"' in text
+    assert text.count('python -m pytest') == 1
+    assert 'tests/experiment_workflow' in text
+    assert 'test_validation_generation_logging.py' in text
+    assert 'run_code_task_qwen3_1p7b_stage123_queue.sh' not in text

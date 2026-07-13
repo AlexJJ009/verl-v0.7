@@ -1,4 +1,6 @@
 from pathlib import Path
+import importlib.util
+import sys
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -14,11 +16,11 @@ def test_initial_validation_records_testing_wall_time() -> None:
     )
 
 
-def test_calibration_timeline_records_validation_phase_boundaries() -> None:
-    text = TRAINER.read_text()
-    ready = text.index('"validation_ready"')
-    generation = text.index('"generation_complete"')
-    metrics = text.index('"metrics_complete"')
-    assert ready < generation < metrics
-    assert 'CALIBRATION_VALIDATION_TIMELINE_FILE' in text
-    assert '"monotonic_seconds": time.monotonic()' in text
+def test_recording_observer_preserves_validation_phase_order() -> None:
+    spec = importlib.util.spec_from_file_location("ray_trainer_timing", TRAINER)
+    module = importlib.util.module_from_spec(spec); assert spec.loader; sys.modules[spec.name] = module; spec.loader.exec_module(module)
+    observer = module.RecordingValidationObserver()
+    observer.record("batch_started", batch_index=1, total_batches=1)
+    observer.record("generation_complete", batch_index=1, total_batches=1)
+    observer.record("metrics_complete", elapsed_seconds=1.0)
+    assert [item["event"] for item in observer.events] == ["batch_started", "generation_complete", "metrics_complete"]

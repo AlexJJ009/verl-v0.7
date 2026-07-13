@@ -55,14 +55,6 @@ def test_stage_wrappers_propagate_scorer_pythonpath() -> None:
         assert text.count(override) == 1
 
 
-def test_runner_treats_dependency_failure_as_fatal() -> None:
-    text = (ROOT / "scripts/run_code_task_operational_calibration.sh").read_text()
-    assert "dependency_failure" in text
-    assert "EvalPlus official evaluator is unavailable" in text
-    assert "LiveCodeBench official evaluator is unavailable" in text
-    assert "ModuleNotFoundError" in text
-
-
 def test_phase_dependency_failure_prevents_ray_start(tmp_path: Path) -> None:
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
