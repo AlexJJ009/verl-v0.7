@@ -4,10 +4,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import argparse
 import hashlib
 import json
 from pathlib import Path
 import shutil
+import shlex
+import subprocess
+import sys
 from typing import Any
 
 
@@ -92,3 +96,154 @@ def archive_historical(source: Path, destination: Path) -> dict[str, Any]:
 
 def documentation_change_requires_receipt(changed_paths: list[str]) -> bool:
     return any(not path.startswith(("docs/", ".github/")) for path in changed_paths)
+
+
+def load_object(path: Path) -> dict[str, Any]:
+    value = json.loads(path.read_text())
+    if not isinstance(value, dict):
+        raise ValueError(f"{path}: expected JSON object")
+    return value
+
+
+def file_sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def validate_admission_bundle(bundle: dict[str, Any], *, require_accepted: bool = False) -> EvidenceDecision:
+    if bundle.get("schema_version") != 1 or bundle.get("bundle_type") != "stage123_admission_bundle":
+        return EvidenceDecision(False, "admission_schema", "unsupported admission bundle schema", {})
+    if bundle.get("run_ids") != ["frac25-stage2", "frac25-stage3"]:
+        return EvidenceDecision(False, "admission_run_set", "admission bundle run set is not the primary pair", {"run_ids": bundle.get("run_ids")})
+    bindings = bundle.get("bindings")
+    if not isinstance(bindings, dict):
+        return EvidenceDecision(False, "admission_bindings", "admission bundle lacks bindings", {})
+    required = (
+        "manifest_sha256",
+        "resource_profile_sha256",
+        "implementation_tree_sha256",
+        "calibration_result_sha256",
+        "preflight_result_sha256",
+        "readiness_evidence_commit",
+    )
+    missing = [name for name in required if not isinstance(bindings.get(name), str) or not bindings[name]]
+    if missing:
+        return EvidenceDecision(False, "admission_bindings", "admission bundle has incomplete bindings", {"missing": missing})
+    if require_accepted:
+        acceptance = bundle.get("acceptance")
+        if not isinstance(acceptance, dict) or acceptance.get("decision") != "accepted":
+            return EvidenceDecision(False, "admission_not_accepted", "admission bundle lacks independent acceptance", {})
+        if acceptance.get("bundle_sha256") != bundle.get("bundle_sha256"):
+            return EvidenceDecision(False, "acceptance_binding", "acceptance does not bind the bundle hash", {})
+    return EvidenceDecision(True, "authorized", "admission bundle authorizes the primary queue", {"run_ids": bundle["run_ids"]})
+
+
+def build_admission_bundle(manifest_path: Path, profile_path: Path, calibration_path: Path, preflight_path: Path, evidence_commit: str, output: Path) -> dict[str, Any]:
+    manifest = load_object(manifest_path)
+    calibration = load_object(calibration_path)
+    preflight = load_object(preflight_path)
+    calibration_decision = validate_result(calibration, "calibration_result")
+    preflight_decision = validate_result(preflight, "preflight_result")
+    if not calibration_decision.authorized or not preflight_decision.authorized:
+        raise ValueError("calibration and preflight results must both authorize")
+    run_ids = [item.get("id") for item in manifest.get("runs", [])]
+    manifest_sha = manifest.get("manifest_sha256")
+    if calibration.get("manifest_sha256") != manifest_sha or preflight.get("manifest_sha256") != manifest_sha:
+        raise ValueError("result manifest bindings do not match")
+    value = {
+        "schema_version": 1,
+        "bundle_type": "stage123_admission_bundle",
+        "bundle_path": str(output),
+        "run_ids": run_ids,
+        "bindings": {
+            "manifest_sha256": manifest_sha,
+            "resource_profile_sha256": file_sha256(profile_path),
+            "implementation_tree_sha256": calibration.get("implementation_tree_sha256"),
+            "calibration_result_sha256": file_sha256(calibration_path),
+            "preflight_result_sha256": file_sha256(preflight_path),
+            "readiness_evidence_commit": evidence_commit,
+        },
+    }
+    decision = validate_admission_bundle(value)
+    if not decision.authorized:
+        raise ValueError(decision.message)
+    value["bundle_sha256"] = result_sha256(value)
+    return value
+
+
+def admission_launch_command(bundle: dict[str, Any], repo_host: Path) -> list[str]:
+    bindings = bundle["bindings"]
+    bundle_path = bundle.get("bundle_path")
+    if not isinstance(bundle_path, str) or not bundle_path:
+        raise ValueError("admission bundle lacks canonical bundle_path")
+    return [
+        "tmux",
+        "new-session",
+        "-d",
+        "-s",
+        "stage123_primary_chain",
+        "env",
+        "REPO_HOST=" + str(repo_host),
+        "ALLOW_QWEN3_1P7B_STAGE123_TRAINING=1",
+        "STAGE123_ADMISSION_BUNDLE=" + bundle_path,
+        "STAGE123_IMPLEMENTATION_TREE_SHA256=" + bindings["implementation_tree_sha256"],
+        "STAGE123_BUNDLE_SHA256=" + bundle["bundle_sha256"],
+        "bash",
+        str(repo_host / "recipe/on_policy_wdl_sft/code_task/run_code_task_qwen3_1p7b_stage123_queue.sh"),
+    ]
+
+
+def admission_main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser()
+    sub = parser.add_subparsers(dest="action", required=True)
+    validate = sub.add_parser("validate")
+    validate.add_argument("--bundle", type=Path)
+    validate.add_argument("--manifest", type=Path)
+    validate.add_argument("--resource-profile", type=Path)
+    validate.add_argument("--calibration-result", type=Path)
+    validate.add_argument("--preflight-result", type=Path)
+    validate.add_argument("--readiness-evidence-commit")
+    validate.add_argument("--output", type=Path)
+    validate.add_argument("--require-accepted", action="store_true")
+    validate.add_argument("--repo-root", type=Path, required=True)
+    render = sub.add_parser("render-launch")
+    render.add_argument("--bundle", type=Path, required=True)
+    render.add_argument("--repo-host", type=Path, required=True)
+    args = parser.parse_args(argv)
+    try:
+        if args.action == "validate" and args.bundle is None:
+            required = (args.manifest, args.resource_profile, args.calibration_result, args.preflight_result, args.readiness_evidence_commit, args.output)
+            if not all(required):
+                raise ValueError("candidate validation requires manifest, resource profile, calibration result, preflight result, evidence commit, and output")
+            bundle = build_admission_bundle(args.manifest, args.resource_profile, args.calibration_result, args.preflight_result, args.readiness_evidence_commit, args.output)
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            args.output.write_text(json.dumps(bundle, indent=2, sort_keys=True) + "\n")
+        else:
+            bundle = load_object(args.bundle)
+        expected_hash = bundle.get("bundle_sha256")
+        unsigned = {key: value for key, value in bundle.items() if key not in {"bundle_sha256", "acceptance"}}
+        actual_hash = result_sha256(unsigned)
+        if expected_hash != actual_hash:
+            decision = EvidenceDecision(False, "bundle_hash", "admission bundle hash mismatch", {"expected": expected_hash, "actual": actual_hash})
+        else:
+            decision = validate_admission_bundle(bundle, require_accepted=getattr(args, "require_accepted", False))
+        if args.action == "validate":
+            print(json.dumps(decision.as_dict(), sort_keys=True))
+            return 0 if decision.authorized else 1
+        if not decision.authorized:
+            print(json.dumps(decision.as_dict(), sort_keys=True))
+            return 1
+        print(shlex.join(admission_launch_command(bundle, args.repo_host)))
+        return 0
+    except (OSError, ValueError, json.JSONDecodeError, KeyError) as exc:
+        print(json.dumps(EvidenceDecision(False, "invalid_admission_bundle", str(exc), {}).as_dict(), sort_keys=True))
+        return 2
+
+
+def main() -> int:
+    if len(sys.argv) >= 2 and sys.argv[1] == "admission":
+        return admission_main(sys.argv[2:])
+    raise SystemExit("usage: execution_results.py admission {validate,render-launch} ...")
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

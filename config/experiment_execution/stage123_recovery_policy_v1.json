@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "policy_id": "stage123-recovery-v1",
+  "max_attempts": 2,
+  "resumable_failure_codes": [
+    "checkpoint_available_child_exit",
+    "container_runtime_interruption",
+    "host_interruption"
+  ],
+  "required_attempt_fields": [
+    "attempt",
+    "max_attempts",
+    "resume_from_checkpoint",
+    "failure_code",
+    "manifest_sha256",
+    "implementation_tree_sha256",
+    "bundle_sha256",
+    "started_at",
+    "completed_at"
+  ]
+}

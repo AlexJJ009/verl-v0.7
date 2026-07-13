@@ -117,3 +117,12 @@ def test_shell_entrypoints_delegate_once_to_python_core(tmp_path: Path) -> None:
     assert len(calls) == 2
     assert calls[0].endswith("experiment_execution_core.py queue --resume")
     assert calls[1].endswith("experiment_execution_core.py phase --resume")
+
+
+def test_frozen_recovery_allows_only_one_qualified_resume() -> None:
+    tool = module(); state = tool.ExecutionState(1, "r", "failed", 1)
+    spec_value = tool.RunSpec("r", ["fake"], 1, max_attempts=2, resumable_failure_codes=("host_interruption", "checkpoint_available_child_exit"))
+    assert tool.recovery_decision(state, spec_value, "host_interruption", False)["resume"] is True
+    assert tool.recovery_decision(state, spec_value, "checkpoint_available_child_exit", False)["resume"] is False
+    state.attempt = 2
+    assert tool.recovery_decision(state, spec_value, "host_interruption", True)["resume"] is False

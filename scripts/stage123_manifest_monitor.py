@@ -10,6 +10,20 @@ import subprocess
 import time
 
 
+def persisted_states(state_root: Path) -> dict[str, dict]:
+    result = {}
+    for path in state_root.glob("*.json"):
+        if path.name == "events.jsonl":
+            continue
+        try:
+            value = json.loads(path.read_text())
+        except (OSError, json.JSONDecodeError):
+            continue
+        if isinstance(value, dict) and isinstance(value.get("run_id"), str):
+            result[value["run_id"]] = value
+    return result
+
+
 def tmux_active(name: str) -> bool:
     return subprocess.run(["tmux", "has-session", "-t", name], capture_output=True).returncode == 0
 
@@ -30,17 +44,18 @@ def emit(policy: Path, ledger: Path, sender: list[str] | None, state: dict, scra
 
 
 def main() -> int:
-    p=argparse.ArgumentParser(); p.add_argument('--manifest',type=Path,required=True); p.add_argument('--checkpoint-root',type=Path,required=True); p.add_argument('--queue-tmux',required=True); p.add_argument('--poll-seconds',type=float,default=60); p.add_argument('--ledger',type=Path,required=True); p.add_argument('--policy',type=Path,required=True); p.add_argument('--sender',nargs='+'); p.add_argument('--once',action='store_true'); args=p.parse_args()
+    p=argparse.ArgumentParser(); p.add_argument('--manifest',type=Path,required=True); p.add_argument('--state-root',type=Path,required=True); p.add_argument('--checkpoint-root',type=Path,required=True); p.add_argument('--queue-tmux',required=True); p.add_argument('--poll-seconds',type=float,default=60); p.add_argument('--ledger',type=Path,required=True); p.add_argument('--policy',type=Path,required=True); p.add_argument('--sender',nargs='+'); p.add_argument('--once',action='store_true'); args=p.parse_args()
     manifest=json.loads(args.manifest.read_text()); scratch=args.ledger.with_suffix('.state.json'); seen_active=set()
     while True:
-        any_active=tmux_active(args.queue_tmux)
+        states=persisted_states(args.state_root); any_active=tmux_active(args.queue_tmux)
         for run in manifest['runs']:
             prefix=run['run_prefix']; active=tmux_active(run['tmux_name']); any_active |= active
             ckpt,step=latest_checkpoint(args.checkpoint_root,prefix)
             metrics=[] if ckpt is None else list(Path('/data-1/code/verl/recipe/on_policy_wdl_sft').glob(f'**/metrics/OnPolicyWDLSFT-CodeTask/{ckpt.name}.jsonl'))
             deadline=Path('/data-2/experiment_registry/validation_deadlines')/f'{prefix}.deadline.json'
             if active: seen_active.add(prefix)
-            state={'run_id':prefix,'training_step':step if active else 0,'complete_validation_metrics':bool(metrics) if active else False,'local_paths':f'checkpoint={ckpt}; deadline={deadline}'}
+            persisted=states.get(run['id'], {})
+            state={'run_id':prefix,'execution_status':persisted.get('status','unobserved'),'execution_attempt':persisted.get('attempt',0),'training_step':step if active else 0,'complete_validation_metrics':bool(metrics) if active else False,'local_paths':f'checkpoint={ckpt}; deadline={deadline}; execution_state={args.state_root}'}
             if prefix in seen_active and not active and step < int(run['final_step']):
                 state.update({'terminal_failure':True,'cleanup_evidence':deadline.is_file(),'background':'Stage123 run stopped before final step','evidence':deadline.read_text() if deadline.is_file() else f'step={step}','cost':'GPU queue stopped','recommendation':'Inspect local deadline and training logs'})
             emit(args.policy,args.ledger,args.sender,state,scratch)

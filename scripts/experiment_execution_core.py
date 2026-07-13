@@ -37,6 +37,8 @@ class ExecutionState:
     child_id: str | None = None
     failure: dict[str, Any] | None = None
     cleanup: dict[str, Any] | None = None
+    max_attempts: int = 1
+    resume_from_checkpoint: bool = False
     transitions: list[dict[str, Any]] = field(default_factory=list)
 
 
@@ -123,6 +125,21 @@ class RunSpec:
     poll_seconds: float = 1.0
     cleanup_grace_seconds: float = 10.0
     env: dict[str, str] = field(default_factory=dict)
+    max_attempts: int = 1
+    resumable_failure_codes: tuple[str, ...] = ()
+
+
+def recovery_decision(state: ExecutionState, spec: RunSpec, failure_code: str, checkpoint_available: bool) -> dict[str, Any]:
+    resumable = failure_code in spec.resumable_failure_codes and state.attempt < spec.max_attempts
+    if failure_code == "checkpoint_available_child_exit" and not checkpoint_available:
+        resumable = False
+    return {
+        "resume": resumable,
+        "attempt": state.attempt,
+        "max_attempts": spec.max_attempts,
+        "resume_from_checkpoint": resumable and checkpoint_available,
+        "failure_code": failure_code,
+    }
 
 
 class ExecutionCore:
@@ -136,6 +153,20 @@ class ExecutionCore:
 
     def persist(self, state: ExecutionState) -> None:
         atomic_write(self.state_path(state.run_id), asdict(state))
+        event_path = self.state_root / "events.jsonl"
+        event_path.parent.mkdir(parents=True, exist_ok=True)
+        event = {
+            "schema_version": 1,
+            "run_id": state.run_id,
+            "status": state.status,
+            "attempt": state.attempt,
+            "child_id": state.child_id,
+            "failure": state.failure,
+            "cleanup": state.cleanup,
+            "transition": state.transitions[-1] if state.transitions else None,
+        }
+        with event_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(event, sort_keys=True, separators=(",", ":")) + "\n")
 
     def run(self, spec: RunSpec) -> ExecutionState:
         state = load_state(self.state_path(spec.run_id), spec.run_id)
@@ -145,6 +176,7 @@ class ExecutionCore:
             return self.resume(spec, state)
         now = self.clock.now()
         state.attempt += 1
+        state.max_attempts = spec.max_attempts
         child_id = self.adapter.start(spec.command, {**os.environ, **spec.env})
         transition(
             state,
