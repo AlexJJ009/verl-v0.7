@@ -113,3 +113,8 @@ New replacement workflow tests also count toward the 4,000-line ceiling.
 Any implementation discovery not represented above must be classified in
 `findings.jsonl` before action. A new independently useful subsystem or acceptance
 surface is not silently added to this inventory.
+
+The sole retained production file above 300 lines is
+`scripts/check_calibration_prediction_contract.py`. Its 599-line implementation is
+preserved read-only for the explicitly deferred Calibration Qualification Goal; it is
+not imported by the current execution core and cannot authorize this Goal.

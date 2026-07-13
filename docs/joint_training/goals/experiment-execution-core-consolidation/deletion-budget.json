@@ -1,0 +1,63 @@
+{
+  "baseline_commit": "390be933",
+  "classes": {
+    "active_reliability_docs": {
+      "baseline_lines": 2091,
+      "candidate_lines": 0,
+      "ceiling": 650,
+      "files": [
+        "docs/joint_training/codereview/active/experiment_execution_reliability_final_acceptance.md",
+        "docs/joint_training/codereview/active/experiment_execution_reliability_goal_plan_final_review.md",
+        "docs/joint_training/codereview/active/experiment_execution_reliability_goal_plan_fourth_review.md",
+        "docs/joint_training/codereview/active/experiment_execution_reliability_goal_plan_rereview.md",
+        "docs/joint_training/codereview/active/experiment_execution_reliability_goal_plan_review.md",
+        "docs/joint_training/codereview/active/experiment_execution_reliability_m2_recipe_review.md",
+        "docs/joint_training/codereview/active/experiment_execution_reliability_m3_review.md",
+        "docs/joint_training/codereview/active/experiment_execution_reliability_operational_delta_rereview.md",
+        "docs/joint_training/codereview/active/experiment_execution_reliability_operational_delta_review.md",
+        "docs/joint_training/codereview/active/experiment_execution_reliability_sandbox_acceptance.md",
+        "docs/joint_training/manifests/experiment_execution_reliability_plan_adoption.json",
+        "docs/joint_training/manifests/goal_contract_dirty_adoption.json",
+        "docs/joint_training/manifests/stage123_dirty_adoption.json",
+        "docs/joint_training/plans/active/experiment_execution_reliability_goal.md",
+        "docs/joint_training/plans/active/experiment_execution_reliability_goal_launch_prompt.md"
+      ],
+      "pass": true
+    },
+    "production": {
+      "baseline_lines": 3763,
+      "candidate_lines": 1923,
+      "ceiling": 3000,
+      "files": [
+        "scripts/assemble_code_task_operational_calibration.py",
+        "scripts/build_stage123_adoption_manifest.py",
+        "scripts/calibration_outcomes.py",
+        "scripts/calibration_timing.py",
+        "scripts/check_calibration_port_quiet.py",
+        "scripts/check_calibration_prediction_contract.py",
+        "scripts/check_code_task_operational_calibration.py",
+        "scripts/check_code_task_preflight_budget.py",
+        "scripts/check_goal_git_isolation.py",
+        "scripts/check_new_experiment_gate.py",
+        "scripts/check_pm2_ci_keepalive.py",
+        "scripts/compare_code_task_preflight.py",
+        "scripts/experiment_failure_classifier.py",
+        "scripts/experiment_manifest.py",
+        "scripts/experiment_notification_policy.py",
+        "scripts/run_code_task_operational_calibration.sh",
+        "scripts/run_code_task_operational_calibration_queue.sh",
+        "scripts/stage123_manifest_monitor.py",
+        "scripts/stage123_manifest_release_dispatch.sh",
+        "scripts/stage123_preflight_receipt.py",
+        "scripts/validation_deadline_controller.py"
+      ],
+      "pass": true
+    },
+    "tests": {
+      "baseline_lines": 4694,
+      "candidate_lines": 2933,
+      "ceiling": 4000,
+      "pass": true
+    }
+  }
+}

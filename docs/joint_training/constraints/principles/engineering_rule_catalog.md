@@ -46,7 +46,7 @@ for the experiment-execution workflow. Bulk history remains in the cited sources
 
 - Scope: Stage1, Stage2, and Stage3 resource semantics
 - Enforcement tier: structural
-- Evidence source: `docs/joint_training/plans/active/experiment_execution_reliability_goal.md`
+- Evidence source: `docs/joint_training/goals/experiment-execution-core-consolidation/plan.md`
 - When: any Stage123 phase is rendered or launched.
 - Do: consume the shared profile hash and preserve `MAX_RESPONSE_LENGTH=8192` with the full validation contract.
 - Otherwise: the run is not a comparable Stage123 experiment and must stop before trainer startup.
@@ -56,7 +56,7 @@ for the experiment-execution workflow. Bulk history remains in the cited sources
 
 - Scope: soft preflight threshold failures
 - Enforcement tier: judgment-only
-- Evidence source: `docs/joint_training/plans/active/experiment_execution_reliability_goal.md`
+- Evidence source: `docs/joint_training/goals/experiment-execution-core-consolidation/plan.md`
 - When: a soft threshold fails during unattended Goal execution.
 - Do: stop, send one guarded `user_decision_required` notification with evidence, and wait for an interactive user decision followed by a reviewed manifest or policy commit and a fresh passing preflight.
 - Otherwise: an unapproved high-risk run may consume GPU time and no phone action constitutes approval.

@@ -31,4 +31,4 @@ The fixture Docker ID is deliberately synthetic and cannot be used as live-runti
 provenance.
 
 Verification commands and expected fields are defined by AC-01 and AC-02 in
-`docs/joint_training/plans/active/experiment_execution_reliability_goal.md`.
+`docs/joint_training/goals/experiment-execution-core-consolidation/plan.md`.
