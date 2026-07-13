@@ -14,3 +14,6 @@
 {"event":"MILESTONE_COMPLETED","milestone":"Milestone 1","seq":14,"summary":"Inventory and disposition authority independently accepted","time":"2026-07-13T04:55:12.085066Z"}
 {"authorization":"autonomous Milestone 1-6 envelope","event":"MILESTONE_STARTED","milestone":"Milestone 2","seq":15,"time":"2026-07-13T04:55:12.127076Z"}
 {"event":"REVIEW_COMPLETED","milestone":"Milestone 2","plan_version":1,"prompt":"reviews/milestone-2-review-prompt.md","review_id":"milestone-2-review-01","reviewer":"Ampere GPT-5.5 medium","seq":16,"summary":"AC-01 PASS; AC-02 weakened because canonicalize still enforces duplicate identity policy","time":"2026-07-13T05:17:52.230085Z","verdict":"WEAKENED"}
+{"event":"REVIEW_COMPLETED","milestone":"Milestone 2","plan_version":1,"prompt":"reviews/milestone-2-rereview-prompt.md","review_id":"milestone-2-rereview-01","reviewer":"Dirac GPT-5.5 medium","seq":17,"summary":"AC-01 and AC-02 independently pass after policy ownership fix","time":"2026-07-13T05:22:41.174714Z","verdict":"PASS"}
+{"event":"MILESTONE_COMPLETED","milestone":"Milestone 2","seq":18,"summary":"Generic validation observer and manifest/policy ownership accepted","time":"2026-07-13T05:22:41.259676Z"}
+{"authorization":"autonomous Milestone 1-6 envelope","event":"MILESTONE_STARTED","milestone":"Milestone 3","seq":19,"time":"2026-07-13T05:22:41.303429Z"}
