@@ -53,14 +53,14 @@ def _policy_error(code: str, message: str, **context: object) -> None:
 def canonicalize(data: dict) -> dict:
     result = json.loads(json.dumps(data, sort_keys=True))
     result["runs"] = sorted(result["runs"], key=lambda item: item["order"])
-    for label in ("run_prefix", "id", "tmux_name"):
-        values = [item[label] for item in result["runs"]]
-        if len(values) != len(set(values)):
-            _policy_error("duplicate_identity", f"duplicate {label}", field=label)
     return result
 
 
 def validate_policy_v1(result: dict) -> None:
+    for label in ("run_prefix", "id", "tmux_name"):
+        values = [item[label] for item in result["runs"]]
+        if len(values) != len(set(values)):
+            _policy_error("duplicate_identity", f"duplicate {label}", field=label)
     runs_by_id = {item["id"]: item for item in result["runs"]}
     runs_by_phase: dict[str, list[dict]] = {}
     for item in result["runs"]:
