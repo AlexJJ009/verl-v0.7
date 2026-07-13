@@ -81,7 +81,8 @@ def phase_environment(rendered: dict[str, Any], phase: str, repetition: int, out
             raise RuntimeError("stage3 calibration proxy identity mismatch")
         proxy_kind = proxy["purpose"]
     offset = ((0 if phase == "stage2" else 3) + repetition - 1) * 100
-    ray_tmpdir = Path("/data-1/tmp/verl_agent_scratch/cq-ray") / f"{phase}-r{repetition}"
+    phase_code = "2" if phase == "stage2" else "3"
+    ray_tmpdir = Path("/data-1/tmp/verl_agent_scratch/r") / f"{phase_code}{repetition}"
     shutil.rmtree(ray_tmpdir, ignore_errors=True)
     env = {
         "QWEN3_1P7B_MODEL_PATH": rendered["paths"]["base_model"],

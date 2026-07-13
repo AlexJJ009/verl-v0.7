@@ -56,3 +56,8 @@ def test_stage3_proxy_is_explicit_and_hash_bound():
  assert proxy['purpose']=='pending_stage2_handoff_runtime_resource_proxy'
  assert proxy['rollout_model_parameter_count']==workload['rollout_model_parameter_count_sum']
  assert len(proxy['artifact_sha256'])==64
+
+def test_owned_ray_socket_path_fits_af_unix_limit():
+ base='/data-1/tmp/verl_agent_scratch/r/31'
+ plasma=f'{base}/session_2026-07-13_18-40-15_123456_2147483647/sockets/plasma_store'
+ assert len(plasma)<=107
