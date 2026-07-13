@@ -9,7 +9,7 @@ Use the stable Goal Plan reviewer protocol. Do not continue implementation.
 - Frozen Plan version: `1`
 - Current milestone: `Milestone 1`
 - Base commit: `390be933`
-- Candidate commit: `HEAD`
+- Candidate commit: `dd5ee91e4322152f1074bd3edf4dfd42377acbb0`
 - Applicable ACs: `AC-05,AC-08`
 
 ## Required Verification
