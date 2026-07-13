@@ -15,7 +15,16 @@ def module():
 
 
 def result(kind: str, decision: str = "passed"):
-    return {"schema_version": 1, "result_type": kind, "manifest_sha256": "a" * 64, "decision": decision}
+    value = {"schema_version": 1, "result_type": kind, "manifest_sha256": "a" * 64, "decision": decision}
+    if kind == "calibration_result":
+        value.update({
+            "resource_profile_sha256": "b" * 64, "implementation_tree_sha256": "c" * 64,
+            "evidence_commit": "d" * 40, "workload_identity": {}, "policy_id": "stage123-calibration-policy-v1",
+            "policy_sha256": "e" * 64, "authorization_identity": {}, "started_at": "2026-01-01T00:00:00Z",
+            "completed_at": "2026-01-01T00:01:00Z", "phase_evidence": [], "prediction_comparison": {},
+            "cleanup": {"resources_released": True}, "failures": [],
+        })
+    return value
 
 
 def test_only_three_result_classes_can_authorize_current_execution():
@@ -60,3 +69,8 @@ def test_stale_or_malformed_result_files_fail_closed(tmp_path: Path):
     assert tool.load_and_validate(malformed).code == "invalid_result_file"
     legacy = tmp_path / "legacy.json"; legacy.write_text(json.dumps({"receipt_type": "code_task_operational_calibration_deployability"}))
     assert tool.load_and_validate(legacy).code == "legacy_evidence"
+
+
+def test_incomplete_calibration_result_never_authorizes():
+    tool = module(); decision = tool.validate_result({"schema_version": 1, "result_type": "calibration_result", "manifest_sha256": "a" * 64, "decision": "passed"})
+    assert not decision.authorized and decision.code == "result_fields"

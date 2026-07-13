@@ -6,6 +6,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import argparse
 import hashlib
+import importlib.util
 import json
 from pathlib import Path
 import shutil
@@ -63,6 +64,18 @@ def validate_result(value: dict[str, Any], expected_type: str | None = None) -> 
         return EvidenceDecision(False, "result_type_mismatch", "execution result type mismatch", {"expected": expected_type, "actual": result_type})
     if value.get("schema_version") != 1:
         return EvidenceDecision(False, "schema_version", "unsupported execution result schema", {"schema_version": value.get("schema_version")})
+    if result_type == "calibration_result":
+        module_path = Path(__file__).with_name("calibration_result.py")
+        spec = importlib.util.spec_from_file_location("_calibration_result_validator", module_path)
+        if spec is None or spec.loader is None:
+            return EvidenceDecision(False, "result_validator", "calibration result validator cannot be loaded", {})
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        schema_path = Path(__file__).resolve().parents[1] / "config/experiment_execution/calibration_result_schema_v1.json"
+        outcome = module.validate(value, load_object(schema_path))
+        if not outcome["ok"]:
+            first = outcome["failures"][0]
+            return EvidenceDecision(False, first["code"], first["message"], first["context"])
     if not isinstance(value.get("manifest_sha256"), str) or len(value["manifest_sha256"]) != 64:
         return EvidenceDecision(False, "manifest_binding", "execution result lacks manifest binding", {})
     decision = value.get("decision")
