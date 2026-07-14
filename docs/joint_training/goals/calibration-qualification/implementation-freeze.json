@@ -8,5 +8,5 @@
   "recomputation_count": 2,
   "byte_identical": true,
   "production_changes_after_freeze": false,
-  "gpu_probe_executed": false
+  "gpu_probe_executed": true
 }
