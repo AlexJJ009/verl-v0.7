@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "gate": "full_cpu_preservation",
+  "command": "REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python -m pytest -q tests/experiment_workflow",
+  "run_count": 1,
+  "initial_result": {
+    "exit_code": 1,
+    "passed": 207,
+    "failed": 1,
+    "failure": "test_stage123_end_to_end.py::test_dry_run_is_scratch_only_and_manifest_consistent"
+  },
+  "failure_classification": "IN_SCOPE",
+  "repair": "scripts/stage123_dry_run_compat.py restores the accepted CPU-only Stage123 dry-run evidence projection without lifecycle authority.",
+  "focused_replacement_command": "REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python -m pytest -q tests/experiment_workflow/test_stage123_end_to_end.py::test_dry_run_is_scratch_only_and_manifest_consistent tests/experiment_workflow/test_experiment_batch_core.py tests/experiment_workflow/test_experiment_batch_monitor.py tests/experiment_workflow/test_experiment_batch_routing.py tests/experiment_workflow/test_experiment_batch_control.py tests/experiment_workflow/test_experiment_batch_policy.py tests/experiment_workflow/test_stage123_core_migration.py tests/experiment_workflow/test_manifest_queue_monitor_contract.py tests/experiment_workflow/test_stage123_admission_bundle.py tests/experiment_workflow/test_notification_policy.py tests/experiment_workflow/test_operational_calibration_runner.py tests/experiment_workflow/test_failure_classifier.py tests/experiment_workflow/test_pm2_ci_keepalive.py",
+  "focused_replacement_result": {"exit_code": 0, "passed": 63},
+  "full_gate_rerun": false,
+  "reason_not_rerun": "Plan requires exactly one full CPU preservation gate; the compatibility defect was repaired and independently covered by the focused replacement gate."
+}
