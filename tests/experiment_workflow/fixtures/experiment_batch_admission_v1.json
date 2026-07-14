@@ -1,7 +1,7 @@
 {
   "adapter_type": "stage123_queue_v1",
   "bindings": {
-    "evidence_commit": "ce8d3fc35ddf131cc985f6fd47744771d6a536de",
+    "evidence_commit": "066c34da0d41254db22e9db542b1b83c7a34f460",
     "implementation_tree_sha256": "69273fe9bab0fd6c69348e8ca096042091df1b8edf05174d7fde8d5364cc5089",
     "input_hashes": {},
     "protected_asset_hashes": {
@@ -9,9 +9,9 @@
       "docs/joint_training/plans/active/qwen3_1p7b_code_stage123_plateau_breakthrough.md": "f680d4c7111fd1dd9ae62288f4d695301a7c1b348e5b662f73e274e8d938c887",
       "test_data": "0cfbee3ef14536b9ce4a9769ed4e0461f734af104316830af21b3aa2f3c4bd70"
     },
-    "recipe_gitlink": "a40ed88cc6e0c3983cc4627c90865ace0f22425c"
+    "recipe_gitlink": "d717672fb671edb86e504ba11e15b742686d7ef8"
   },
-  "bundle_sha256": "b9fb7e4c125a7ffe1531331e961d5d8eb03d0ece3918ee287e3ce7549754930e",
+  "bundle_sha256": "e9deda6fac421201963d1d4dc35d13e61925e9247d6b2ead3f0b5c6c42c9d313",
   "bundle_type": "experiment_batch_admission",
   "canonical_commands": [
     [
