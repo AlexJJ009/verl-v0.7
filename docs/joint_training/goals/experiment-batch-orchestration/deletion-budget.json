@@ -19,6 +19,11 @@
       "authority": "read_only"
     },
     {
+      "path": "scripts/stage123_dry_run_compat.py",
+      "disposition": "compatibility_renderer",
+      "authority": "evidence_projection_only"
+    },
+    {
       "path": "scripts/training_queue_monitor.sh",
       "disposition": "retain_legacy_observer",
       "authority": "read_only"

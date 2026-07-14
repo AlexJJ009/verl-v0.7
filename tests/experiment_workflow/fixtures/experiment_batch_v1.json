@@ -1,14 +1,14 @@
 {
   "authorization_id": "fixture-authorization",
   "batch_id": "experiment-batch-v1-fixture",
-  "batch_manifest_sha256": "7d03b45a276e4acb81d9546a28eaefdeafd0ee7f9fa0d2a7e1a88d595c5ac0c7",
+  "batch_manifest_sha256": "00d731cb96aee9a9e2cb8171d3dba6a40233c01b7295d086c8af727f2114b066",
   "created_at": "2026-07-14T00:00:00Z",
   "failure_policy_id": "batch-fallback-v1",
   "items": [
     {
       "adapter_type": "stage123_queue_v1",
       "admission_bundle_path": "tests/experiment_workflow/fixtures/experiment_batch_admission_v1.json",
-      "admission_bundle_sha256": "76a81aa25fb3d0e8178bef0b3c27d900d681269b80d9102d94c4a9ca364742f0",
+      "admission_bundle_sha256": "32801b53162877469e53159f8ca0d3196ecf971499bb8aaea43392a98e913d2a",
       "command_sha256": "10e46e575df23642ab7cda9a16f5a8bec0784d1fe7d44081ba5ba2db260b9bc8",
       "expected_run_ids": [
         "stage123-stage2",

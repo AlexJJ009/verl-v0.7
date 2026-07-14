@@ -14,6 +14,11 @@
       "retained": ["read-only persisted state/event consumption", "notification policy delegation", "idempotent observational cursor"]
     },
     {
+      "path": "scripts/stage123_dry_run_compat.py",
+      "removed": ["child launch", "phase transition", "checkpoint interpretation", "failure routing"],
+      "retained": ["normalized manifest projection", "dry-run provenance projection", "pending Stage3 compatibility evidence"]
+    },
+    {
       "path": "scripts/training_queue_monitor.sh",
       "removed": [],
       "retained": ["legacy observation only"]
