@@ -58,7 +58,9 @@ class FakeAdapter:
         return {"resources_released": True, "term_sent": True, "kill_sent": False}
 
 
-def make_item(tool, item_id: str, run_id: str):
+def make_item(tool, item_id: str, run_id: str, phases: int = 1):
+    run_ids = tuple(run_id if index == 0 else f"{run_id}-phase-{index + 1}" for index in range(phases))
+    commands = tuple(("fixture", item_id, str(index + 1)) for index in range(phases))
     return tool.BatchItemSpec(
         item_id=item_id,
         goal_id=f"goal-{item_id}",
@@ -66,9 +68,9 @@ def make_item(tool, item_id: str, run_id: str):
         admission_bundle_path=Path(f"/{item_id}.json"),
         admission_bundle_sha256="2" * 64,
         adapter_type="cpu_fixture_v1",
-        command=["fixture", item_id],
-        command_sha256=tool.sha256_json(["fixture", item_id]),
-        expected_run_ids=(run_id, f"{run_id}-remaining"),
+        commands=commands,
+        command_sha256=tool.sha256_json([list(command) for command in commands]),
+        expected_run_ids=run_ids,
         input_hashes={},
         implementation_tree_sha256="3" * 64,
         evidence_commit="4" * 40,
@@ -92,10 +94,9 @@ def make_manifest(tool, tmp_path: Path, items):
 
 
 def write_valid_manifest(tool, tmp_path: Path) -> Path:
-    command = [
-        "bash",
-        str(ROOT / "recipe/on_policy_wdl_sft/code_task/run_code_task_qwen3_1p7b_stage123_queue_impl.sh"),
-        "--dry-run",
+    commands = [
+        ["bash", str(ROOT / "recipe/on_policy_wdl_sft/code_task/run_s2_code_qwen3_1p7b_stage123_common.sh")],
+        ["bash", str(ROOT / "recipe/on_policy_wdl_sft/code_task/run_s3_code_qwen3_1p7b_stage123_common.sh")],
     ]
     implementation_paths = ["scripts/experiment_execution_core.py"]
     recipe_head = subprocess.check_output(["git", "-C", str(ROOT / "recipe"), "rev-parse", "HEAD"], text=True).strip()
@@ -104,8 +105,8 @@ def write_valid_manifest(tool, tmp_path: Path) -> Path:
         "schema_version": 1,
         "bundle_type": "experiment_batch_admission",
         "adapter_type": "stage123_queue_v1",
-        "canonical_command": command,
-        "command_sha256": tool.sha256_json(command),
+        "canonical_commands": commands,
+        "command_sha256": tool.sha256_json(commands),
         "implementation_paths": implementation_paths,
         "bindings": {
             "implementation_tree_sha256": tool.implementation_tree_sha256(ROOT, implementation_paths),
@@ -129,7 +130,7 @@ def write_valid_manifest(tool, tmp_path: Path) -> Path:
         "admission_bundle_path": str(bundle_path),
         "admission_bundle_sha256": tool.file_sha256(bundle_path),
         "adapter_type": "stage123_queue_v1",
-        "command_sha256": tool.sha256_json(command),
+        "command_sha256": tool.sha256_json(commands),
         "implementation_tree_sha256": bundle["bindings"]["implementation_tree_sha256"],
         "expected_run_ids": ["stage2", "stage3"],
         "timeout_seconds": 30,
@@ -189,18 +190,28 @@ def test_successful_items_advance_once_in_manifest_order(tmp_path: Path) -> None
     state = tool.BatchExecutor(make_manifest(tool, tmp_path, items), tmp_path / "state", adapter, FakeClock()).run()
     assert state["status"] == "completed"
     assert [item["item_id"] for item in state["items"]] == ["one", "two"]
-    assert adapter.started == [["fixture", "one"], ["fixture", "two"]]
+    assert adapter.started == [["fixture", "one", "1"], ["fixture", "two", "1"]]
+
+
+def test_core_owns_ordered_phases_inside_an_item(tmp_path: Path) -> None:
+    tool = load_core()
+    item = make_item(tool, "one", "run-one", phases=2)
+    adapter = FakeAdapter([0, 0])
+    state = tool.BatchExecutor(make_manifest(tool, tmp_path, [item]), tmp_path / "state", adapter, FakeClock()).run()
+    assert state["status"] == "completed"
+    assert [phase["run_id"] for phase in state["phases"]] == ["run-one", "run-one-phase-2"]
+    assert adapter.started == [["fixture", "one", "1"], ["fixture", "one", "2"]]
 
 
 def test_local_failure_is_inconclusive_and_falls_forward_without_retry(tmp_path: Path) -> None:
     tool = load_core()
-    items = [make_item(tool, "one", "run-one"), make_item(tool, "two", "run-two")]
+    items = [make_item(tool, "one", "run-one", phases=2), make_item(tool, "two", "run-two")]
     adapter = FakeAdapter([7, 0])
     state = tool.BatchExecutor(make_manifest(tool, tmp_path, items), tmp_path / "state", adapter, FakeClock()).run()
     assert state["status"] == "completed_with_failures"
     assert state["items"][0]["status"] == "inconclusive_operational_failure"
     assert state["items"][0]["attempt"] == 1
-    assert state["items"][0]["skipped_phases"] == ["run-one-remaining"]
+    assert state["items"][0]["skipped_phases"] == ["run-one-phase-2"]
     assert len(adapter.started) == 2
 
 
@@ -239,7 +250,7 @@ def test_stop_now_during_active_item_terminates_and_stops_batch(tmp_path: Path) 
     def issue_stop() -> None:
         executor = holder["executor"]
         with manifest.operator_control_path.open("a") as handle:
-            handle.write(json.dumps(control(tool, manifest, 1, 1, "stop_now")) + "\n")
+            handle.write(json.dumps(control(tool, manifest, 1, 2, "stop_now")) + "\n")
 
     adapter = FakeAdapter([0, 0], on_start=issue_stop)
     executor = tool.BatchExecutor(manifest, tmp_path / "state", adapter, FakeClock())
@@ -255,7 +266,7 @@ def test_stop_now_at_success_cleanup_boundary_records_terminal_item(tmp_path: Pa
 
     def issue_stop_after_control_poll() -> None:
         with manifest.operator_control_path.open("a") as handle:
-            handle.write(json.dumps(control(tool, manifest, 1, 1, "stop_now")) + "\n")
+            handle.write(json.dumps(control(tool, manifest, 1, 2, "stop_now")) + "\n")
 
     adapter = FakeAdapter([0, 0], on_poll=issue_stop_after_control_poll)
     state = tool.BatchExecutor(manifest, tmp_path / "state", adapter, FakeClock()).run()
@@ -276,3 +287,14 @@ def test_batch_cli_rejects_resume_and_recovery_policy(tmp_path: Path) -> None:
     )
     assert result.returncode == 2
     assert "batch_recovery_forbidden" in result.stdout
+
+
+def test_committed_batch_fixture_validates_without_starting_child() -> None:
+    result = subprocess.run(
+        [sys.executable, str(CORE), "batch-validate", "--manifest", str(ROOT / "tests/experiment_workflow/fixtures/experiment_batch_v1.json")],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0
+    assert json.loads(result.stdout)["ok"] is True

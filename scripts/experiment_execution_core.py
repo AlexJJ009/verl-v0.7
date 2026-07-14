@@ -141,7 +141,7 @@ class BatchItemSpec:
     admission_bundle_path: Path
     admission_bundle_sha256: str
     adapter_type: str
-    command: list[str]
+    commands: tuple[tuple[str, ...], ...]
     command_sha256: str
     expected_run_ids: tuple[str, ...]
     input_hashes: dict[str, str]
@@ -291,16 +291,25 @@ def validate_admission_bundle(bundle: dict[str, Any], bundle_path: Path, repo_ro
     tree_hash = implementation_tree_sha256(repo_root, implementation_paths)
     if tree_hash != bindings["implementation_tree_sha256"]:
         raise BatchValidationError("implementation tree hash mismatch")
-    command = bundle.get("canonical_command")
-    if not isinstance(command, list) or not command or not all(isinstance(item, str) for item in command):
-        raise BatchValidationError("canonical_command must be a non-empty string array")
-    command_hash = sha256_json(command)
+    commands = bundle.get("canonical_commands")
+    if commands is None and bundle.get("canonical_command") is not None:
+        commands = [bundle["canonical_command"]]
+    if not isinstance(commands, list) or not commands or not all(
+        isinstance(command, list) and command and all(isinstance(value, str) for value in command)
+        for command in commands
+    ):
+        raise BatchValidationError("canonical_commands must be a non-empty array of string arrays")
+    command_hash = sha256_json(commands)
     if bundle.get("command_sha256") != command_hash:
         raise BatchValidationError("canonical command hash mismatch")
     if adapter_type == "stage123_queue_v1":
-        expected_script = repo_root / "recipe/on_policy_wdl_sft/code_task/run_code_task_qwen3_1p7b_stage123_queue_impl.sh"
-        if command[:2] != ["bash", str(expected_script)]:
-            raise BatchValidationError("stage123 adapter command is not canonical")
+        allowed_scripts = {
+            str(repo_root / "recipe/on_policy_wdl_sft/code_task/run_s2_code_qwen3_1p7b_stage123_common.sh"),
+            str(repo_root / "recipe/on_policy_wdl_sft/code_task/run_s3_code_qwen3_1p7b_stage123_common.sh"),
+        }
+        for command in commands:
+            if len(command) < 2 or command[0] != "bash" or command[1] not in allowed_scripts:
+                raise BatchValidationError("stage123 phase command is not canonical")
     current_recipe = subprocess.run(
         ["git", "-C", str(repo_root / "recipe"), "rev-parse", "HEAD"],
         capture_output=True,
@@ -338,7 +347,7 @@ def validate_admission_bundle(bundle: dict[str, Any], bundle_path: Path, repo_ro
     bundle_hash = bundle.get("bundle_sha256")
     if bundle_hash != sha256_json(_without_hash(bundle, "bundle_sha256")):
         raise BatchValidationError("admission bundle hash mismatch")
-    return {"adapter_type": adapter_type, "command": command, "command_sha256": command_hash, "bindings": bindings}
+    return {"adapter_type": adapter_type, "commands": commands, "command_sha256": command_hash, "bindings": bindings}
 
 
 def load_batch_manifest(path: Path, repo_root: Path | None = None) -> BatchManifest:
@@ -381,8 +390,10 @@ def load_batch_manifest(path: Path, repo_root: Path | None = None) -> BatchManif
         if item.get("admission_bundle_sha256") != bundle_hash:
             raise BatchValidationError(f"admission bundle file hash mismatch for {item_id}")
         validated = validate_admission_bundle(bundle, resolved_bundle, repo_root)
-        command = validated["command"]
-        if item.get("command_sha256") != sha256_json(command):
+        commands = validated["commands"]
+        if len(commands) != len(expected):
+            raise BatchValidationError(f"phase command/run-id count mismatch for {item_id}")
+        if item.get("command_sha256") != sha256_json(commands):
             raise BatchValidationError(f"item command hash mismatch for {item_id}")
         if item.get("adapter_type") != validated["adapter_type"]:
             raise BatchValidationError(f"item adapter mismatch for {item_id}")
@@ -397,7 +408,7 @@ def load_batch_manifest(path: Path, repo_root: Path | None = None) -> BatchManif
                 admission_bundle_path=resolved_bundle,
                 admission_bundle_sha256=bundle_hash,
                 adapter_type=validated["adapter_type"],
-                command=command,
+                commands=tuple(tuple(value for value in command) for command in commands),
                 command_sha256=validated["command_sha256"],
                 expected_run_ids=tuple(expected),
                 input_hashes=dict(bindings["input_hashes"]),
@@ -718,6 +729,7 @@ class BatchExecutor:
         self.continue_requested = False
         state["status"] = "running"
         state.setdefault("items", [])
+        state.setdefault("phases", [])
         failure_codes: list[str] = []
         for item in self.manifest.items:
             self._read_controls()
@@ -733,53 +745,79 @@ class BatchExecutor:
             state["current_item_id"] = item.item_id
             self.batch_revision += 1
             self._persist(state, "item_started", item_id=item.item_id)
-            spec = RunSpec(
-                run_id=item.expected_run_ids[0],
-                command=item.command,
-                timeout_seconds=item.timeout_seconds,
-                poll_seconds=item.poll_seconds,
-                cleanup_grace_seconds=item.cleanup_grace_seconds,
-                env=item.env,
-                max_attempts=1,
-                resumable_failure_codes=(),
-            )
-            try:
-                controlled_adapter = self._ControlledAdapter(self, self.adapter, item.cleanup_grace_seconds)
-                atomic_state = ExecutionCore(self.state_root, controlled_adapter, self.clock).run(spec)
-            except (OSError, ValueError, KeyError) as exc:
-                return self._stop_for_shared_failure(state, "state_or_execution_error", str(exc))
-            if atomic_state.status == "succeeded":
-                self._read_controls()
-                stop_after_terminal_record = self.stop_requested
-                state["items"].append(self._item_record(item, "succeeded", run_id=spec.run_id, cleanup=atomic_state.cleanup))
+            item_failed = False
+            phase_records: list[dict[str, Any]] = []
+            for phase_index, (run_id, command) in enumerate(zip(item.expected_run_ids, item.commands, strict=True)):
+                previous = next((record for record in state["phases"] if record.get("run_id") == run_id), None)
+                if previous and previous.get("status") == "succeeded":
+                    phase_records.append(previous)
+                    continue
+                state["current_run_id"] = run_id
                 self.batch_revision += 1
-                self._persist(state, "item_succeeded", item_id=item.item_id, run_id=spec.run_id)
-                if stop_after_terminal_record:
-                    return self._stop_for_operator(state)
-                continue
-            code = normalize_failure_code(atomic_state)
-            failure_codes.append(code)
-            item_status = "inconclusive_operational_failure"
-            state["items"].append(
-                self._item_record(
-                    item,
-                    item_status,
-                    run_id=spec.run_id,
-                    failure=atomic_state.failure,
-                    cleanup=atomic_state.cleanup,
-                    skipped_phases=list(item.expected_run_ids[1:]),
-                    attempt=atomic_state.attempt,
+                self._persist(state, "phase_started", item_id=item.item_id, run_id=run_id, phase_index=phase_index)
+                spec = RunSpec(
+                    run_id=run_id,
+                    command=list(command),
+                    timeout_seconds=item.timeout_seconds,
+                    poll_seconds=item.poll_seconds,
+                    cleanup_grace_seconds=item.cleanup_grace_seconds,
+                    env=item.env,
+                    max_attempts=1,
+                    resumable_failure_codes=(),
                 )
-            )
-            if atomic_state.status == "cleanup_failed":
-                return self._stop_for_shared_failure(state, "shared_failure", f"batch stopped after {code}")
-            self._read_controls()
-            if self.stop_requested:
-                return self._stop_for_operator(state)
-            if len(failure_codes) >= 2 and failure_codes[-1] == failure_codes[-2]:
-                return self._stop_for_shared_failure(state, "shared_failure", f"batch stopped after {code}")
-            self.batch_revision += 1
-            self._persist(state, "item_failed_fallback", item_id=item.item_id, failure_code=code, next_item=True)
+                try:
+                    controlled_adapter = self._ControlledAdapter(self, self.adapter, item.cleanup_grace_seconds)
+                    atomic_state = ExecutionCore(self.state_root, controlled_adapter, self.clock).run(spec)
+                except (OSError, ValueError, KeyError) as exc:
+                    return self._stop_for_shared_failure(state, "state_or_execution_error", str(exc))
+                self._read_controls()
+                phase_record = {
+                    "item_id": item.item_id,
+                    "run_id": run_id,
+                    "phase_index": phase_index,
+                    "status": atomic_state.status,
+                    "failure": atomic_state.failure,
+                    "cleanup": atomic_state.cleanup,
+                    "attempt": atomic_state.attempt,
+                }
+                state["phases"].append(phase_record)
+                phase_records.append(phase_record)
+                self.batch_revision += 1
+                self._persist(state, "phase_terminal", item_id=item.item_id, run_id=run_id, phase_status=atomic_state.status)
+                if atomic_state.status == "succeeded" and not self.stop_requested:
+                    continue
+                if atomic_state.status == "succeeded":
+                    skipped = list(item.expected_run_ids[phase_index + 1 :])
+                    status = "succeeded" if not skipped else "inconclusive_operational_failure"
+                    state["items"].append(self._item_record(item, status, phases=phase_records, skipped_phases=skipped))
+                    return self._stop_for_operator(state)
+                code = normalize_failure_code(atomic_state)
+                failure_codes.append(code)
+                state["items"].append(
+                    self._item_record(
+                        item,
+                        "inconclusive_operational_failure",
+                        phases=phase_records,
+                        failure=atomic_state.failure,
+                        cleanup=atomic_state.cleanup,
+                        skipped_phases=list(item.expected_run_ids[phase_index + 1 :]),
+                        attempt=atomic_state.attempt,
+                    )
+                )
+                item_failed = True
+                if atomic_state.status == "cleanup_failed":
+                    return self._stop_for_shared_failure(state, "shared_failure", f"batch stopped after {code}")
+                if self.stop_requested:
+                    return self._stop_for_operator(state)
+                if len(failure_codes) >= 2 and failure_codes[-1] == failure_codes[-2]:
+                    return self._stop_for_shared_failure(state, "shared_failure", f"batch stopped after {code}")
+                self.batch_revision += 1
+                self._persist(state, "item_failed_fallback", item_id=item.item_id, failure_code=code, next_item=True)
+                break
+            if not item_failed:
+                state["items"].append(self._item_record(item, "succeeded", phases=phase_records))
+                self.batch_revision += 1
+                self._persist(state, "item_succeeded", item_id=item.item_id)
             if self.pause_after_current:
                 state["status"] = "paused_after_current"
                 self.batch_revision += 1

@@ -20,11 +20,22 @@ def load(path: Path, name: str):
 
 
 def test_public_queue_is_thin_python_core_delegate() -> None:
-    text = QUEUE.read_text()
-    assert "experiment_execution_core.py" in text
-    assert "run_code_task_qwen3_1p7b_stage123_queue_impl.sh" in text
-    assert "--resume" in text
-    assert "verl.trainer" not in text
+    public = QUEUE.read_text()
+    adapter = QUEUE_IMPL.read_text()
+    assert "run_code_task_qwen3_1p7b_stage123_queue_impl.sh" in public
+    assert "experiment_execution_core.py" in adapter
+    assert "batch-run" in adapter
+    assert "--resume|--recovery-policy" in adapter
+    assert "verl.trainer" not in public + adapter
+
+
+def test_stage123_batch_adapter_rejects_resume_and_missing_manifest() -> None:
+    resume = subprocess.run(["bash", str(QUEUE), "--resume"], text=True, capture_output=True, check=False)
+    assert resume.returncode == 2
+    assert "forbids retry/resume" in resume.stderr
+    missing = subprocess.run(["bash", str(QUEUE)], text=True, capture_output=True, check=False)
+    assert missing.returncode == 2
+    assert "EXPERIMENT_BATCH_MANIFEST" in missing.stderr
 
 
 def test_active_queue_and_gate_have_no_legacy_receipt_authority() -> None:
@@ -32,7 +43,9 @@ def test_active_queue_and_gate_have_no_legacy_receipt_authority() -> None:
     forbidden = ["DEPLOYABILITY_RECEIPT", "STAGE12_PRODUCER_RECEIPT", "PREFLIGHT_RECEIPT", "RECEIPT_MAX_AGE_SECONDS", "CALIBRATION_REPORT"]
     assert not [name for name in forbidden if name in combined]
     assert "execution_results.py\" admission validate" in GATE.read_text()
-    assert "STAGE123_ADMISSION_BUNDLE" in combined
+    assert "STAGE123_ADMISSION_BUNDLE" not in QUEUE_IMPL.read_text()
+    for forbidden in ("status.tsv", "launch_and_wait", "validation_deadline_controller", "tmux", "latest_checkpoint"):
+        assert forbidden not in QUEUE_IMPL.read_text()
 
 
 def test_monitor_consumes_persisted_execution_state() -> None:
@@ -79,7 +92,7 @@ def test_monitor_replays_core_events_without_external_runtime_probes(tmp_path: P
     assert [(item["run_id"], item["event"]) for item in records] == [("stage123-primary-queue", "run_started"), ("stage123-primary-queue", "run_failed")]
 
 
-def test_recovery_policy_is_frozen_one_resume_schema() -> None:
+def test_legacy_atomic_recovery_policy_remains_but_stage123_batch_rejects_it() -> None:
     value = json.loads(POLICY.read_text())
     assert value["policy_id"] == "stage123-recovery-v1"
     assert value["max_attempts"] == 2
@@ -93,3 +106,5 @@ def test_recovery_policy_is_frozen_one_resume_schema() -> None:
         "manifest_sha256", "implementation_tree_sha256", "bundle_sha256",
         "started_at", "completed_at",
     }
+    adapter = QUEUE_IMPL.read_text()
+    assert "forbids retry/resume" in adapter

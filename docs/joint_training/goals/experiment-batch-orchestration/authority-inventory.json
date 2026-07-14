@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "goal_id": "experiment-batch-orchestration",
+  "sole_transition_authority": "scripts/experiment_execution_core.py",
+  "constructs": [
+    {
+      "path": "recipe/on_policy_wdl_sft/code_task/run_code_task_qwen3_1p7b_stage123_queue_impl.sh",
+      "removed": ["status TSV writes", "phase loop", "tmux launch", "validation deadline", "checkpoint interpretation", "phase routing", "failure fallback"],
+      "retained": ["batch manifest argument", "state-root argument", "batch-run delegation", "retry/resume rejection"]
+    },
+    {
+      "path": "scripts/stage123_manifest_monitor.py",
+      "removed": ["Stage123-only event schema"],
+      "retained": ["read-only persisted state/event consumption", "notification policy delegation", "idempotent observational cursor"]
+    },
+    {
+      "path": "scripts/training_queue_monitor.sh",
+      "removed": [],
+      "retained": ["legacy observation only"]
+    }
+  ]
+}

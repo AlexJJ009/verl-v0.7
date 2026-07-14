@@ -31,19 +31,17 @@ def test_stage123_monitor_has_no_hardcoded_run_arrays_after_migration():
 
 def test_stage123_queue_reads_manifest():
     queue = (ROOT / "recipe/on_policy_wdl_sft/code_task/run_code_task_qwen3_1p7b_stage123_queue_impl.sh").read_text()
-    assert "experiment_manifest.py" in queue
+    assert "EXPERIMENT_BATCH_MANIFEST" in queue
+    assert "experiment_execution_core.py" in queue
     assert "STAGE123_FRACTIONS" not in queue
     assert "STAGE123_TRIGGERS" not in queue
 
 
-def test_stage123_queue_enforces_validation_hard_wall():
+def test_stage123_queue_has_no_validation_or_lifecycle_authority():
     queue = (ROOT / "recipe/on_policy_wdl_sft/code_task/run_code_task_qwen3_1p7b_stage123_queue_impl.sh").read_text()
-    assert "validation batch [0-9]+/[0-9]+ start:" in queue
-    assert "deadline_seconds':1800" in queue
-    assert "validation_deadline_controller.py" in queue
-    assert "return 124" in queue
-    assert "DOCKER_CONTAINER_NAME" in queue
-    assert "docker inspect" in queue
+    for forbidden in ("validation batch", "deadline_seconds", "validation_deadline_controller.py", "docker inspect", "status.tsv", "launch_and_wait", "latest_checkpoint"):
+        assert forbidden not in queue
+    assert "batch-run" in queue
 
 
 def test_stage123_monitor_uses_event_policy_not_legacy_tmux_started_notifications():
