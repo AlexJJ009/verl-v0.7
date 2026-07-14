@@ -22,6 +22,10 @@ import re
 from datetime import datetime, timezone
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+from scripts.calibration_prediction import qualify
+
 PHASE_SCRIPT = ROOT / "recipe/on_policy_wdl_sft/code_task/run_code_task_operational_calibration_phase.sh"
 WORKLOAD = Path("/data-1/tmp/verl_agent_scratch/experiment_workflow/calibration/code_validation_16_16_32.parquet")
 WORKLOAD_MANIFEST = WORKLOAD.with_suffix(".manifest.json")
@@ -32,6 +36,12 @@ REQUIRED_METRICS = {
     "val-core/LiveCodeBench/acc/pass@1",
 }
 PR_SET_CHILD_SUBREAPER = 36
+PREDICTION_METRICS = (
+    "validation_elapsed_seconds",
+    "phase_elapsed_seconds",
+    "peak_rss_gib",
+    "gpu_wait_fraction",
+)
 
 
 def sha256(path: Path) -> str:
@@ -45,6 +55,55 @@ def sha256(path: Path) -> str:
 def write_json(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n")
+
+
+def build_prediction_comparison(history_result_path: Path, phase_reports: list[dict[str, Any]]) -> dict[str, Any]:
+    history_result = json.loads(history_result_path.read_text())
+    policy_path = ROOT / "config/experiment_execution/calibration_policy_v1.json"
+    policy = json.loads(policy_path.read_text())
+    source = history_result.get("prediction_comparison", {})
+    if history_result.get("decision") != "passed" or source.get("qualified") is not True:
+        raise ValueError("prediction history result is not accepted")
+    if history_result.get("policy_id") != policy.get("policy_id") or history_result.get("policy_sha256") != sha256(policy_path):
+        raise ValueError("prediction history policy binding mismatch")
+    source_comparisons = source.get("comparisons")
+    if not isinstance(source_comparisons, list):
+        raise ValueError("prediction history comparisons are missing")
+    by_metric = {item.get("metric"): item for item in source_comparisons if isinstance(item, dict)}
+    if set(by_metric) != set(PREDICTION_METRICS):
+        raise ValueError("prediction history metric set mismatch")
+    repetitions = [item for phase in phase_reports for item in phase.get("repetitions", [])]
+    observed = {
+        "validation_elapsed_seconds": max(item["metrics"]["validation_elapsed_seconds"] for item in repetitions),
+        "phase_elapsed_seconds": max(item["elapsed_seconds"] for item in repetitions),
+        "peak_rss_gib": max(item["resources"]["peak_rss_gib"] for item in repetitions),
+        "gpu_wait_fraction": max(item["resources"]["gpu_wait_fraction"] for item in repetitions),
+    }
+    comparisons = []
+    for metric in PREDICTION_METRICS:
+        source_item = by_metric[metric]
+        history = source_item.get("history")
+        predicted = source_item.get("predicted_bound")
+        if not isinstance(history, list) or not all(isinstance(value, (int, float)) for value in history) or not isinstance(predicted, (int, float)):
+            raise ValueError(f"invalid prediction history for {metric}")
+        decision = qualify([float(value) for value in history], float(predicted), float(observed[metric]), policy)
+        comparisons.append({
+            "metric": metric,
+            "history": history,
+            "history_count": len(history),
+            "predicted_bound": predicted,
+            "observed_maximum": observed[metric],
+            "decision": decision.as_dict(),
+        })
+    return {
+        "qualified": all(item["decision"]["qualified"] for item in comparisons),
+        "comparisons": comparisons,
+        "policy_id": policy["policy_id"],
+        "policy_sha256": sha256(policy_path),
+        "predecessor_result_path": str(history_result_path),
+        "predecessor_result_sha256": sha256(history_result_path),
+        "historical_evidence_role": "accepted_predecessor_history_only_not_current_authority",
+    }
 
 
 def enable_child_subreaper() -> None:
@@ -317,6 +376,7 @@ def main() -> int:
     parser.add_argument("--scratch-root", type=Path, required=True)
     parser.add_argument("--manifest-sha256", required=True)
     parser.add_argument("--resource-profile-sha256", required=True)
+    parser.add_argument("--prediction-history-result", type=Path, required=True)
     parser.add_argument("--execution-run-id", default="stage123-readiness-requalification")
     parser.add_argument("--authorization-decision-id", default="unspecified")
     args = parser.parse_args()
@@ -394,10 +454,15 @@ def main() -> int:
         check=False,
     )
     verification = json.loads(checked.stdout)
+    prediction_comparison = build_prediction_comparison(args.prediction_history_result, phase_reports)
+    if not prediction_comparison["qualified"]:
+        verification["failures"].append({"code": "prediction_exceeded", "message": "fresh probe exceeds the accepted prediction policy", "context": {}})
+        verification["ok"] = False
+        verification["decision"] = "blocked"
     report = {**candidate, "status": "passed" if verification["ok"] else "failed", "verification": verification, "failures": verification["failures"]}
     report["optimizer_steps"] = 0
     report["formal_checkpoints"] = []
-    report["prediction_comparison"] = {"qualified": bool(verification["ok"]), "verification": verification.get("prediction_comparison", {})}
+    report["prediction_comparison"] = prediction_comparison
     report["cleanup"] = {"resources_released": all(item.get("cleanup", {}).get("resources_released") is True for phase in phase_reports for item in phase.get("repetitions", []))}
     report_started = datetime.fromtimestamp(started, timezone.utc).isoformat().replace("+00:00", "Z")
     report_completed = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")

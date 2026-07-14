@@ -19,11 +19,13 @@ def result(kind: str, decision: str = "passed"):
     value = {"schema_version": 1, "result_type": kind, "manifest_sha256": "a" * 64, "decision": decision}
     if kind == "calibration_result":
         policy_path = ROOT / "config/experiment_execution/calibration_policy_v1.json"
+        comparison = {"history": [1.0, 2.0, 3.0], "history_count": 3, "predicted_bound": 3.0, "observed_maximum": 3.0, "decision": {"qualified": True, "code": "qualified", "context": {"ratio": 1.0}}}
+        comparisons = [{**comparison, "metric": metric} for metric in ("validation_elapsed_seconds", "phase_elapsed_seconds", "peak_rss_gib", "gpu_wait_fraction")]
         value.update({
             "resource_profile_sha256": "b" * 64, "implementation_tree_sha256": "c" * 64,
             "evidence_commit": "d" * 40, "workload_identity": {"sha256": "f" * 64, "run_ids": ["frac25-stage2", "frac25-stage3"]}, "policy_id": "stage123-calibration-policy-v1",
             "policy_sha256": hashlib.sha256(policy_path.read_bytes()).hexdigest(), "authorization_identity": {"id": "auth"}, "started_at": "2026-01-01T00:00:00Z",
-            "completed_at": "2026-01-01T00:01:00Z", "phase_evidence": [{"phase": "stage2", "status": "passed"}, {"phase": "stage3", "status": "passed"}], "prediction_comparison": {"qualified": True},
+            "completed_at": "2026-01-01T00:01:00Z", "phase_evidence": [{"phase": "stage2", "status": "passed"}, {"phase": "stage3", "status": "passed"}], "prediction_comparison": {"qualified": True, "policy_id": "stage123-calibration-policy-v1", "policy_sha256": hashlib.sha256(policy_path.read_bytes()).hexdigest(), "comparisons": comparisons},
             "cleanup": {"resources_released": True}, "failures": [],
         })
     return value

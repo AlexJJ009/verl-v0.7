@@ -5,12 +5,14 @@ import argparse
 from datetime import datetime, timezone
 import hashlib
 import json
+import math
 from pathlib import Path
 import subprocess
 import sys
 
 
 ROOT = Path(__file__).resolve().parents[1]
+PREDICTION_METRICS = {"validation_elapsed_seconds", "phase_elapsed_seconds", "peak_rss_gib", "gpu_wait_fraction"}
 
 
 def sha256(path: Path) -> str:
@@ -32,6 +34,33 @@ def implementation_hash(path: Path) -> str:
     if not path.is_file():
         raise ValueError("implementation tree evidence is missing")
     return sha256(path)
+
+
+def validate_prediction_comparison(value: dict) -> None:
+    policy_path = ROOT / "config/experiment_execution/calibration_policy_v1.json"
+    policy = load(policy_path)
+    if value.get("policy_id") != policy.get("policy_id") or value.get("policy_sha256") != sha256(policy_path):
+        raise ValueError("prediction comparison policy binding mismatch")
+    comparisons = value.get("comparisons")
+    if value.get("qualified") is not True or not isinstance(comparisons, list):
+        raise ValueError("prediction comparison is incomplete")
+    if {item.get("metric") for item in comparisons if isinstance(item, dict)} != PREDICTION_METRICS:
+        raise ValueError("prediction comparison metric set mismatch")
+    for item in comparisons:
+        decision = item.get("decision", {})
+        if item.get("history_count") != len(item.get("history", [])) or item.get("history_count", 0) < 3:
+            raise ValueError("prediction comparison history is insufficient")
+        if not isinstance(item.get("predicted_bound"), (int, float)) or not isinstance(item.get("observed_maximum"), (int, float)):
+            raise ValueError("prediction comparison values are missing")
+        predicted = float(item["predicted_bound"])
+        observed = float(item["observed_maximum"])
+        ratio = observed / predicted if predicted > 0 else float("inf")
+        if predicted != max(float(value) for value in item["history"]):
+            raise ValueError("prediction bound does not match history")
+        if ratio > policy["prediction"]["maximum_observed_to_predicted_ratio"] or not math.isclose(decision.get("context", {}).get("ratio", -1), ratio, rel_tol=1e-12):
+            raise ValueError("prediction comparison ratio mismatch")
+        if decision.get("qualified") is not True or decision.get("code") != "qualified":
+            raise ValueError("prediction comparison is not qualified")
 
 
 def validate_pointer(pointer_path: Path, *, run_id: str, decision_id: str, scratch_root: Path) -> tuple[dict, dict]:
@@ -60,7 +89,8 @@ def validate_pointer(pointer_path: Path, *, run_id: str, decision_id: str, scrat
         raise ValueError("producer report repetition evidence is incomplete")
     if report.get("optimizer_steps") != 0 or report.get("formal_checkpoints") != []:
         raise ValueError("producer report is not zero-step and checkpoint-free")
-    if report.get("prediction_comparison", {}).get("qualified") is not True or report.get("cleanup", {}).get("resources_released") is not True:
+    validate_prediction_comparison(report.get("prediction_comparison", {}))
+    if report.get("cleanup", {}).get("resources_released") is not True:
         raise ValueError("producer report lacks qualified prediction or cleanup evidence")
     return pointer, report
 
@@ -129,6 +159,7 @@ def validate(args: argparse.Namespace) -> int:
         raise ValueError("calibration result is not passed")
     if value.get("workload_identity", {}).get("run_ids") != ["frac25-stage2", "frac25-stage3"]:
         raise ValueError("calibration result run set mismatch")
+    validate_prediction_comparison(value.get("prediction_comparison", {}))
     print(json.dumps({"ok": True, "sha256": sha256(Path(args.input))}, sort_keys=True))
     return 0
 

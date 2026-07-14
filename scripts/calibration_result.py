@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-import hashlib,json
+import hashlib,json,math
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -27,7 +27,16 @@ def validate(value:dict[str,Any],schema:dict[str,Any])->dict[str,Any]:
         phases=value.get('phase_evidence')
         if not isinstance(phases,list) or [item.get('phase') for item in phases if isinstance(item,dict)]!=policy['required_phases'] or any(item.get('status')!='passed' for item in phases if isinstance(item,dict)): failures.append({'code':'phase_evidence','message':'phase evidence is incomplete or blocked','context':{}})
         prediction=value.get('prediction_comparison'); cleanup=value.get('cleanup')
-        if not isinstance(prediction,dict) or prediction.get('qualified') is not True: failures.append({'code':'prediction_qualification','message':'prediction is not qualified','context':{}})
+        comparisons=prediction.get('comparisons') if isinstance(prediction,dict) else None
+        metrics={item.get('metric') for item in comparisons if isinstance(item,dict)} if isinstance(comparisons,list) else set()
+        required_metrics={'validation_elapsed_seconds','phase_elapsed_seconds','peak_rss_gib','gpu_wait_fraction'}
+        def comparison_valid(item):
+            history=item.get('history',[]); predicted=item.get('predicted_bound'); observed=item.get('observed_maximum'); decision=item.get('decision',{})
+            if item.get('history_count')!=len(history) or item.get('history_count',0)<policy['prediction']['minimum_history_count'] or not all(isinstance(value,(int,float)) for value in history) or not isinstance(predicted,(int,float)) or not isinstance(observed,(int,float)) or predicted<=0: return False
+            ratio=observed/predicted
+            return predicted==max(history) and ratio<=policy['prediction']['maximum_observed_to_predicted_ratio'] and math.isclose(decision.get('context',{}).get('ratio',-1),ratio,rel_tol=1e-12) and decision.get('qualified') is True and decision.get('code')=='qualified'
+        complete_prediction=isinstance(prediction,dict) and prediction.get('qualified') is True and prediction.get('policy_id')==policy.get('policy_id') and prediction.get('policy_sha256')==expected_policy_sha and metrics==required_metrics and all(comparison_valid(item) for item in comparisons)
+        if not complete_prediction: failures.append({'code':'prediction_qualification','message':'prediction comparison is incomplete or not qualified','context':{}})
         if not isinstance(cleanup,dict) or cleanup.get('resources_released') is not True: failures.append({'code':'cleanup','message':'owned resources were not released','context':{}})
         started,completed=_time(value.get('started_at')),_time(value.get('completed_at'))
         if started is None or completed is None or completed<started: failures.append({'code':'timestamps','message':'calibration timestamps are invalid','context':{}})

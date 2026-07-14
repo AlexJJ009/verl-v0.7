@@ -17,6 +17,8 @@ def main()->int:
     rendered=json.loads(subprocess.check_output([sys.executable,str(root/"scripts/experiment_manifest.py"),"render",str(a.manifest),"--format","json"],text=True))
     profile_hash=subprocess.check_output(["bash","-lc",f"source {a.resource_profile!s}; stage123_profile_hash"],text=True).strip()
     if rendered["resource_profile"]["sha256"]!=profile_hash: return fail("profile_hash","manifest/profile mismatch")
-    command=[sys.executable,str(root/"scripts/run_calibration_probe_zero_step.py"),"--manifest",str(a.manifest),"--phases",a.phases,"--repetitions",str(a.repetitions),"--training-steps","0","--optimizer-enabled","false","--scratch-root",str(a.scratch_root),"--manifest-sha256",rendered["manifest_sha256"],"--resource-profile-sha256",profile_hash,"--execution-run-id",a.execution_run_id,"--authorization-decision-id",a.authorization_decision_id]
+    prediction_history=root/"docs/joint_training/goals/calibration-qualification/calibration_result.json"
+    if not prediction_history.is_file(): return fail("prediction_history","accepted predecessor calibration result is missing",path=str(prediction_history))
+    command=[sys.executable,str(root/"scripts/run_calibration_probe_zero_step.py"),"--manifest",str(a.manifest),"--phases",a.phases,"--repetitions",str(a.repetitions),"--training-steps","0","--optimizer-enabled","false","--scratch-root",str(a.scratch_root),"--manifest-sha256",rendered["manifest_sha256"],"--resource-profile-sha256",profile_hash,"--prediction-history-result",str(prediction_history),"--execution-run-id",a.execution_run_id,"--authorization-decision-id",a.authorization_decision_id]
     print(json.dumps(command,separators=(",",":"))); return 0
 if __name__=="__main__": raise SystemExit(main())
