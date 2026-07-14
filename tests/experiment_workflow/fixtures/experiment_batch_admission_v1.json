@@ -1,0 +1,26 @@
+{
+  "adapter_type": "stage123_queue_v1",
+  "bindings": {
+    "evidence_commit": "a3812ecfc8b17f54a24a7e6eb95d535c9adc3616",
+    "implementation_tree_sha256": "ede9346756500c307dce7c5be59d798d2f0f41cc7bf3f3ab5676f46f9b9ef532",
+    "input_hashes": {},
+    "protected_asset_hashes": {
+      ".claude/skills/experiment-registry": "81c6e7996f6f0ccbc43479ebea9dfe6b30965fdd99779ad1b7bd2a074255b5b9",
+      "docs/joint_training/plans/active/qwen3_1p7b_code_stage123_plateau_breakthrough.md": "f680d4c7111fd1dd9ae62288f4d695301a7c1b348e5b662f73e274e8d938c887",
+      "test_data": "0cfbee3ef14536b9ce4a9769ed4e0461f734af104316830af21b3aa2f3c4bd70"
+    },
+    "recipe_gitlink": "a40ed88cc6e0c3983cc4627c90865ace0f22425c"
+  },
+  "bundle_sha256": "a5cd56ad22a2ea0d0dff98bce60bc57307cb3a9f65bc2badeda82a941eb23db6",
+  "bundle_type": "experiment_batch_admission",
+  "canonical_command": [
+    "bash",
+    "/workspace/verl/recipe/on_policy_wdl_sft/code_task/run_code_task_qwen3_1p7b_stage123_queue_impl.sh",
+    "--dry-run"
+  ],
+  "command_sha256": "7a4ef1df67bc3c3726d35efc85bc7a4a118cc70c5719358a7dc42985b515c0ae",
+  "implementation_paths": [
+    "scripts/experiment_execution_core.py"
+  ],
+  "schema_version": 1
+}

@@ -224,6 +224,23 @@ def implementation_tree_sha256(repo_root: Path, relative_paths: list[str]) -> st
     return sha256_json(records)
 
 
+def protected_asset_sha256(path: Path) -> str:
+    if path.is_symlink():
+        return sha256_json({"type": "symlink", "target": os.readlink(path)})
+    if path.is_file():
+        return sha256_json({"type": "file", "sha256": file_sha256(path)})
+    if path.is_dir():
+        records: list[dict[str, str]] = []
+        for child in sorted(path.rglob("*")):
+            relative = child.relative_to(path).as_posix()
+            if child.is_symlink():
+                records.append({"path": relative, "type": "symlink", "target": os.readlink(child)})
+            elif child.is_file():
+                records.append({"path": relative, "type": "file", "sha256": file_sha256(child)})
+        return sha256_json(records)
+    raise BatchValidationError(f"protected asset does not exist: {path}")
+
+
 def _without_hash(value: dict[str, Any], key: str) -> dict[str, Any]:
     return {name: item for name, item in value.items() if name != key}
 
@@ -247,7 +264,7 @@ def validate_admission_bundle(bundle: dict[str, Any], bundle_path: Path, repo_ro
     bindings = bundle.get("bindings")
     if not isinstance(bindings, dict):
         raise BatchValidationError("admission bundle bindings are required")
-    required = ("implementation_tree_sha256", "evidence_commit", "recipe_gitlink", "input_hashes")
+    required = ("implementation_tree_sha256", "evidence_commit", "recipe_gitlink", "input_hashes", "protected_asset_hashes")
     missing = [key for key in required if key not in bindings]
     if missing:
         raise BatchValidationError(f"admission bundle missing bindings: {missing}")
@@ -258,6 +275,14 @@ def validate_admission_bundle(bundle: dict[str, Any], bundle_path: Path, repo_ro
         isinstance(key, str) and isinstance(value, str) for key, value in bindings["input_hashes"].items()
     ):
         raise BatchValidationError("input_hashes must be a string map")
+    protected = bindings["protected_asset_hashes"]
+    if not isinstance(protected, dict) or not protected:
+        raise BatchValidationError("protected_asset_hashes must be a non-empty string map")
+    for relative, expected_hash in protected.items():
+        if not isinstance(relative, str) or Path(relative).is_absolute() or not isinstance(expected_hash, str):
+            raise BatchValidationError("protected asset bindings must use relative string paths")
+        if protected_asset_sha256(repo_root / relative) != expected_hash:
+            raise BatchValidationError(f"protected asset hash mismatch: {relative}")
     implementation_paths = bundle.get("implementation_paths")
     if not isinstance(implementation_paths, list) or not implementation_paths or not all(
         isinstance(item, str) and item and not Path(item).is_absolute() for item in implementation_paths
@@ -538,11 +563,14 @@ class BatchExecutor:
         self.batch_revision = 0
         self.pause_after_current = False
         self.stop_requested = False
+        self.continue_requested = False
         self.control_rejection: dict[str, Any] | None = None
 
     def _persist(self, state: dict[str, Any], event: str, **fields: Any) -> None:
         self.state_root.mkdir(parents=True, exist_ok=True)
         state["batch_revision"] = self.batch_revision
+        state["control_seq"] = self.control_seq
+        state["control_offset"] = self.control_offset
         atomic_write(self.batch_state_path, state)
         record = {
             "schema_version": 1,
@@ -577,7 +605,7 @@ class BatchExecutor:
                     self._append_control_event("control_rejected", {"error": str(exc)})
 
     def _append_control_event(self, event: str, fields: dict[str, Any]) -> None:
-        state = self._load_state()
+        state = self._load_state(sync=False)
         self._persist(state, event, **fields)
 
     def _apply_control(self, control: dict[str, Any]) -> None:
@@ -605,14 +633,15 @@ class BatchExecutor:
         elif action == "stop_now":
             self.stop_requested = True
         elif action == "continue_remaining":
-            state = self._load_state()
+            state = self._load_state(sync=False)
             if state.get("status") not in {"paused_after_current", "stopped"}:
                 raise OperatorControlError("continue_remaining requires paused or stopped batch")
             self.stop_requested = False
             self.pause_after_current = False
+            self.continue_requested = True
         self._append_control_event("control_consumed", {"action": action, "control_seq": self.control_seq})
 
-    def _load_state(self) -> dict[str, Any]:
+    def _load_state(self, sync: bool = True) -> dict[str, Any]:
         if not self.batch_state_path.exists():
             return {
                 "schema_version": 1,
@@ -625,7 +654,10 @@ class BatchExecutor:
         state = json.loads(self.batch_state_path.read_text())
         if state.get("batch_manifest_sha256") != self.manifest.batch_manifest_sha256:
             raise BatchValidationError("batch state manifest mismatch")
-        self.batch_revision = int(state.get("batch_revision", 0))
+        if sync:
+            self.batch_revision = int(state.get("batch_revision", 0))
+            self.control_seq = int(state.get("control_seq", 0))
+            self.control_offset = int(state.get("control_offset", 0))
         return state
 
     def _item_record(self, item: BatchItemSpec, status: str, **fields: Any) -> dict[str, Any]:
@@ -668,26 +700,29 @@ class BatchExecutor:
         self._persist(state, "batch_shared_failure", failure=state["failure"])
         return state
 
+    def _stop_for_operator(self, state: dict[str, Any]) -> dict[str, Any]:
+        state["status"] = "stopped"
+        state["failure"] = failure("operator_stop_now", "operator requested batch stop")
+        self.batch_revision += 1
+        self._persist(state, "batch_stopped", reason="operator_stop_now", failure=state["failure"])
+        return state
+
     def run(self) -> dict[str, Any]:
         state = self._load_state()
         self._read_controls()
         state = self._load_state()
         if state.get("status") in BATCH_TERMINAL_STATES and state.get("status") != "stopped":
             return state
-        if state.get("status") == "stopped":
-            self._read_controls()
-            if state.get("status") == "stopped" and not self.control_seq:
-                return state
+        if state.get("status") in {"paused_after_current", "stopped"} and not self.continue_requested:
+            return state
+        self.continue_requested = False
         state["status"] = "running"
         state.setdefault("items", [])
         failure_codes: list[str] = []
         for item in self.manifest.items:
             self._read_controls()
             if self.stop_requested:
-                state["status"] = "stopped"
-                self.batch_revision += 1
-                self._persist(state, "batch_stopped", reason="operator_stop_now")
-                return state
+                return self._stop_for_operator(state)
             if self.pause_after_current:
                 state["status"] = "paused_after_current"
                 self.batch_revision += 1
@@ -714,6 +749,9 @@ class BatchExecutor:
             except (OSError, ValueError, KeyError) as exc:
                 return self._stop_for_shared_failure(state, "state_or_execution_error", str(exc))
             if atomic_state.status == "succeeded":
+                self._read_controls()
+                if self.stop_requested:
+                    return self._stop_for_operator(state)
                 state["items"].append(self._item_record(item, "succeeded", run_id=spec.run_id, cleanup=atomic_state.cleanup))
                 self.batch_revision += 1
                 self._persist(state, "item_succeeded", item_id=item.item_id, run_id=spec.run_id)
@@ -732,7 +770,12 @@ class BatchExecutor:
                     attempt=atomic_state.attempt,
                 )
             )
-            if atomic_state.status == "cleanup_failed" or self.stop_requested or len(failure_codes) >= 2 and failure_codes[-1] == failure_codes[-2]:
+            if atomic_state.status == "cleanup_failed":
+                return self._stop_for_shared_failure(state, "shared_failure", f"batch stopped after {code}")
+            self._read_controls()
+            if self.stop_requested:
+                return self._stop_for_operator(state)
+            if len(failure_codes) >= 2 and failure_codes[-1] == failure_codes[-2]:
                 return self._stop_for_shared_failure(state, "shared_failure", f"batch stopped after {code}")
             self.batch_revision += 1
             self._persist(state, "item_failed_fallback", item_id=item.item_id, failure_code=code, next_item=True)
@@ -779,8 +822,9 @@ def main() -> int:
                 print(json.dumps({"ok": True, "batch_id": manifest.batch_id, "batch_manifest_sha256": manifest.batch_manifest_sha256, "items": [item.item_id for item in manifest.items]}, sort_keys=True))
                 return 0
             state = BatchExecutor(manifest, args.state_root, SubprocessAdapter()).run()
-            print(json.dumps({"ok": state.get("status") == "completed", "state": state}, sort_keys=True))
-            return 0 if state.get("status") == "completed" else 1
+            completed = state.get("status") in {"completed", "completed_with_failures"}
+            print(json.dumps({"ok": completed, "state": state}, sort_keys=True))
+            return 0 if completed else 1
         except (OSError, ValueError, json.JSONDecodeError, BatchValidationError) as exc:
             print(json.dumps({"ok": False, "failure": failure("invalid_batch_request", str(exc))}, sort_keys=True))
             return 2

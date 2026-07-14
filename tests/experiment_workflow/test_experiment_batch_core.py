@@ -108,6 +108,11 @@ def write_valid_manifest(tool, tmp_path: Path) -> Path:
             "evidence_commit": evidence_commit,
             "recipe_gitlink": recipe_head,
             "input_hashes": {},
+            "protected_asset_hashes": {
+                ".claude/skills/experiment-registry": tool.protected_asset_sha256(ROOT / ".claude/skills/experiment-registry"),
+                "docs/joint_training/plans/active/qwen3_1p7b_code_stage123_plateau_breakthrough.md": tool.protected_asset_sha256(ROOT / "docs/joint_training/plans/active/qwen3_1p7b_code_stage123_plateau_breakthrough.md"),
+                "test_data": tool.protected_asset_sha256(ROOT / "test_data"),
+            },
         },
     }
     bundle["bundle_sha256"] = tool.sha256_json(bundle)
@@ -213,6 +218,7 @@ def test_pause_continue_and_replay_controls_are_revision_bound(tmp_path: Path) -
     assert paused["status"] == "paused_after_current"
     with manifest.operator_control_path.open("a") as handle:
         handle.write(json.dumps(control(tool, manifest, 2, 1, "continue_remaining")) + "\n")
+    executor = tool.BatchExecutor(manifest, tmp_path / "state", FakeAdapter([0]), FakeClock())
     completed = executor.run()
     assert completed["status"] == "completed"
     with manifest.operator_control_path.open("a") as handle:
@@ -235,7 +241,7 @@ def test_stop_now_during_active_item_terminates_and_stops_batch(tmp_path: Path) 
     executor = tool.BatchExecutor(manifest, tmp_path / "state", adapter, FakeClock())
     holder["executor"] = executor
     state = executor.run()
-    assert state["status"] == "shared_failure"
+    assert state["status"] == "stopped"
     assert len(adapter.started) == 1
 
 
