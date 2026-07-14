@@ -134,6 +134,14 @@ def file_sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def manifest_resource_profile_sha256(manifest: dict[str, Any]) -> str:
+    profile = manifest.get("resource_profile")
+    value = profile.get("sha256") if isinstance(profile, dict) else None
+    if not isinstance(value, str) or len(value) != 64:
+        raise ValueError("manifest lacks resource profile identity")
+    return value
+
+
 def validate_admission_bundle(bundle: dict[str, Any], *, require_accepted: bool = False) -> EvidenceDecision:
     if bundle.get("schema_version") != 1 or bundle.get("bundle_type") != "stage123_admission_bundle":
         return EvidenceDecision(False, "admission_schema", "unsupported admission bundle schema", {})
@@ -164,6 +172,7 @@ def validate_admission_bundle(bundle: dict[str, Any], *, require_accepted: bool 
 
 def build_admission_bundle(manifest_path: Path, profile_path: Path, calibration_path: Path, preflight_path: Path, evidence_commit: str, output: Path) -> dict[str, Any]:
     manifest = load_object(manifest_path)
+    resource_profile_sha256 = manifest_resource_profile_sha256(manifest)
     calibration = load_object(calibration_path)
     preflight = load_object(preflight_path)
     run_ids = [item.get("id") for item in manifest.get("runs", [])]
@@ -177,7 +186,7 @@ def build_admission_bundle(manifest_path: Path, profile_path: Path, calibration_
         "calibration_result",
         {
             "manifest_sha256": manifest.get("manifest_sha256"),
-            "resource_profile_sha256": file_sha256(profile_path),
+            "resource_profile_sha256": resource_profile_sha256,
             "implementation_tree_sha256": expected_tree,
             "evidence_commit": expected_calibration_commit,
             "run_ids": run_ids,
@@ -197,7 +206,7 @@ def build_admission_bundle(manifest_path: Path, profile_path: Path, calibration_
         "run_ids": run_ids,
         "bindings": {
             "manifest_sha256": manifest_sha,
-            "resource_profile_sha256": file_sha256(profile_path),
+            "resource_profile_sha256": resource_profile_sha256,
             "implementation_tree_sha256": calibration.get("implementation_tree_sha256"),
             "calibration_result_sha256": file_sha256(calibration_path),
             "preflight_result_sha256": file_sha256(preflight_path),

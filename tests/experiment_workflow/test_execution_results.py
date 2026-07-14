@@ -80,7 +80,7 @@ def test_launch_requires_accepted_bundle(tmp_path: Path, capsys) -> None:
 
 def test_admission_builder_never_self_binds_calibration_identity(tmp_path: Path) -> None:
     tool = module(); manifest = tmp_path / "manifest.json"; profile = tmp_path / "profile.sh"; calibration = tmp_path / "calibration.json"; preflight = tmp_path / "preflight.json"
-    manifest.write_text(json.dumps({"manifest_sha256": "a" * 64, "runs": [{"id": "frac25-stage2"}, {"id": "frac25-stage3"}]})); profile.write_text("profile")
+    manifest.write_text(json.dumps({"manifest_sha256": "a" * 64, "resource_profile": {"sha256": "c" * 64}, "runs": [{"id": "frac25-stage2"}, {"id": "frac25-stage3"}]})); profile.write_text("profile")
     calibration.write_text(json.dumps({"schema_version": 1, "result_type": "calibration_result", "decision": "passed"}))
     preflight.write_text(json.dumps({"schema_version": 1, "result_type": "preflight_result", "decision": "passed", "manifest_sha256": "a" * 64}))
     try:
@@ -89,3 +89,16 @@ def test_admission_builder_never_self_binds_calibration_identity(tmp_path: Path)
         assert str(exc) == "preflight result lacks calibration expected bindings"
     else:
         raise AssertionError("builder accepted self-bound calibration identity")
+
+
+def test_admission_uses_manifest_owned_resource_profile_identity() -> None:
+    tool = module()
+    manifest = {"resource_profile": {"sha256": "d" * 64}}
+    assert tool.manifest_resource_profile_sha256(manifest) == "d" * 64
+    for invalid in ({}, {"resource_profile": {}}, {"resource_profile": {"sha256": "short"}}):
+        try:
+            tool.manifest_resource_profile_sha256(invalid)
+        except ValueError as exc:
+            assert str(exc) == "manifest lacks resource profile identity"
+        else:
+            raise AssertionError("invalid manifest resource profile identity was accepted")
