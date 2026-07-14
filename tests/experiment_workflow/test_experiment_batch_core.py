@@ -33,9 +33,10 @@ class FakeClock:
 
 
 class FakeAdapter:
-    def __init__(self, outcomes: list[int], on_start=None) -> None:
+    def __init__(self, outcomes: list[int], on_start=None, on_poll=None) -> None:
         self.outcomes = list(outcomes)
         self.on_start = on_start
+        self.on_poll = on_poll
         self.started: list[list[str]] = []
         self.results: dict[str, int] = {}
 
@@ -48,6 +49,9 @@ class FakeAdapter:
         return child_id
 
     def poll(self, child_id: str) -> int | None:
+        if self.on_poll is not None:
+            callback, self.on_poll = self.on_poll, None
+            callback()
         return self.results[child_id]
 
     def terminate(self, child_id: str, grace_seconds: float) -> dict[str, object]:
@@ -242,6 +246,22 @@ def test_stop_now_during_active_item_terminates_and_stops_batch(tmp_path: Path) 
     holder["executor"] = executor
     state = executor.run()
     assert state["status"] == "stopped"
+    assert len(adapter.started) == 1
+
+
+def test_stop_now_at_success_cleanup_boundary_records_terminal_item(tmp_path: Path) -> None:
+    tool = load_core()
+    manifest = make_manifest(tool, tmp_path, [make_item(tool, "one", "run-one"), make_item(tool, "two", "run-two")])
+
+    def issue_stop_after_control_poll() -> None:
+        with manifest.operator_control_path.open("a") as handle:
+            handle.write(json.dumps(control(tool, manifest, 1, 1, "stop_now")) + "\n")
+
+    adapter = FakeAdapter([0, 0], on_poll=issue_stop_after_control_poll)
+    state = tool.BatchExecutor(manifest, tmp_path / "state", adapter, FakeClock()).run()
+    assert state["status"] == "stopped"
+    assert [item["item_id"] for item in state["items"]] == ["one"]
+    assert state["items"][0]["status"] == "succeeded"
     assert len(adapter.started) == 1
 
 

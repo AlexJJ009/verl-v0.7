@@ -750,11 +750,12 @@ class BatchExecutor:
                 return self._stop_for_shared_failure(state, "state_or_execution_error", str(exc))
             if atomic_state.status == "succeeded":
                 self._read_controls()
-                if self.stop_requested:
-                    return self._stop_for_operator(state)
+                stop_after_terminal_record = self.stop_requested
                 state["items"].append(self._item_record(item, "succeeded", run_id=spec.run_id, cleanup=atomic_state.cleanup))
                 self.batch_revision += 1
                 self._persist(state, "item_succeeded", item_id=item.item_id, run_id=spec.run_id)
+                if stop_after_terminal_record:
+                    return self._stop_for_operator(state)
                 continue
             code = normalize_failure_code(atomic_state)
             failure_codes.append(code)
