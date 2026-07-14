@@ -55,12 +55,12 @@ def persisted_events(state_root: Path) -> list[dict]:
             raise ValueError(f"invalid persisted execution event line {index}: {exc}") from exc
         if event.get("schema_version") != 1:
             raise ValueError(f"invalid persisted execution event schema at line {index}")
-        if "run_id" in event:
-            if event.get("status") not in ATOMIC_STATES:
-                raise ValueError(f"invalid persisted atomic event schema at line {index}")
-        elif "batch_id" in event:
+        if "batch_id" in event:
             if not isinstance(event.get("event"), str) or event.get("state") not in BATCH_STATES:
                 raise ValueError(f"invalid persisted batch event schema at line {index}")
+        elif "run_id" in event:
+            if event.get("status") not in ATOMIC_STATES:
+                raise ValueError(f"invalid persisted atomic event schema at line {index}")
         else:
             raise ValueError(f"invalid persisted execution event schema at line {index}")
         event_identity(event)

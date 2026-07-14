@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 import sys
 
@@ -80,3 +81,10 @@ def test_corrupt_state_and_event_ledgers_fail_closed(tmp_path: Path) -> None:
     event_state = tool.BatchExecutor(manifest, event_root, support_module.FakeAdapter([0]), support_module.FakeClock()).run()
     assert event_state["status"] == "shared_failure"
     assert event_state["failure"]["code"] == "event_corruption"
+
+    atomic_root = tmp_path / "atomic-event-corrupt"
+    atomic_root.mkdir()
+    (atomic_root / "events.jsonl").write_text(json.dumps({"schema_version": 1, "run_id": "phase-a", "status": "unknown", "attempt": 1}) + "\n")
+    atomic_state = tool.BatchExecutor(manifest, atomic_root, support_module.FakeAdapter([0]), support_module.FakeClock()).run()
+    assert atomic_state["status"] == "shared_failure"
+    assert atomic_state["failure"]["code"] == "event_corruption"

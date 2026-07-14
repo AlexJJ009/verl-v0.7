@@ -701,11 +701,21 @@ class BatchExecutor:
                 raise BatchValidationError(f"event ledger corruption at line {index}") from exc
             if event.get("schema_version") != 1:
                 raise BatchValidationError(f"event ledger schema mismatch at line {index}")
-            if "batch_id" in event and (
-                event.get("batch_id") != self.manifest.batch_id
-                or event.get("batch_manifest_sha256") != self.manifest.batch_manifest_sha256
-            ):
-                raise BatchValidationError(f"event ledger batch binding mismatch at line {index}")
+            if "batch_id" in event:
+                if (
+                    event.get("batch_id") != self.manifest.batch_id
+                    or event.get("batch_manifest_sha256") != self.manifest.batch_manifest_sha256
+                ):
+                    raise BatchValidationError(f"event ledger batch binding mismatch at line {index}")
+                if event.get("state") not in BATCH_TERMINAL_STATES | {"pending", "running", "paused_after_current", "stopping"}:
+                    raise BatchValidationError(f"batch event schema mismatch at line {index}")
+            elif "run_id" in event:
+                if not isinstance(event.get("run_id"), str) or event.get("status") not in TERMINAL_STATES | {"pending", "running"}:
+                    raise BatchValidationError(f"atomic event schema mismatch at line {index}")
+                if not isinstance(event.get("attempt", 0), int):
+                    raise BatchValidationError(f"atomic event attempt mismatch at line {index}")
+            else:
+                raise BatchValidationError(f"event ledger identity missing at line {index}")
 
     def _validate_item_bindings(self, item: BatchItemSpec) -> None:
         if item.adapter_type == "cpu_fixture_v1":

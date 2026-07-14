@@ -1,8 +1,8 @@
 {
   "adapter_type": "stage123_queue_v1",
   "bindings": {
-    "evidence_commit": "0a1d1b0696872ec88caaaa3ef7b3008380c88d0b",
-    "implementation_tree_sha256": "f6a46ee937e14de15a03e11897a5a23c0e82afc53c9c4d1f9cbfc627acc638b3",
+    "evidence_commit": "ea0a7d12be47518253788c0f5258ddd4de68d6e4",
+    "implementation_tree_sha256": "b77cd4a6aa53414ff117fa8e25e2926af72112a2bd42ba8296dd4891c6c03438",
     "input_hashes": {},
     "protected_asset_hashes": {
       ".claude/skills/experiment-registry": "81c6e7996f6f0ccbc43479ebea9dfe6b30965fdd99779ad1b7bd2a074255b5b9",
@@ -11,7 +11,7 @@
     },
     "recipe_gitlink": "d717672fb671edb86e504ba11e15b742686d7ef8"
   },
-  "bundle_sha256": "0bc67dbe79f95173c1629865a2a8fcbfe05dec87bd525c8eb9c0b9458e215710",
+  "bundle_sha256": "0f680d5c03aa8443be711a08f333fe9bb237ae712ea81d8caae5fba6730572f3",
   "bundle_type": "experiment_batch_admission",
   "canonical_commands": [
     [
