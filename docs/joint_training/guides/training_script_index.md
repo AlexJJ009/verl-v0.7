@@ -214,7 +214,7 @@ Formal code-task queue launch and repair history:
 | `/data-1/dataset/code/verl_rl/kodcode_light_rl_10k_train_rl_format.parquet` | Generated KodCode-Light-RL-10K train file for code-task On-Policy SFT experiments. | 2026-06-04 | 10000 rows; `data_source=kodcode_light_rl_10k`; prompt contract is `<think>...</think><answer>```python ...```</answer>`; reward uses `kodcode_exec`. |
 ### Qwen3-1.7B Stage123 reliability gates
 
-- Fast machine-readable preflight: `python3 recipe/on_policy_wdl_sft/code_task/stage123_preflight.py`
-- Preflight during an already active queue audit: `python3 recipe/on_policy_wdl_sft/code_task/stage123_preflight.py --allow-active`
+- Fast machine-readable preflight: `IMAGE_ID=$(docker image inspect verl-harness:latest --format '{{.Id}}') && REPO_HOST=/data-1/code/verl STAGE123_DOCKER_IMAGE_ID="$IMAGE_ID" /data-1/verl07/run_train.sh python recipe/on_policy_wdl_sft/code_task/stage123_preflight.py --calibration-result <calibration_result.json> --output <preflight_result.json>`
+- Preflight during an already active queue audit: append `--allow-active` to the wrapper command above; it still requires the calibration result and host-measured image identity.
 - Read-only GPU idle watchdog: `python3 recipe/on_policy_wdl_sft/code_task/stage123_gpu_idle_watchdog.py --idle-minutes 10`
 - The watchdog records alerts in `/data-2/experiment_registry/stage123_gpu_idle_watchdog.jsonl`; it never kills or restarts training.

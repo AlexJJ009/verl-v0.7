@@ -233,7 +233,7 @@ class ExecutionCore:
             returncode = self.adapter.poll(state.child_id)
             if returncode is not None:
                 if returncode == 0:
-                    transition(state, "succeeded", now, completed_at=now)
+                    transition(state, "succeeded", now, completed_at=now, cleanup={"resources_released": True, "term_sent": False, "kill_sent": False})
                 else:
                     cleanup = self.adapter.terminate(state.child_id, spec.cleanup_grace_seconds)
                     status = "failed" if cleanup.get("resources_released") else "cleanup_failed"

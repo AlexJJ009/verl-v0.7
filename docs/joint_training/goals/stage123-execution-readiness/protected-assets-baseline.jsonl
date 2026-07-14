@@ -1,0 +1,4 @@
+{"path": ".claude/skills/experiment-registry", "target": "/data-1/agent-tools/experiment_registry/skills/experiment-registry", "type": "symlink"}
+{"bytes": 4228, "path": "docs/joint_training/plans/active/qwen3_1p7b_code_stage123_plateau_breakthrough.md", "sha256": "4fa3ad0051057dfb5314f9871035df73f8bc08fe7a600c580ad2907694474ffb", "type": "file"}
+{"path": "test_data", "type": "directory"}
+{"bytes": 22262, "path": "test_data/test_video.json", "sha256": "003db3687e6d5e623aad667ed51c7a96db48f39a4d2bb9a2902334075518e2f5", "type": "file"}

@@ -19,6 +19,7 @@ import tokenize
 from io import StringIO
 from typing import Any
 import re
+from datetime import datetime, timezone
 
 ROOT = Path(__file__).resolve().parents[1]
 PHASE_SCRIPT = ROOT / "recipe/on_policy_wdl_sft/code_task/run_code_task_operational_calibration_phase.sh"
@@ -316,6 +317,8 @@ def main() -> int:
     parser.add_argument("--scratch-root", type=Path, required=True)
     parser.add_argument("--manifest-sha256", required=True)
     parser.add_argument("--resource-profile-sha256", required=True)
+    parser.add_argument("--execution-run-id", default="stage123-readiness-requalification")
+    parser.add_argument("--authorization-decision-id", default="unspecified")
     args = parser.parse_args()
     enable_child_subreaper()
     phases = args.phases.split(",")
@@ -350,6 +353,8 @@ def main() -> int:
         "training_steps": 0,
         "optimizer_enabled": False,
         "run_root": str(run_root),
+        "run_id": args.execution_run_id,
+        "authorization_decision_id": args.authorization_decision_id,
     }
     write_json(run_root / "probe-spec.json", spec)
     started = time.time()
@@ -372,6 +377,8 @@ def main() -> int:
         "evidence_class": "infrastructure_calibration",
         "decision": "candidate",
         "manifest_sha256": args.manifest_sha256,
+        "run_id": args.execution_run_id,
+        "authorization_decision_id": args.authorization_decision_id,
         "contract": {"validation_deadline_seconds": deadline},
         "phases": phase_reports,
         "started_at_epoch": started,
@@ -388,8 +395,28 @@ def main() -> int:
     )
     verification = json.loads(checked.stdout)
     report = {**candidate, "status": "passed" if verification["ok"] else "failed", "verification": verification, "failures": verification["failures"]}
+    report["optimizer_steps"] = 0
+    report["formal_checkpoints"] = []
+    report["prediction_comparison"] = {"qualified": bool(verification["ok"]), "verification": verification.get("prediction_comparison", {})}
+    report["cleanup"] = {"resources_released": all(item.get("cleanup", {}).get("resources_released") is True for phase in phase_reports for item in phase.get("repetitions", []))}
+    report_started = datetime.fromtimestamp(started, timezone.utc).isoformat().replace("+00:00", "Z")
+    report_completed = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    report["report_started_at_utc"] = report_started
+    report["report_completed_at_utc"] = report_completed
     write_json(run_root / "probe-report.json", report)
-    write_json(args.scratch_root / "latest-probe.json", {"run_root": str(run_root), "report": str(run_root / "probe-report.json"), "status": report["status"]})
+    report_path = run_root / "probe-report.json"
+    write_json(args.scratch_root / "latest-probe.json", {
+        "schema_version": 2,
+        "run_id": args.execution_run_id,
+        "authorization_decision_id": args.authorization_decision_id,
+        "report_sha256": sha256(report_path),
+        "generated_at_utc": report_completed,
+        "report_started_at_utc": report_started,
+        "report_completed_at_utc": report_completed,
+        "run_root": str(run_root),
+        "report": str(report_path),
+        "status": report["status"],
+    })
     print(json.dumps({"ok": verification["ok"], "probe_report": str(run_root / "probe-report.json")}, sort_keys=True))
     return 0 if verification["ok"] else 1
 

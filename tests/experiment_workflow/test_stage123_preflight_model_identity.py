@@ -4,6 +4,7 @@ import importlib.util
 import json
 from pathlib import Path
 import subprocess
+from datetime import datetime, timezone
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -38,20 +39,32 @@ def fake_machine_commands(module, monkeypatch):
             return real_command(*args)
         if args[0] == "nvidia-smi":
             return subprocess.CompletedProcess(args, 0, stdout="\n".join(["NVIDIA L40S, 46068"] * 8) + "\n", stderr="")
-        if args[0] == "docker":
-            return subprocess.CompletedProcess(args, 0, stdout="sha256:test\n", stderr="")
-        if args[0] == "tmux":
-            return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
         raise AssertionError(f"unexpected command: {args}")
 
     monkeypatch.setattr(module, "command", fake)
+
+
+def host_facts(tmp_path: Path) -> Path:
+    path = tmp_path / "host_facts.json"
+    now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    path.write_text(json.dumps({
+        "schema_version": 1,
+        "artifact_type": "stage123_host_facts",
+        "generated_at": now,
+        "completed_at": now,
+        "ok": True,
+        "docker_image": {"reference": "verl-harness:latest", "immutable_id": "sha256:test"},
+        "tmux": {"sessions": [], "stage123_conflicts": []},
+        "mounts": {"checkpoint_mount": "/data-2/checkpoints"},
+    }))
+    return path
 
 
 def test_preflight_binds_repo_model_identity_and_reports_pending_stage3(tmp_path, monkeypatch, capsys):
     module = load_module()
     normalized = normalized_manifest(tmp_path)
     fake_machine_commands(module, monkeypatch)
-    monkeypatch.setattr(module.sys, "argv", ["stage123_preflight.py", "--allow-active", "--normalized-manifest", str(normalized)])
+    monkeypatch.setattr(module.sys, "argv", ["stage123_preflight.py", "--allow-active", "--normalized-manifest", str(normalized), "--host-facts", str(host_facts(tmp_path))])
     # The container checkout is /workspace/verl, so unrelated topology checks may fail.
     # This fixture owns only the model-identity check.
     module.main()
@@ -70,7 +83,7 @@ def test_preflight_rejects_normalized_stage1_identity_drift(tmp_path, monkeypatc
     data = json.loads(normalized.read_text())
     data["calibration_workloads"]["stage1"]["model_sources"][0]["artifact_sha256"] = "0" * 64
     normalized.write_text(json.dumps(data, sort_keys=True))
-    monkeypatch.setattr(module.sys, "argv", ["stage123_preflight.py", "--allow-active", "--normalized-manifest", str(normalized)])
+    monkeypatch.setattr(module.sys, "argv", ["stage123_preflight.py", "--allow-active", "--normalized-manifest", str(normalized), "--host-facts", str(host_facts(tmp_path))])
     assert module.main() == 1
     report = json.loads(capsys.readouterr().out)
     check = next(item for item in report["checks"] if item["name"] == "model_identity")

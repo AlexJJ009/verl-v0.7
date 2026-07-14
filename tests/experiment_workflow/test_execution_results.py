@@ -56,7 +56,7 @@ def test_admission_mutations_fail_closed(tmp_path: Path) -> None:
 def test_acceptance_is_required_and_bound(tmp_path: Path) -> None:
     tool = module(); _, value = bundle(tool, tmp_path)
     assert tool.validate_admission_bundle(value, require_accepted=True).code == "admission_not_accepted"
-    value["acceptance"] = {"decision": "accepted", "bundle_sha256": value["bundle_sha256"]}
+    value["acceptance"] = accepted_report(value)
     assert tool.validate_admission_bundle(value, require_accepted=True).authorized is True
 
 
@@ -73,9 +73,23 @@ def test_launch_renderer_is_deterministic_and_contains_no_secrets(tmp_path: Path
 def test_launch_requires_accepted_bundle(tmp_path: Path, capsys) -> None:
     tool = module(); path, value = bundle(tool, tmp_path)
     assert tool.admission_main(["render-launch", "--bundle", str(path), "--repo-host", str(ROOT)]) == 1
-    value["acceptance"] = {"decision": "accepted", "bundle_sha256": value["bundle_sha256"]}
+    value["acceptance"] = accepted_report(value)
     path.write_text(json.dumps(value))
-    assert tool.admission_main(["render-launch", "--bundle", str(path), "--repo-host", str(ROOT)]) == 0
+    assert tool.admission_main(["render-launch", "--bundle", str(path), "--repo-host", str(ROOT)]) == 1
+
+
+def accepted_report(value: dict) -> dict:
+    return {
+        "decision": "accepted",
+        "bundle_sha256": value["bundle_sha256"],
+        "manifest_sha256": value["bindings"]["manifest_sha256"],
+        "resource_profile_sha256": value["bindings"]["resource_profile_sha256"],
+        "implementation_tree_sha256": value["bindings"]["implementation_tree_sha256"],
+        "calibration_result_sha256": value["bindings"]["calibration_result_sha256"],
+        "preflight_result_sha256": value["bindings"]["preflight_result_sha256"],
+        "readiness_evidence_commit": value["bindings"]["readiness_evidence_commit"],
+        "run_ids": value["run_ids"],
+    }
 
 
 def test_admission_builder_never_self_binds_calibration_identity(tmp_path: Path) -> None:
@@ -102,3 +116,85 @@ def test_admission_uses_manifest_owned_resource_profile_identity() -> None:
             assert str(exc) == "manifest lacks resource profile identity"
         else:
             raise AssertionError("invalid manifest resource profile identity was accepted")
+
+
+def test_resource_profile_snapshot_hash_detects_mutation(tmp_path: Path) -> None:
+    tool = module()
+    profile = tmp_path / "profile.sh"
+    profile.write_text("stage123_profile_snapshot() { printf 'gpu_count=8\\n'; }\n")
+    first = tool.rendered_resource_profile_sha256(profile)
+    profile.write_text("stage123_profile_snapshot() { printf 'gpu_count=4\\n'; }\n")
+    second = tool.rendered_resource_profile_sha256(profile)
+    assert first != second
+
+
+def test_producer_pointer_v2_rejects_cross_run_report(tmp_path: Path) -> None:
+    renderer_spec = importlib.util.spec_from_file_location("calibration_renderer", ROOT / "scripts/render_calibration_result.py")
+    renderer = importlib.util.module_from_spec(renderer_spec)
+    assert renderer_spec.loader
+    renderer_spec.loader.exec_module(renderer)
+    scratch = tmp_path / "decision"
+    report_root = scratch / "probe-1"
+    report_root.mkdir(parents=True)
+    report = report_root / "probe-report.json"
+    report.write_text(json.dumps({"status": "passed", "run_id": "run-a", "authorization_decision_id": "decision-a"}))
+    pointer = scratch / "latest-probe.json"
+    pointer.write_text(json.dumps({
+        "schema_version": 2,
+        "run_id": "run-b",
+        "authorization_decision_id": "decision-a",
+        "report_sha256": "0" * 64,
+        "generated_at_utc": "2026-07-14T00:00:00Z",
+        "report_started_at_utc": "2026-07-14T00:00:00Z",
+        "report_completed_at_utc": "2026-07-14T00:00:01Z",
+        "run_root": str(report_root),
+        "report": str(report),
+        "status": "passed",
+    }))
+    try:
+        renderer.validate_pointer(pointer, run_id="run-b", decision_id="decision-a", scratch_root=scratch)
+    except ValueError as exc:
+        assert "report hash mismatch" in str(exc)
+    else:
+        raise AssertionError("cross-run producer pointer was accepted")
+
+
+def test_calibration_renderer_rejects_empty_phase_evidence(tmp_path: Path) -> None:
+    renderer_spec = importlib.util.spec_from_file_location("calibration_renderer_empty", ROOT / "scripts/render_calibration_result.py")
+    renderer = importlib.util.module_from_spec(renderer_spec)
+    assert renderer_spec.loader
+    renderer_spec.loader.exec_module(renderer)
+    scratch = tmp_path / "decision"
+    report_root = scratch / "probe-1"
+    report_root.mkdir(parents=True)
+    report = report_root / "probe-report.json"
+    report.write_text(json.dumps({
+        "status": "passed",
+        "run_id": "run-a",
+        "authorization_decision_id": "decision-a",
+        "manifest_sha256": "a" * 64,
+        "phases": [],
+        "optimizer_steps": 0,
+        "formal_checkpoints": [],
+        "prediction_comparison": {"qualified": True},
+        "cleanup": {"resources_released": True},
+    }))
+    pointer = scratch / "latest-probe.json"
+    pointer.write_text(json.dumps({
+        "schema_version": 2,
+        "run_id": "run-a",
+        "authorization_decision_id": "decision-a",
+        "report_sha256": renderer.sha256(report),
+        "generated_at_utc": "2026-07-14T00:00:00Z",
+        "report_started_at_utc": "2026-07-14T00:00:00Z",
+        "report_completed_at_utc": "2026-07-14T00:00:01Z",
+        "run_root": str(report_root),
+        "report": str(report),
+        "status": "passed",
+    }))
+    try:
+        renderer.validate_pointer(pointer, run_id="run-a", decision_id="decision-a", scratch_root=scratch)
+    except ValueError as exc:
+        assert "exactly stage2 and stage3" in str(exc)
+    else:
+        raise AssertionError("empty calibration phase evidence was accepted")
