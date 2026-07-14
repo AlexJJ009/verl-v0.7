@@ -34,14 +34,28 @@ def normalized_manifest(tmp_path: Path) -> Path:
 def fake_machine_commands(module, monkeypatch):
     real_command = module.command
 
-    def fake(*args: str):
+    def fake(*args: str, env=None):
+        if len(args) > 1 and args[1].endswith("check_official_scorer_dependencies.py"):
+            return subprocess.CompletedProcess(args, 0, stdout=json.dumps({"ok": True, "imports": ["evalplus.evaluate"], "lcb_index": "/data-2/index.sqlite", "pythonpath": []}), stderr="")
         if args[0] in {"python3", "bash"}:
-            return real_command(*args)
+            return real_command(*args, env=env)
         if args[0] == "nvidia-smi":
             return subprocess.CompletedProcess(args, 0, stdout="\n".join(["NVIDIA L40S, 46068"] * 8) + "\n", stderr="")
         raise AssertionError(f"unexpected command: {args}")
 
     monkeypatch.setattr(module, "command", fake)
+
+
+def test_scorer_dependency_check_is_structured_and_fail_closed(monkeypatch):
+    module = load_module()
+    complete = {"ok": True, "imports": ["evalplus.evaluate"], "lcb_index": "/data-2/index.sqlite", "pythonpath": ["/workspace/verl"]}
+    monkeypatch.setattr(module, "command", lambda *args, **kwargs: subprocess.CompletedProcess(args, 0, stdout=json.dumps(complete), stderr=""))
+    ok, detail = module.scorer_dependency_check()
+    assert ok and detail == complete
+    failure = {"ok": False, "failure_class": "dependency_failure", "error": "missing scorer"}
+    monkeypatch.setattr(module, "command", lambda *args, **kwargs: subprocess.CompletedProcess(args, 2, stdout="", stderr=json.dumps(failure)))
+    ok, detail = module.scorer_dependency_check()
+    assert not ok and detail == failure
 
 
 def host_facts(tmp_path: Path) -> Path:

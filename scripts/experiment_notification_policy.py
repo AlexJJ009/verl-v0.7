@@ -18,6 +18,11 @@ SECRET = re.compile(r"(?:github_pat_[A-Za-z0-9_]+|(?:TOKEN|PASSWORD|SECRET|API_K
 
 def event_for(state: dict) -> str | None:
     if state.get("decision_required"): return "user_decision_required"
+    if state.get("authority_type") == "experiment_execution_core_event_v1":
+        status = state.get("execution_status")
+        if status == "running": return "run_started"
+        if status in {"failed", "deadline_exceeded", "cleanup_failed"} and isinstance(state.get("failure"), dict) and isinstance(state.get("cleanup"), dict): return "run_failed"
+        return None
     if state.get("terminal_failure") and state.get("cleanup_evidence"): return "run_failed"
     if int(state.get("training_step", 0)) >= 1 or state.get("complete_validation_metrics") is True: return "run_started"
     return None

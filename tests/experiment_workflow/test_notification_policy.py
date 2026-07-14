@@ -16,6 +16,11 @@ def test_only_three_positive_events_and_non_events():
     assert m.event_for({'terminal_failure':True,'cleanup_evidence':True})=='run_failed'
     assert m.event_for({'decision_required':True})=='user_decision_required'
     for state in ({'tmux':True},{'container':True},{'model_loading':True},{'training_step':0},{'healthy':True}): assert m.event_for(state) is None
+    authority={'authority_type':'experiment_execution_core_event_v1','failure':None,'cleanup':None}
+    assert m.event_for({**authority,'execution_status':'running'})=='run_started'
+    assert m.event_for({**authority,'execution_status':'succeeded'}) is None
+    assert m.event_for({**authority,'execution_status':'failed','failure':{'code':'child_exit'},'cleanup':{'resources_released':True}})=='run_failed'
+    assert m.event_for({**authority,'execution_status':'failed'}) is None
 
 def test_dedup_redaction_paths_and_delivery_failure(tmp_path: Path):
     m=tool(); ledger=tmp_path/'ledger.jsonl'; sender=tmp_path/'fail.sh'; sender.write_text('#!/bin/sh\nexit 7\n'); sender.chmod(0o755)
@@ -30,6 +35,7 @@ def test_wxpusher_adapter_supports_exactly_reviewed_events():
     assert '--title "$title" --body "$body"' in text
     assert all(event in text for event in ('run_started','run_failed','user_decision_required'))
 
-def test_inactive_historical_checkpoint_cannot_become_started():
+def test_monitor_has_no_external_runtime_inference():
     text=(ROOT/'scripts/stage123_manifest_monitor.py').read_text()
-    assert "'training_step':step if active else 0" in text
+    for forbidden in ('tmux','latest_checkpoint','checkpoint-root','queue-tmux','validation_deadlines'):
+        assert forbidden not in text

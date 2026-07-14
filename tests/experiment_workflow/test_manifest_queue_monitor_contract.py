@@ -52,6 +52,10 @@ def test_stage123_monitor_uses_event_policy_not_legacy_tmux_started_notification
     assert "training_queue_monitor.sh" not in monitor
     assert "jq " not in monitor
     assert "jq " not in (ROOT / "recipe/on_policy_wdl_sft/code_task/run_code_task_qwen3_1p7b_stage123_queue_impl.sh").read_text()
+    python_monitor = (ROOT / "scripts/stage123_manifest_monitor.py").read_text()
+    for forbidden in ("tmux", "checkpoint-root", "queue-tmux", "latest_checkpoint", "latest_checkpointed_iteration", "/data-1/checkpoints", "validation_deadlines"):
+        assert forbidden not in python_monitor
+    assert "--checkpoint-root" not in monitor and "--queue-tmux" not in monitor
 
 
 def test_l40s_launcher_accepts_explicit_container_ownership_name():
