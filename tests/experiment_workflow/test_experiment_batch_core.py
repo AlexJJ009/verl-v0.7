@@ -1,0 +1,231 @@
+from __future__ import annotations
+
+import importlib.util
+import json
+from pathlib import Path
+import subprocess
+import sys
+
+
+ROOT = Path(__file__).resolve().parents[2]
+CORE = ROOT / "scripts/experiment_execution_core.py"
+
+
+def load_core():
+    spec = importlib.util.spec_from_file_location("experiment_batch_core", CORE)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+class FakeClock:
+    def __init__(self) -> None:
+        self.value = 0.0
+
+    def now(self) -> float:
+        self.value += 1.0
+        return self.value
+
+    def sleep(self, seconds: float) -> None:
+        self.value += seconds
+
+
+class FakeAdapter:
+    def __init__(self, outcomes: list[int]) -> None:
+        self.outcomes = list(outcomes)
+        self.started: list[list[str]] = []
+        self.results: dict[str, int] = {}
+
+    def start(self, command: list[str], env: dict[str, str]) -> str:
+        child_id = str(len(self.started) + 1)
+        self.started.append(command)
+        self.results[child_id] = self.outcomes.pop(0)
+        return child_id
+
+    def poll(self, child_id: str) -> int | None:
+        return self.results[child_id]
+
+    def terminate(self, child_id: str, grace_seconds: float) -> dict[str, object]:
+        return {"resources_released": True, "term_sent": True, "kill_sent": False}
+
+
+def make_item(tool, item_id: str, run_id: str):
+    return tool.BatchItemSpec(
+        item_id=item_id,
+        goal_id=f"goal-{item_id}",
+        plan_sha256="1" * 64,
+        admission_bundle_path=Path(f"/{item_id}.json"),
+        admission_bundle_sha256="2" * 64,
+        adapter_type="cpu_fixture_v1",
+        command=["fixture", item_id],
+        command_sha256=tool.sha256_json(["fixture", item_id]),
+        expected_run_ids=(run_id, f"{run_id}-remaining"),
+        input_hashes={},
+        implementation_tree_sha256="3" * 64,
+        evidence_commit="4" * 40,
+        recipe_gitlink="5" * 40,
+        timeout_seconds=30,
+        poll_seconds=0,
+        cleanup_grace_seconds=0,
+    )
+
+
+def make_manifest(tool, tmp_path: Path, items):
+    return tool.BatchManifest(
+        batch_id="batch-fixture",
+        authorization_id="auth-fixture",
+        created_at="2026-07-14T00:00:00Z",
+        failure_policy_id="batch-fallback-v1",
+        operator_control_path=tmp_path / "controls.jsonl",
+        items=tuple(items),
+        batch_manifest_sha256="6" * 64,
+    )
+
+
+def write_valid_manifest(tool, tmp_path: Path) -> Path:
+    command = [
+        "bash",
+        str(ROOT / "recipe/on_policy_wdl_sft/code_task/run_code_task_qwen3_1p7b_stage123_queue_impl.sh"),
+        "--dry-run",
+    ]
+    implementation_paths = ["scripts/experiment_execution_core.py"]
+    recipe_head = subprocess.check_output(["git", "-C", str(ROOT / "recipe"), "rev-parse", "HEAD"], text=True).strip()
+    evidence_commit = subprocess.check_output(["git", "-C", str(ROOT), "rev-parse", "HEAD"], text=True).strip()
+    bundle = {
+        "schema_version": 1,
+        "bundle_type": "experiment_batch_admission",
+        "adapter_type": "stage123_queue_v1",
+        "canonical_command": command,
+        "command_sha256": tool.sha256_json(command),
+        "implementation_paths": implementation_paths,
+        "bindings": {
+            "implementation_tree_sha256": tool.implementation_tree_sha256(ROOT, implementation_paths),
+            "evidence_commit": evidence_commit,
+            "recipe_gitlink": recipe_head,
+            "input_hashes": {},
+        },
+    }
+    bundle["bundle_sha256"] = tool.sha256_json(bundle)
+    bundle_path = tmp_path / "admission.json"
+    bundle_path.write_text(json.dumps(bundle, sort_keys=True))
+    item = {
+        "item_id": "stage123-primary",
+        "goal_id": "stage123-primary-chain-execution",
+        "plan_sha256": "1" * 64,
+        "admission_bundle_path": str(bundle_path),
+        "admission_bundle_sha256": tool.file_sha256(bundle_path),
+        "adapter_type": "stage123_queue_v1",
+        "command_sha256": tool.sha256_json(command),
+        "implementation_tree_sha256": bundle["bindings"]["implementation_tree_sha256"],
+        "expected_run_ids": ["stage2", "stage3"],
+        "timeout_seconds": 30,
+    }
+    manifest = {
+        "schema_version": 1,
+        "batch_id": "stage123-batch",
+        "authorization_id": "auth-stage123",
+        "created_at": "2026-07-14T00:00:00Z",
+        "failure_policy_id": "batch-fallback-v1",
+        "operator_control_path": str(tmp_path / "controls.jsonl"),
+        "items": [item],
+    }
+    manifest["batch_manifest_sha256"] = tool.sha256_json(manifest)
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(json.dumps(manifest, sort_keys=True))
+    return manifest_path
+
+
+def control(tool, manifest, seq: int, revision: int, action: str):
+    value = {
+        "schema_version": 1,
+        "batch_id": manifest.batch_id,
+        "batch_manifest_sha256": manifest.batch_manifest_sha256,
+        "control_seq": seq,
+        "expected_batch_revision": revision,
+        "action": action,
+        "authorization_id": manifest.authorization_id,
+        "issued_at": "2026-07-14T00:00:00Z",
+    }
+    value["control_sha256"] = tool.sha256_json(value)
+    return value
+
+
+def test_manifest_validation_binds_admission_command_and_implementation(tmp_path: Path) -> None:
+    tool = load_core()
+    path = write_valid_manifest(tool, tmp_path)
+    manifest = tool.load_batch_manifest(path, ROOT)
+    assert manifest.batch_id == "stage123-batch"
+    assert manifest.items[0].adapter_type == "stage123_queue_v1"
+    raw = json.loads(path.read_text())
+    raw["items"][0]["command_sha256"] = "0" * 64
+    raw["batch_manifest_sha256"] = tool.sha256_json({key: value for key, value in raw.items() if key != "batch_manifest_sha256"})
+    path.write_text(json.dumps(raw))
+    try:
+        tool.load_batch_manifest(path, ROOT)
+    except tool.BatchValidationError as exc:
+        assert "command hash mismatch" in str(exc)
+    else:
+        raise AssertionError("mutated item command was accepted")
+
+
+def test_successful_items_advance_once_in_manifest_order(tmp_path: Path) -> None:
+    tool = load_core()
+    items = [make_item(tool, "one", "run-one"), make_item(tool, "two", "run-two")]
+    adapter = FakeAdapter([0, 0])
+    state = tool.BatchExecutor(make_manifest(tool, tmp_path, items), tmp_path / "state", adapter, FakeClock()).run()
+    assert state["status"] == "completed"
+    assert [item["item_id"] for item in state["items"]] == ["one", "two"]
+    assert adapter.started == [["fixture", "one"], ["fixture", "two"]]
+
+
+def test_local_failure_is_inconclusive_and_falls_forward_without_retry(tmp_path: Path) -> None:
+    tool = load_core()
+    items = [make_item(tool, "one", "run-one"), make_item(tool, "two", "run-two")]
+    adapter = FakeAdapter([7, 0])
+    state = tool.BatchExecutor(make_manifest(tool, tmp_path, items), tmp_path / "state", adapter, FakeClock()).run()
+    assert state["status"] == "completed_with_failures"
+    assert state["items"][0]["status"] == "inconclusive_operational_failure"
+    assert state["items"][0]["attempt"] == 1
+    assert state["items"][0]["skipped_phases"] == ["run-one-remaining"]
+    assert len(adapter.started) == 2
+
+
+def test_two_equal_normalized_failures_stop_batch(tmp_path: Path) -> None:
+    tool = load_core()
+    items = [make_item(tool, "one", "run-one"), make_item(tool, "two", "run-two"), make_item(tool, "three", "run-three")]
+    adapter = FakeAdapter([7, 9, 0])
+    state = tool.BatchExecutor(make_manifest(tool, tmp_path, items), tmp_path / "state", adapter, FakeClock()).run()
+    assert state["status"] == "shared_failure"
+    assert len(adapter.started) == 2
+
+
+def test_pause_continue_and_replay_controls_are_revision_bound(tmp_path: Path) -> None:
+    tool = load_core()
+    manifest = make_manifest(tool, tmp_path, [make_item(tool, "one", "run-one")])
+    executor = tool.BatchExecutor(manifest, tmp_path / "state", FakeAdapter([0]), FakeClock())
+    manifest.operator_control_path.write_text(json.dumps(control(tool, manifest, 1, 0, "pause_after_current")) + "\n")
+    paused = executor.run()
+    assert paused["status"] == "paused_after_current"
+    with manifest.operator_control_path.open("a") as handle:
+        handle.write(json.dumps(control(tool, manifest, 2, 1, "continue_remaining")) + "\n")
+    completed = executor.run()
+    assert completed["status"] == "completed"
+    with manifest.operator_control_path.open("a") as handle:
+        handle.write(json.dumps(control(tool, manifest, 2, completed["batch_revision"], "stop_now")) + "\n")
+    executor._read_controls()
+    assert executor.control_rejection and "replay" in executor.control_rejection["message"]
+
+
+def test_batch_cli_rejects_resume_and_recovery_policy(tmp_path: Path) -> None:
+    tool = load_core()
+    manifest = write_valid_manifest(tool, tmp_path)
+    result = subprocess.run(
+        [sys.executable, str(CORE), "batch-validate", "--manifest", str(manifest), "--resume"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 2
+    assert "batch_recovery_forbidden" in result.stdout

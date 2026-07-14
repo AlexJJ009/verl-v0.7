@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "goal_id": "experiment-batch-orchestration",
+  "sole_authority": "scripts/experiment_execution_core.py",
+  "boundaries": [
+    {
+      "path": "scripts/experiment_execution_core.py",
+      "disposition": "retain_authority",
+      "allowed": ["persisted state", "append-only events", "deadlines", "cleanup", "failure routing", "operator controls"]
+    },
+    {
+      "path": "recipe/on_policy_wdl_sft/code_task/run_code_task_qwen3_1p7b_stage123_queue_impl.sh",
+      "disposition": "reduce_to_adapter",
+      "forbidden": ["persisted queue state", "phase loop", "deadline ownership", "cleanup authority", "failure classification", "fallback routing"]
+    },
+    {
+      "path": "scripts/stage123_manifest_monitor.py",
+      "disposition": "thin_compatibility_shim",
+      "authority": "read_only"
+    },
+    {
+      "path": "scripts/training_queue_monitor.sh",
+      "disposition": "retain_legacy_observer",
+      "authority": "read_only"
+    }
+  ],
+  "side_effect_consumers": ["notification", "release"],
+  "side_effect_authority": "read_only",
+  "deletion_outside_budget_authorized": false
+}
