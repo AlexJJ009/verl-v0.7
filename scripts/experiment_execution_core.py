@@ -163,6 +163,7 @@ class BatchManifest:
     operator_control_path: Path
     items: tuple[BatchItemSpec, ...]
     batch_manifest_sha256: str
+    repo_root: Path = Path(".")
 
 
 class OperatorControlError(ValueError):
@@ -434,6 +435,7 @@ def load_batch_manifest(path: Path, repo_root: Path | None = None) -> BatchManif
         operator_control_path=control_path,
         items=tuple(items),
         batch_manifest_sha256=manifest_hash,
+        repo_root=repo_root,
     )
 
 
@@ -662,7 +664,23 @@ class BatchExecutor:
                 "batch_revision": self.batch_revision,
                 "items": [],
             }
-        state = json.loads(self.batch_state_path.read_text())
+        try:
+            state = json.loads(self.batch_state_path.read_text())
+        except (OSError, json.JSONDecodeError) as exc:
+            evidence_path = self.batch_state_path.with_suffix(".corrupt.json")
+            if self.batch_state_path.exists() and not evidence_path.exists():
+                evidence_path.write_bytes(self.batch_state_path.read_bytes())
+            state = {
+                "schema_version": 1,
+                "batch_id": self.manifest.batch_id,
+                "batch_manifest_sha256": self.manifest.batch_manifest_sha256,
+                "status": "shared_failure",
+                "batch_revision": self.batch_revision,
+                "items": [],
+                "failure": failure("state_corruption", str(exc), evidence_path=str(evidence_path)),
+            }
+            self._persist(state, "batch_shared_failure", failure=state["failure"])
+            return state
         if state.get("batch_manifest_sha256") != self.manifest.batch_manifest_sha256:
             raise BatchValidationError("batch state manifest mismatch")
         if sync:
@@ -670,6 +688,37 @@ class BatchExecutor:
             self.control_seq = int(state.get("control_seq", 0))
             self.control_offset = int(state.get("control_offset", 0))
         return state
+
+    def _validate_event_ledger(self) -> None:
+        if not self.event_path.exists():
+            return
+        for index, line in enumerate(self.event_path.read_text().splitlines(), start=1):
+            if not line.strip():
+                continue
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise BatchValidationError(f"event ledger corruption at line {index}") from exc
+            if event.get("schema_version") != 1:
+                raise BatchValidationError(f"event ledger schema mismatch at line {index}")
+            if "batch_id" in event and (
+                event.get("batch_id") != self.manifest.batch_id
+                or event.get("batch_manifest_sha256") != self.manifest.batch_manifest_sha256
+            ):
+                raise BatchValidationError(f"event ledger batch binding mismatch at line {index}")
+
+    def _validate_item_bindings(self, item: BatchItemSpec) -> None:
+        if item.adapter_type == "cpu_fixture_v1":
+            return
+        try:
+            bundle = json.loads(item.admission_bundle_path.read_text())
+        except (OSError, json.JSONDecodeError) as exc:
+            raise BatchValidationError(f"cannot revalidate admission bundle for {item.item_id}") from exc
+        if file_sha256(item.admission_bundle_path) != item.admission_bundle_sha256:
+            raise BatchValidationError(f"admission bundle changed for {item.item_id}")
+        validated = validate_admission_bundle(bundle, item.admission_bundle_path, self.manifest.repo_root)
+        if validated["command_sha256"] != item.command_sha256:
+            raise BatchValidationError(f"command binding changed for {item.item_id}")
 
     def _item_record(self, item: BatchItemSpec, status: str, **fields: Any) -> dict[str, Any]:
         return {
@@ -720,6 +769,10 @@ class BatchExecutor:
 
     def run(self) -> dict[str, Any]:
         state = self._load_state()
+        try:
+            self._validate_event_ledger()
+        except BatchValidationError as exc:
+            return self._stop_for_shared_failure(state, "event_corruption", str(exc))
         self._read_controls()
         state = self._load_state()
         if state.get("status") in BATCH_TERMINAL_STATES and state.get("status") != "stopped":
@@ -730,7 +783,11 @@ class BatchExecutor:
         state["status"] = "running"
         state.setdefault("items", [])
         state.setdefault("phases", [])
-        failure_codes: list[str] = []
+        failure_codes = [
+            str(record.get("failure_code") or ((record.get("failure") or {}).get("code", "unknown_failure"))).split(":", 1)[0]
+            for record in state["items"]
+            if record.get("status") == "inconclusive_operational_failure"
+        ]
         for item in self.manifest.items:
             self._read_controls()
             if self.stop_requested:
@@ -742,6 +799,10 @@ class BatchExecutor:
                 return state
             if any(record.get("item_id") == item.item_id for record in state["items"]):
                 continue
+            try:
+                self._validate_item_bindings(item)
+            except BatchValidationError as exc:
+                return self._stop_for_shared_failure(state, "admission_binding_changed", str(exc))
             state["current_item_id"] = item.item_id
             self.batch_revision += 1
             self._persist(state, "item_started", item_id=item.item_id)
@@ -799,6 +860,7 @@ class BatchExecutor:
                         "inconclusive_operational_failure",
                         phases=phase_records,
                         failure=atomic_state.failure,
+                        failure_code=code,
                         cleanup=atomic_state.cleanup,
                         skipped_phases=list(item.expected_run_ids[phase_index + 1 :]),
                         attempt=atomic_state.attempt,
