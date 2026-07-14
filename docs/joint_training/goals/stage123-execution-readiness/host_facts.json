@@ -29,18 +29,18 @@
     {
       "detail": {
         "stderr": "",
-        "stdout": "Filesystem     1024-blocks       Used  Available Capacity Mounted on\n/dev/vdb1       2112645040 1561160584  444093992      78% /data-1\n/dev/vdc1       2112645040  556748116 1448506460      28% /data-2"
+        "stdout": "Filesystem     1024-blocks       Used  Available Capacity Mounted on\n/dev/vdb1       2112645040 1585029128  420225448      80% /data-1\n/dev/vdc1       2112645040  556752000 1448502576      28% /data-2"
       },
       "name": "storage",
       "ok": true
     }
   ],
-  "completed_at": "2026-07-14T12:13:45Z",
+  "completed_at": "2026-07-14T13:18:46Z",
   "docker_image": {
     "immutable_id": "sha256:c9d525a1f4b33267bd00be60fe00693338253537cac78151e4c55a6d3a7e5708",
     "reference": "verl-harness:latest"
   },
-  "generated_at": "2026-07-14T12:13:45Z",
+  "generated_at": "2026-07-14T13:18:46Z",
   "mounts": {
     "checkpoint_mount": "/data-2/checkpoints"
   },
@@ -52,7 +52,7 @@
   "repo_host": "/data-1/code/verl",
   "schema_version": 1,
   "storage": {
-    "df": "Filesystem     1024-blocks       Used  Available Capacity Mounted on\n/dev/vdb1       2112645040 1561160584  444093992      78% /data-1\n/dev/vdc1       2112645040  556748116 1448506460      28% /data-2"
+    "df": "Filesystem     1024-blocks       Used  Available Capacity Mounted on\n/dev/vdb1       2112645040 1585029128  420225448      80% /data-1\n/dev/vdc1       2112645040  556752000 1448502576      28% /data-2"
   },
   "tmux": {
     "sessions": [
