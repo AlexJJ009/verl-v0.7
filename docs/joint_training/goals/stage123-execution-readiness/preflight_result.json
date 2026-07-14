@@ -1,0 +1,218 @@
+{
+  "calibration_authorization_identity": {
+    "decision_id": "RD-GPU-REQUAL-01",
+    "plan_version": 8,
+    "run_id": "stage123_readiness_requalification_RD-GPU-REQUAL-01"
+  },
+  "calibration_evidence_commit": "2501a8d37a1ea8635ce0070e57d73963ef9612f9",
+  "checks": [
+    {
+      "detail": {
+        "sha256": "43d6575f6540478f127a8a8368d4516ecb05ff3dda0c6803d0ab58faa8729d39"
+      },
+      "name": "host_facts",
+      "ok": true
+    },
+    {
+      "detail": {
+        "repo": "/workspace/verl",
+        "repo_host": "/data-1/code/verl"
+      },
+      "name": "repo_topology",
+      "ok": true
+    },
+    {
+      "detail": "/data-1/code/verl",
+      "name": "compat_symlink",
+      "ok": true
+    },
+    {
+      "detail": {
+        "checkpoint_mount": "/data-2/checkpoints"
+      },
+      "name": "checkpoint_mount",
+      "ok": true
+    },
+    {
+      "detail": {
+        "sha256": "d9b6a36dd9fcc4307f7b502e5511989e60c1a257f57c9ac70574acaf12eee2b5"
+      },
+      "name": "resource_profile_command",
+      "ok": true
+    },
+    {
+      "detail": {
+        "manifest_sha256": "e665049cc67a40c32f0b104058bfe4e20c2529dc22328a485622bed78d3c8f0c",
+        "normalized_matches_repo": true,
+        "phases": {
+          "stage1": {
+            "materialized": true,
+            "model_sources": [
+              {
+                "artifact_sha256": "695b1cab12212ed03e39d8281adae5e973f459e653c6ab5365d62b75d9eb50a0",
+                "hash_algorithm": "sorted_relative_path_content_sha256_v1",
+                "path": "/data-1/model_weights/format_cold_start_fraction/qwen3-1p7b-kodcode-format-sft-frac25",
+                "provenance": {
+                  "kind": "format_cold_start_source",
+                  "path": "/data-1/model_weights/format_cold_start_fraction/qwen3-1p7b-kodcode-format-sft-frac25/format_cold_start_source.json",
+                  "schema_version": 1,
+                  "sha256": "649cc853c29b3c30d079bf09f10ccfabcc927f0e92f78e85de3be6d6a8cf6b8d"
+                },
+                "role": "rollout",
+                "state": "materialized"
+              }
+            ]
+          },
+          "stage2": {
+            "materialized": true,
+            "model_sources": [
+              {
+                "artifact_sha256": "62e686c9c4efcb8ae65b78aed452450883fd1f0eb3d0c61771034d506238b179",
+                "hash_algorithm": "sorted_relative_path_content_sha256_v1",
+                "path": "/data-1/.cache/huggingface/hub/models--Qwen--Qwen3-1.7B/snapshots/70d244cc86ccca08cf5af4e1e306ecf908b1ad5e",
+                "role": "model1",
+                "state": "materialized"
+              },
+              {
+                "artifact_sha256": "123afebed80b9765ecad60f97748427639610c859134ff7ed70bae2bb8245f32",
+                "hash_algorithm": "sorted_relative_path_content_sha256_v1",
+                "path": "/data-2/model_weights/code_task/qwen3_1p7b_stage123/frac25_p40_s220_s340/beta01/stage1_model2",
+                "role": "model2",
+                "state": "materialized"
+              }
+            ]
+          },
+          "stage3": {
+            "materialized": false,
+            "model_sources": [
+              {
+                "path": "/data-2/model_weights/code_task/qwen3_1p7b_stage123/frac25_p40_s220_s340/stage2_final_model2",
+                "producer": {
+                  "final_step": 20,
+                  "output_path": "/data-2/model_weights/code_task/qwen3_1p7b_stage123/frac25_p40_s220_s340/stage2_final_model2",
+                  "provenance_path": "/data-2/model_weights/code_task/qwen3_1p7b_stage123/frac25_p40_s220_s340/frac25-stage3.provenance.json",
+                  "run_id": "frac25-stage2"
+                },
+                "role": "rollout",
+                "state": "pending"
+              }
+            ]
+          }
+        }
+      },
+      "name": "model_identity",
+      "ok": true
+    },
+    {
+      "detail": [
+        {
+          "manifest": "/data-1/dataset/code/verl_rl/kodcode_stage2_after_s1_seed20260604_qwen3_1p7b_coldstart_frac25_beta01_p40_handoff_s2steps20.manifest.json",
+          "manifest_sha256": "160be1866e6c1dc439dcfbd594b54324f000f1f48db1f6a0fc88cf227c628dab",
+          "ok": true,
+          "path": "/data-1/dataset/code/verl_rl/kodcode_stage2_after_s1_seed20260604_qwen3_1p7b_coldstart_frac25_beta01_p40_handoff_s2steps20.parquet",
+          "sampler_length": 1280,
+          "sampler_offset": 2560,
+          "selected_row_count": 1280,
+          "sha256": "160be1866e6c1dc439dcfbd594b54324f000f1f48db1f6a0fc88cf227c628dab"
+        },
+        {
+          "manifest": "/data-1/dataset/code/verl_rl/kodcode_stage3_after_s2_seed20260604_qwen3_1p7b_coldstart_frac25_beta01_p40_s2steps20_s3steps40.manifest.json",
+          "manifest_sha256": "deb0c223f643e749862c0ca848b1d57a7117b45658c996caab4ad5087039ea15",
+          "ok": true,
+          "path": "/data-1/dataset/code/verl_rl/kodcode_stage3_after_s2_seed20260604_qwen3_1p7b_coldstart_frac25_beta01_p40_s2steps20_s3steps40.parquet",
+          "sampler_length": 2560,
+          "sampler_offset": 3840,
+          "selected_row_count": 2560,
+          "sha256": "deb0c223f643e749862c0ca848b1d57a7117b45658c996caab4ad5087039ea15"
+        }
+      ],
+      "name": "dataset_shards",
+      "ok": true
+    },
+    {
+      "detail": [
+        "NVIDIA L40S, 46068",
+        "NVIDIA L40S, 46068",
+        "NVIDIA L40S, 46068",
+        "NVIDIA L40S, 46068",
+        "NVIDIA L40S, 46068",
+        "NVIDIA L40S, 46068",
+        "NVIDIA L40S, 46068",
+        "NVIDIA L40S, 46068"
+      ],
+      "name": "gpu_inventory",
+      "ok": true
+    },
+    {
+      "detail": {
+        "mem_total_kb": 610353232
+      },
+      "name": "host_ram",
+      "ok": true
+    },
+    {
+      "detail": {
+        "immutable_id": "sha256:c9d525a1f4b33267bd00be60fe00693338253537cac78151e4c55a6d3a7e5708",
+        "reference": "verl-harness:latest"
+      },
+      "name": "docker_image",
+      "ok": true
+    },
+    {
+      "detail": [
+        "/data-1/experiment_registry/experiment_registry.sqlite",
+        "/data-1/wandb_runs",
+        "/workspace/verl/scripts/training_result_release_gate.py",
+        "/workspace/verl/scripts/code_task_training_release_hook.sh"
+      ],
+      "name": "release_paths",
+      "ok": true
+    },
+    {
+      "detail": [],
+      "name": "no_conflicting_run",
+      "ok": true
+    },
+    {
+      "detail": {
+        "detail": "{\"implementation_tree_sha256\": \"8b2ceb9023bea2807bbe58b5c5424014533e37f2b8f002ea1871bbba5a19f629\"}",
+        "sha256": "8b2ceb9023bea2807bbe58b5c5424014533e37f2b8f002ea1871bbba5a19f629"
+      },
+      "name": "implementation_tree",
+      "ok": true
+    },
+    {
+      "detail": {
+        "actual": "d9b6a36dd9fcc4307f7b502e5511989e60c1a257f57c9ac70574acaf12eee2b5",
+        "expected": "d9b6a36dd9fcc4307f7b502e5511989e60c1a257f57c9ac70574acaf12eee2b5"
+      },
+      "name": "resource_profile_binding",
+      "ok": true
+    },
+    {
+      "detail": {
+        "calibration_manifest_sha256": "e665049cc67a40c32f0b104058bfe4e20c2529dc22328a485622bed78d3c8f0c",
+        "manifest_sha256": "e665049cc67a40c32f0b104058bfe4e20c2529dc22328a485622bed78d3c8f0c"
+      },
+      "name": "calibration_binding",
+      "ok": true
+    }
+  ],
+  "completed_at": "2026-07-14T12:14:02Z",
+  "decision": "passed",
+  "docker_image_id": "sha256:c9d525a1f4b33267bd00be60fe00693338253537cac78151e4c55a6d3a7e5708",
+  "failures": [],
+  "gate": "qwen3_1p7b_stage123_preflight",
+  "host_facts_sha256": "43d6575f6540478f127a8a8368d4516ecb05ff3dda0c6803d0ab58faa8729d39",
+  "implementation_tree_sha256": "8b2ceb9023bea2807bbe58b5c5424014533e37f2b8f002ea1871bbba5a19f629",
+  "manifest_sha256": "e665049cc67a40c32f0b104058bfe4e20c2529dc22328a485622bed78d3c8f0c",
+  "ok": true,
+  "resource_profile_sha256": "d9b6a36dd9fcc4307f7b502e5511989e60c1a257f57c9ac70574acaf12eee2b5",
+  "result_type": "preflight_result",
+  "run_ids": [
+    "frac25-stage2",
+    "frac25-stage3"
+  ],
+  "schema_version": 1,
+  "started_at": "2026-07-14T12:13:46Z"
+}
