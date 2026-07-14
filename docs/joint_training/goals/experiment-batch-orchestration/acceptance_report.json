@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "review_type": "final-acceptance",
+  "reviewer": "Codex independent final acceptance reviewer",
+  "verdict": "ACCEPTED",
+  "plan_version": 2,
+  "plan_sha256": "15bc9c5120d671eac58dfacc549b6daf2ff67ef4c7a204489e4e8f2eff755cbb",
+  "base_commit": "2020531b470ec932d7b00afd13080e1318fc8429",
+  "candidate_commit": "ce827f2a9d631197a5dac97484a7f5f6543f4535",
+  "recipe_commit": "9b83f9f488ac4b34e87a36a40d969d98d7d025f7",
+  "accepted_at": "2026-07-15T02:48:04+09:00",
+  "ac_verdicts": {
+    "AC-01": "PASS",
+    "AC-02": "PASS",
+    "AC-03": "PASS",
+    "AC-04": "PASS",
+    "AC-05": "PASS",
+    "AC-06": "PASS",
+    "AC-07": "PASS",
+    "AC-08": "PASS",
+    "AC-09": "PASS",
+    "AC-10": "PASS",
+    "AC-11": "PASS"
+  },
+  "commands": [
+    {
+      "command": "goal-plan-runtime validate-plan docs/joint_training/goals/experiment-batch-orchestration",
+      "exit_code": 0,
+      "summary": "PASS"
+    },
+    {
+      "command": "goal-plan-runtime validate-runtime docs/joint_training/goals/experiment-batch-orchestration",
+      "exit_code": 0,
+      "summary": "PASS; plan_status READY; pending_user_decisions []; all findings CLOSED"
+    },
+    {
+      "command": "REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/experiment_execution_core.py batch-validate --manifest tests/experiment_workflow/fixtures/experiment_batch_v1.json",
+      "exit_code": 0,
+      "summary": "ok true; batch_manifest_sha256 00d731cb96aee9a9e2cb8171d3dba6a40233c01b7295d086c8af727f2114b066"
+    },
+    {
+      "command": "REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python docs/joint_training/goals/stage123-execution-readiness/tools/protected_asset_fingerprint.py compare --repo-root /data-1/code/verl --baseline docs/joint_training/goals/stage123-execution-readiness/protected-assets-baseline.jsonl",
+      "exit_code": 0,
+      "summary": "ok true; sha256 c739413ba6c4014f246f53bbaa5d86a4647b41cef640d580dbff1703864c7207"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "summary": "no whitespace errors"
+    },
+    {
+      "command": "REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python -m pytest -q tests/experiment_workflow/test_stage123_end_to_end.py::test_dry_run_is_scratch_only_and_manifest_consistent tests/experiment_workflow/test_experiment_batch_core.py tests/experiment_workflow/test_experiment_batch_monitor.py tests/experiment_workflow/test_experiment_batch_routing.py tests/experiment_workflow/test_experiment_batch_control.py tests/experiment_workflow/test_experiment_batch_policy.py tests/experiment_workflow/test_stage123_core_migration.py tests/experiment_workflow/test_manifest_queue_monitor_contract.py tests/experiment_workflow/test_stage123_admission_bundle.py tests/experiment_workflow/test_notification_policy.py tests/experiment_workflow/test_operational_calibration_runner.py tests/experiment_workflow/test_failure_classifier.py tests/experiment_workflow/test_pm2_ci_keepalive.py",
+      "exit_code": 0,
+      "summary": "63 passed in 33.48s"
+    }
+  ],
+  "full_cpu_gate_summary": {
+    "inspected_path": "docs/joint_training/goals/experiment-batch-orchestration/full-cpu-gate-summary.json",
+    "run_count": 1,
+    "initial_exit_code": 1,
+    "initial_passed": 207,
+    "initial_failed": 1,
+    "failure_classification": "IN_SCOPE",
+    "focused_replacement_exit_code": 0,
+    "focused_replacement_passed": 63,
+    "full_gate_rerun": false
+  },
+  "blocking_in_scope_defects": [],
+  "deferred_suggestions": [],
+  "contract_contradictions": [],
+  "review_weakness": "This review did not rerun the full CPU preservation suite because the final acceptance prompt explicitly forbids rerunning it; it relies on the inspected single-run summary plus reviewer-owned focused replacement and audits."
+}
