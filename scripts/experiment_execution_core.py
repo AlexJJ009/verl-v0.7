@@ -640,6 +640,27 @@ class BatchExecutor:
             **fields,
         }
 
+    class _ControlledAdapter:
+        def __init__(self, owner: "BatchExecutor", inner: ChildAdapter, grace_seconds: float) -> None:
+            self.owner = owner
+            self.inner = inner
+            self.grace_seconds = grace_seconds
+            self.terminated_for_stop: set[str] = set()
+
+        def start(self, command: list[str], env: dict[str, str]) -> str:
+            return self.inner.start(command, env)
+
+        def poll(self, child_id: str) -> int | None:
+            self.owner._read_controls()
+            if self.owner.stop_requested and child_id not in self.terminated_for_stop:
+                self.inner.terminate(child_id, self.grace_seconds)
+                self.terminated_for_stop.add(child_id)
+                return 143
+            return self.inner.poll(child_id)
+
+        def terminate(self, child_id: str, grace_seconds: float) -> dict[str, Any]:
+            return self.inner.terminate(child_id, grace_seconds)
+
     def _stop_for_shared_failure(self, state: dict[str, Any], code: str, message: str) -> dict[str, Any]:
         state["status"] = "shared_failure"
         state["failure"] = failure(code, message)
@@ -688,7 +709,8 @@ class BatchExecutor:
                 resumable_failure_codes=(),
             )
             try:
-                atomic_state = ExecutionCore(self.state_root, self.adapter, self.clock).run(spec)
+                controlled_adapter = self._ControlledAdapter(self, self.adapter, item.cleanup_grace_seconds)
+                atomic_state = ExecutionCore(self.state_root, controlled_adapter, self.clock).run(spec)
             except (OSError, ValueError, KeyError) as exc:
                 return self._stop_for_shared_failure(state, "state_or_execution_error", str(exc))
             if atomic_state.status == "succeeded":

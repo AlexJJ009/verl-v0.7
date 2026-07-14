@@ -33,8 +33,9 @@ class FakeClock:
 
 
 class FakeAdapter:
-    def __init__(self, outcomes: list[int]) -> None:
+    def __init__(self, outcomes: list[int], on_start=None) -> None:
         self.outcomes = list(outcomes)
+        self.on_start = on_start
         self.started: list[list[str]] = []
         self.results: dict[str, int] = {}
 
@@ -42,6 +43,8 @@ class FakeAdapter:
         child_id = str(len(self.started) + 1)
         self.started.append(command)
         self.results[child_id] = self.outcomes.pop(0)
+        if self.on_start is not None:
+            self.on_start()
         return child_id
 
     def poll(self, child_id: str) -> int | None:
@@ -216,6 +219,24 @@ def test_pause_continue_and_replay_controls_are_revision_bound(tmp_path: Path) -
         handle.write(json.dumps(control(tool, manifest, 2, completed["batch_revision"], "stop_now")) + "\n")
     executor._read_controls()
     assert executor.control_rejection and "replay" in executor.control_rejection["message"]
+
+
+def test_stop_now_during_active_item_terminates_and_stops_batch(tmp_path: Path) -> None:
+    tool = load_core()
+    manifest = make_manifest(tool, tmp_path, [make_item(tool, "one", "run-one"), make_item(tool, "two", "run-two")])
+    holder = {}
+
+    def issue_stop() -> None:
+        executor = holder["executor"]
+        with manifest.operator_control_path.open("a") as handle:
+            handle.write(json.dumps(control(tool, manifest, 1, 1, "stop_now")) + "\n")
+
+    adapter = FakeAdapter([0, 0], on_start=issue_stop)
+    executor = tool.BatchExecutor(manifest, tmp_path / "state", adapter, FakeClock())
+    holder["executor"] = executor
+    state = executor.run()
+    assert state["status"] == "shared_failure"
+    assert len(adapter.started) == 1
 
 
 def test_batch_cli_rejects_resume_and_recovery_policy(tmp_path: Path) -> None:
