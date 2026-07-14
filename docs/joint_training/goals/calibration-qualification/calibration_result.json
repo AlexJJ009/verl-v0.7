@@ -1,0 +1,480 @@
+{
+  "authorization_identity": {
+    "authorization_scope": "full",
+    "authorized_at": "2026-07-14T01:20:41.663063Z",
+    "cumulative_max_wall_seconds": 7200,
+    "goal_id": "calibration-qualification",
+    "gpu_model": "NVIDIA L40S",
+    "max_gpu_count": 8,
+    "max_repetitions_per_phase": 3,
+    "optimizer_enabled": false,
+    "runtime_event_seq": 45,
+    "training_steps": 0
+  },
+  "authorization_usage": {
+    "cumulative_authorized_seconds": 7200,
+    "cumulative_elapsed_minutes": 106.20759143829346,
+    "cumulative_elapsed_seconds": 6372.455486297607,
+    "probe_report_count": 8,
+    "within_authorization": true
+  },
+  "cleanup": {
+    "audited_at": "2026-07-14T02:32:00Z",
+    "child_processes_released": true,
+    "docker_container_count_after_probe": 0,
+    "gpu_memory_used_mib_after_probe": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "gpu_utilization_percent_after_probe": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "owned_ray_processes": [],
+    "resources_released": true,
+    "tmux_session_present_after_probe": false
+  },
+  "completed_at": "2026-07-14T02:16:53.774692Z",
+  "decision": "passed",
+  "evidence_commit": "7cc302aa4ec9ae3efd8729749342a83f441753d7",
+  "failures": [],
+  "implementation_tree_sha256": "453b60bf1b626934a20916a1ca1aa9c90cc9de2b028d19b5ad875471d3c90ead",
+  "manifest_sha256": "e665049cc67a40c32f0b104058bfe4e20c2529dc22328a485622bed78d3c8f0c",
+  "phase_evidence": [
+    {
+      "phase": "stage2",
+      "profile_hash": "d9b6a36dd9fcc4307f7b502e5511989e60c1a257f57c9ac70574acaf12eee2b5",
+      "repetition_count": 3,
+      "repetitions": [
+        {
+          "cleanup": {
+            "child_process_released": true,
+            "owned_ray_processes": [],
+            "owned_ray_root": "/data-1/tmp/verl_agent_scratch/r/21",
+            "reaped_descendant_count": 30,
+            "resources_released": true
+          },
+          "elapsed_seconds": 233.85947608947754,
+          "formal_checkpoint_files": [],
+          "generation_count": 64,
+          "metrics": {
+            "timing_s/testing": 26.02863047271967,
+            "val-core/HumanEval+/acc/pass@1": 0.3125,
+            "val-core/LiveCodeBench/acc/pass@1": 0.09375,
+            "val-core/MBPP+/acc/pass@1": 0.5,
+            "validation_elapsed_seconds": 26.02863047271967
+          },
+          "metrics_files": [
+            "/data-1/tmp/verl_agent_scratch/experiment_workflow/calibration/probe-20260714T015835Z/runs/stage2/rep1/output/logs/metrics/OnPolicyWDLSFT-CodeTask/CALIBRATION-STAGE2-QWEN3-1P7B-CTX8K_1783994335.jsonl"
+          ],
+          "optimizer_enabled": false,
+          "phase": "stage2",
+          "repetition": 1,
+          "resources": {
+            "gpu_idle_sample_count": 177,
+            "gpu_idle_threshold_pct": 2,
+            "gpu_sample_count": 207,
+            "gpu_wait_fraction": 0.855072463768116,
+            "memory_source": "calibration_container_cgroup_v2",
+            "peak_rss_gib": 144.3452606201172,
+            "sample_interval_seconds": 1.0,
+            "schema_version": 1
+          },
+          "returncode": 0,
+          "schema_version": 1,
+          "score_complete": true,
+          "stage3_proxy_kind": null,
+          "status": "passed",
+          "timed_out": false,
+          "training_steps": 0,
+          "truncated_count": 0,
+          "validation_generation_files": [
+            "/data-1/tmp/verl_agent_scratch/experiment_workflow/calibration/probe-20260714T015835Z/runs/stage2/rep1/output/logs/validation/CALIBRATION-STAGE2-QWEN3-1P7B-CTX8K_1783994335/0.jsonl"
+          ]
+        },
+        {
+          "cleanup": {
+            "child_process_released": true,
+            "owned_ray_processes": [],
+            "owned_ray_root": "/data-1/tmp/verl_agent_scratch/r/22",
+            "reaped_descendant_count": 182,
+            "resources_released": true
+          },
+          "elapsed_seconds": 269.83498525619507,
+          "formal_checkpoint_files": [],
+          "generation_count": 64,
+          "metrics": {
+            "timing_s/testing": 127.70810099691153,
+            "val-core/HumanEval+/acc/pass@1": 0.4375,
+            "val-core/LiveCodeBench/acc/pass@1": 0.09375,
+            "val-core/MBPP+/acc/pass@1": 0.4375,
+            "validation_elapsed_seconds": 127.70810099691153
+          },
+          "metrics_files": [
+            "/data-1/tmp/verl_agent_scratch/experiment_workflow/calibration/probe-20260714T015835Z/runs/stage2/rep2/output/logs/metrics/OnPolicyWDLSFT-CodeTask/CALIBRATION-STAGE2-QWEN3-1P7B-CTX8K_1783994564.jsonl"
+          ],
+          "optimizer_enabled": false,
+          "phase": "stage2",
+          "repetition": 2,
+          "resources": {
+            "gpu_idle_sample_count": 119,
+            "gpu_idle_threshold_pct": 2,
+            "gpu_sample_count": 240,
+            "gpu_wait_fraction": 0.49583333333333335,
+            "memory_source": "calibration_container_cgroup_v2",
+            "peak_rss_gib": 147.85213470458984,
+            "sample_interval_seconds": 1.0,
+            "schema_version": 1
+          },
+          "returncode": 0,
+          "schema_version": 1,
+          "score_complete": true,
+          "stage3_proxy_kind": null,
+          "status": "passed",
+          "timed_out": false,
+          "training_steps": 0,
+          "truncated_count": 0,
+          "validation_generation_files": [
+            "/data-1/tmp/verl_agent_scratch/experiment_workflow/calibration/probe-20260714T015835Z/runs/stage2/rep2/output/logs/validation/CALIBRATION-STAGE2-QWEN3-1P7B-CTX8K_1783994564/0.jsonl"
+          ]
+        },
+        {
+          "cleanup": {
+            "child_process_released": true,
+            "owned_ray_processes": [],
+            "owned_ray_root": "/data-1/tmp/verl_agent_scratch/r/23",
+            "reaped_descendant_count": 181,
+            "resources_released": true
+          },
+          "elapsed_seconds": 169.90555262565613,
+          "formal_checkpoint_files": [],
+          "generation_count": 64,
+          "metrics": {
+            "timing_s/testing": 27.142079884186387,
+            "val-core/HumanEval+/acc/pass@1": 0.4375,
+            "val-core/LiveCodeBench/acc/pass@1": 0.09375,
+            "val-core/MBPP+/acc/pass@1": 0.5625,
+            "validation_elapsed_seconds": 27.142079884186387
+          },
+          "metrics_files": [
+            "/data-1/tmp/verl_agent_scratch/experiment_workflow/calibration/probe-20260714T015835Z/runs/stage2/rep3/output/logs/metrics/OnPolicyWDLSFT-CodeTask/CALIBRATION-STAGE2-QWEN3-1P7B-CTX8K_1783994834.jsonl"
+          ],
+          "optimizer_enabled": false,
+          "phase": "stage2",
+          "repetition": 3,
+          "resources": {
+            "gpu_idle_sample_count": 116,
+            "gpu_idle_threshold_pct": 2,
+            "gpu_sample_count": 148,
+            "gpu_wait_fraction": 0.7837837837837838,
+            "memory_source": "calibration_container_cgroup_v2",
+            "peak_rss_gib": 153.51839065551758,
+            "sample_interval_seconds": 1.0,
+            "schema_version": 1
+          },
+          "returncode": 0,
+          "schema_version": 1,
+          "score_complete": true,
+          "stage3_proxy_kind": null,
+          "status": "passed",
+          "timed_out": false,
+          "training_steps": 0,
+          "truncated_count": 0,
+          "validation_generation_files": [
+            "/data-1/tmp/verl_agent_scratch/experiment_workflow/calibration/probe-20260714T015835Z/runs/stage2/rep3/output/logs/validation/CALIBRATION-STAGE2-QWEN3-1P7B-CTX8K_1783994834/0.jsonl"
+          ]
+        }
+      ],
+      "status": "passed"
+    },
+    {
+      "phase": "stage3",
+      "profile_hash": "d9b6a36dd9fcc4307f7b502e5511989e60c1a257f57c9ac70574acaf12eee2b5",
+      "repetition_count": 3,
+      "repetitions": [
+        {
+          "cleanup": {
+            "child_process_released": true,
+            "owned_ray_processes": [],
+            "owned_ray_root": "/data-1/tmp/verl_agent_scratch/r/31",
+            "reaped_descendant_count": 183,
+            "resources_released": true
+          },
+          "elapsed_seconds": 161.4649782180786,
+          "formal_checkpoint_files": [],
+          "generation_count": 64,
+          "metrics": {
+            "timing_s/testing": 46.28146739304066,
+            "val-core/HumanEval+/acc/pass@1": 0.3125,
+            "val-core/LiveCodeBench/acc/pass@1": 0.09375,
+            "val-core/MBPP+/acc/pass@1": 0.4375,
+            "validation_elapsed_seconds": 46.28146739304066
+          },
+          "metrics_files": [
+            "/data-1/tmp/verl_agent_scratch/experiment_workflow/calibration/probe-20260714T015835Z/runs/stage3/rep1/output/logs/metrics/OnPolicyWDLSFT-CodeTask/CALIBRATION-STAGE3-QWEN3-1P7B-CTX8K_1783995000.jsonl"
+          ],
+          "optimizer_enabled": false,
+          "phase": "stage3",
+          "repetition": 1,
+          "resources": {
+            "gpu_idle_sample_count": 122,
+            "gpu_idle_threshold_pct": 2,
+            "gpu_sample_count": 142,
+            "gpu_wait_fraction": 0.8591549295774648,
+            "memory_source": "calibration_container_cgroup_v2",
+            "peak_rss_gib": 153.51839065551758,
+            "sample_interval_seconds": 1.0,
+            "schema_version": 1
+          },
+          "returncode": 0,
+          "schema_version": 1,
+          "score_complete": true,
+          "stage3_proxy_kind": "pending_stage2_handoff_runtime_resource_proxy",
+          "status": "passed",
+          "timed_out": false,
+          "training_steps": 0,
+          "truncated_count": 0,
+          "validation_generation_files": [
+            "/data-1/tmp/verl_agent_scratch/experiment_workflow/calibration/probe-20260714T015835Z/runs/stage3/rep1/output/logs/validation/CALIBRATION-STAGE3-QWEN3-1P7B-CTX8K_1783995000/0.jsonl"
+          ]
+        },
+        {
+          "cleanup": {
+            "child_process_released": true,
+            "owned_ray_processes": [],
+            "owned_ray_root": "/data-1/tmp/verl_agent_scratch/r/32",
+            "reaped_descendant_count": 181,
+            "resources_released": true
+          },
+          "elapsed_seconds": 129.52301287651062,
+          "formal_checkpoint_files": [],
+          "generation_count": 64,
+          "metrics": {
+            "timing_s/testing": 21.273939728736877,
+            "val-core/HumanEval+/acc/pass@1": 0.375,
+            "val-core/LiveCodeBench/acc/pass@1": 0.09375,
+            "val-core/MBPP+/acc/pass@1": 0.4375,
+            "validation_elapsed_seconds": 21.273939728736877
+          },
+          "metrics_files": [
+            "/data-1/tmp/verl_agent_scratch/experiment_workflow/calibration/probe-20260714T015835Z/runs/stage3/rep2/output/logs/metrics/OnPolicyWDLSFT-CodeTask/CALIBRATION-STAGE3-QWEN3-1P7B-CTX8K_1783995161.jsonl"
+          ],
+          "optimizer_enabled": false,
+          "phase": "stage3",
+          "repetition": 2,
+          "resources": {
+            "gpu_idle_sample_count": 95,
+            "gpu_idle_threshold_pct": 2,
+            "gpu_sample_count": 113,
+            "gpu_wait_fraction": 0.8407079646017699,
+            "memory_source": "calibration_container_cgroup_v2",
+            "peak_rss_gib": 153.51839065551758,
+            "sample_interval_seconds": 1.0,
+            "schema_version": 1
+          },
+          "returncode": 0,
+          "schema_version": 1,
+          "score_complete": true,
+          "stage3_proxy_kind": "pending_stage2_handoff_runtime_resource_proxy",
+          "status": "passed",
+          "timed_out": false,
+          "training_steps": 0,
+          "truncated_count": 0,
+          "validation_generation_files": [
+            "/data-1/tmp/verl_agent_scratch/experiment_workflow/calibration/probe-20260714T015835Z/runs/stage3/rep2/output/logs/validation/CALIBRATION-STAGE3-QWEN3-1P7B-CTX8K_1783995161/0.jsonl"
+          ]
+        },
+        {
+          "cleanup": {
+            "child_process_released": true,
+            "owned_ray_processes": [],
+            "owned_ray_root": "/data-1/tmp/verl_agent_scratch/r/33",
+            "reaped_descendant_count": 181,
+            "resources_released": true
+          },
+          "elapsed_seconds": 132.52979564666748,
+          "formal_checkpoint_files": [],
+          "generation_count": 64,
+          "metrics": {
+            "timing_s/testing": 23.744849191978574,
+            "val-core/HumanEval+/acc/pass@1": 0.375,
+            "val-core/LiveCodeBench/acc/pass@1": 0.09375,
+            "val-core/MBPP+/acc/pass@1": 0.4375,
+            "validation_elapsed_seconds": 23.744849191978574
+          },
+          "metrics_files": [
+            "/data-1/tmp/verl_agent_scratch/experiment_workflow/calibration/probe-20260714T015835Z/runs/stage3/rep3/output/logs/metrics/OnPolicyWDLSFT-CodeTask/CALIBRATION-STAGE3-QWEN3-1P7B-CTX8K_1783995291.jsonl"
+          ],
+          "optimizer_enabled": false,
+          "phase": "stage3",
+          "repetition": 3,
+          "resources": {
+            "gpu_idle_sample_count": 95,
+            "gpu_idle_threshold_pct": 2,
+            "gpu_sample_count": 116,
+            "gpu_wait_fraction": 0.8189655172413793,
+            "memory_source": "calibration_container_cgroup_v2",
+            "peak_rss_gib": 153.51839065551758,
+            "sample_interval_seconds": 1.0,
+            "schema_version": 1
+          },
+          "returncode": 0,
+          "schema_version": 1,
+          "score_complete": true,
+          "stage3_proxy_kind": "pending_stage2_handoff_runtime_resource_proxy",
+          "status": "passed",
+          "timed_out": false,
+          "training_steps": 0,
+          "truncated_count": 0,
+          "validation_generation_files": [
+            "/data-1/tmp/verl_agent_scratch/experiment_workflow/calibration/probe-20260714T015835Z/runs/stage3/rep3/output/logs/validation/CALIBRATION-STAGE3-QWEN3-1P7B-CTX8K_1783995291/0.jsonl"
+          ]
+        }
+      ],
+      "status": "passed"
+    }
+  ],
+  "policy_id": "stage123-calibration-policy-v1",
+  "policy_sha256": "6a4966d43104d942a5bb81a8eea79596755d8423d4d2af13cbfa694bdfadab8a",
+  "prediction_comparison": {
+    "comparisons": [
+      {
+        "decision": {
+          "code": "qualified",
+          "context": {
+            "history_count": 6,
+            "ratio": 1.2076504808299529
+          },
+          "message": "prediction is supported by current probe evidence",
+          "qualified": true
+        },
+        "history": [
+          49.98861486464739,
+          49.942676505073905,
+          105.7492238227278,
+          78.60736407525837,
+          76.01937819831073,
+          83.76534734107554
+        ],
+        "history_count": 6,
+        "metric": "validation_elapsed_seconds",
+        "observed_maximum": 127.70810099691153,
+        "predicted_bound": 105.7492238227278
+      },
+      {
+        "decision": {
+          "code": "qualified",
+          "context": {
+            "history_count": 6,
+            "ratio": 0.9085353038929127
+          },
+          "message": "prediction is supported by current probe evidence",
+          "qualified": true
+        },
+        "history": [
+          241.0,
+          239.0,
+          297.0,
+          236.0,
+          233.0,
+          240.0
+        ],
+        "history_count": 6,
+        "metric": "phase_elapsed_seconds",
+        "observed_maximum": 269.83498525619507,
+        "predicted_bound": 297.0
+      },
+      {
+        "decision": {
+          "code": "qualified",
+          "context": {
+            "history_count": 6,
+            "ratio": 1.1051833370864892
+          },
+          "message": "prediction is supported by current probe evidence",
+          "qualified": true
+        },
+        "history": [
+          130.7530059814453,
+          126.16583251953125,
+          138.90762329101562,
+          67.3317642211914,
+          71.49878311157227,
+          67.37337493896484
+        ],
+        "history_count": 6,
+        "metric": "peak_rss_gib",
+        "observed_maximum": 153.51839065551758,
+        "predicted_bound": 138.90762329101562
+      },
+      {
+        "decision": {
+          "code": "qualified",
+          "context": {
+            "history_count": 6,
+            "ratio": 0.9242424242424242
+          },
+          "message": "prediction is supported by current probe evidence",
+          "qualified": true
+        },
+        "history": [
+          0.8853211009174312,
+          0.8940092165898618,
+          0.9070631970260223,
+          0.9295774647887324,
+          0.9289099526066351,
+          0.8894009216589862
+        ],
+        "history_count": 6,
+        "metric": "gpu_wait_fraction",
+        "observed_maximum": 0.8591549295774648,
+        "predicted_bound": 0.9295774647887324
+      }
+    ],
+    "historical_evidence_role": "migration_input_only_not_current_authority",
+    "historical_report_path": "/data-1/tmp/verl_agent_scratch/experiment_workflow/calibration/report.json",
+    "historical_report_sha256": "21d2a96d32e5dcff940ed7d02bc0725a0f905796e466ddaed0d73673bc0b1344",
+    "policy_id": "stage123-calibration-policy-v1",
+    "policy_sha256": "6a4966d43104d942a5bb81a8eea79596755d8423d4d2af13cbfa694bdfadab8a",
+    "qualified": true
+  },
+  "probe_evidence": {
+    "elapsed_seconds": 1097.252543926239,
+    "report_path": "/data-1/tmp/verl_agent_scratch/experiment_workflow/calibration/probe-20260714T015835Z/probe-report.json",
+    "report_sha256": "3ec1006b2c87454ab118018d27a19a0339eb67dab04b98f71086061a0f737559",
+    "result_type": "bounded_calibration_probe",
+    "status": "passed",
+    "verification": {
+      "decision": "passed",
+      "diagnostics": {},
+      "failures": [],
+      "ok": true
+    }
+  },
+  "resource_profile_sha256": "d9b6a36dd9fcc4307f7b502e5511989e60c1a257f57c9ac70574acaf12eee2b5",
+  "result_type": "calibration_result",
+  "schema_sha256": "af7e13a2509e15f17ca4cb9b611a64845de21cb09de47512d64ef1a727ca22eb",
+  "schema_version": 1,
+  "started_at": "2026-07-14T01:58:36.522148Z",
+  "workload_identity": {
+    "path": "/data-1/tmp/verl_agent_scratch/experiment_workflow/calibration/code_validation_16_16_32.parquet",
+    "row_count": 64,
+    "run_ids": [
+      "frac25-stage2",
+      "frac25-stage3"
+    ],
+    "sha256": "c3eaf3374661fba71d1132f0de7a8dbdbd3d90295d4fabeb77b5e9dd7c221608"
+  }
+}
