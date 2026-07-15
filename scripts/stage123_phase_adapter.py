@@ -53,8 +53,8 @@ def checkpoint_for(prefix: str, final_step: int, started_at: float) -> Path:
     return checkpoint
 
 
-def metrics_for(checkpoint: Path) -> Path:
-    matches = list((ROOT / "recipe/on_policy_wdl_sft").glob(f"**/metrics/OnPolicyWDLSFT-CodeTask/{checkpoint.name}.jsonl"))
+def metrics_for(checkpoint: Path, runtime_root: Path) -> Path:
+    matches = list(runtime_root.glob(f"**/metrics/OnPolicyWDLSFT-CodeTask/{checkpoint.name}.jsonl"))
     if len(matches) != 1 or not matches[0].is_file():
         raise RuntimeError(f"expected one metrics file for {checkpoint.name}, found {len(matches)}")
     return matches[0]
@@ -71,6 +71,8 @@ def write_provenance(path: Path, payload: dict) -> None:
 
 def common_environment(manifest_path: Path, manifest: dict, run: dict) -> dict[str, str]:
     environment = dict(os.environ)
+    runtime_root = Path(run["artifact_dir"]) / "runtime" / run["id"]
+    log_root = runtime_root / "logs"
     environment.update(
         {
             "STAGE123_RUN_ID": run["id"],
@@ -84,6 +86,13 @@ def common_environment(manifest_path: Path, manifest: dict, run: dict) -> dict[s
             "EXPECTED_STAGE1_BETA": "0.1",
             "FUSION_LAMBDA": "0.8",
             "STAGE123_EXPECTED_PROFILE_HASH": manifest["resource_profile"]["sha256"],
+            "BASE_CKPT_DIR": manifest["paths"]["checkpoint_root"],
+            "LOG_DIR": str(log_root),
+            "VERL_FILE_LOGGER_ROOT": str(log_root / "metrics"),
+            "VALIDATION_DATA_DIR": str(log_root / "validation"),
+            "WANDB_DIR": str(runtime_root / "wandb"),
+            "WANDB_MODE": "offline",
+            "RAY_TMPDIR": str(Path(manifest["paths"]["scratch_root"]) / "ray" / run["id"]),
         }
     )
     return environment
@@ -120,12 +129,15 @@ def execute_wrapper(manifest_path: Path, manifest: dict, run: dict, *, dry_run: 
     environment = stage_environment(manifest, run, common_environment(manifest_path, manifest, run))
     command = ["bash", str(WRAPPERS[run["phase"]])]
     if dry_run:
-        print(json.dumps({"command": command, "environment": {key: environment[key] for key in sorted(environment) if key.startswith("STAGE123_") or key in {"RUN_PREFIX", "INIT_MODEL_PATH", "STAGE1_CKPT_DIR", "STAGE2_HANDOFF_STEP", "MERGED_MODEL2_DIR", "STAGE2_MODEL2_PATH", "STAGE2_PROVENANCE_FILE", "CODE_TRAIN_FILE", "TOTAL_TRAINING_STEPS"}}}, sort_keys=True))
+        print(json.dumps({"command": command, "environment": {key: environment[key] for key in sorted(environment) if key.startswith("STAGE123_") or key in {"RUN_PREFIX", "INIT_MODEL_PATH", "STAGE1_CKPT_DIR", "STAGE2_HANDOFF_STEP", "MERGED_MODEL2_DIR", "STAGE2_MODEL2_PATH", "STAGE2_PROVENANCE_FILE", "CODE_TRAIN_FILE", "TOTAL_TRAINING_STEPS", "BASE_CKPT_DIR", "LOG_DIR", "VERL_FILE_LOGGER_ROOT", "VALIDATION_DATA_DIR", "WANDB_DIR", "WANDB_MODE", "RAY_TMPDIR"}}}, sort_keys=True))
         return None, None
+    existing = list(Path(manifest["paths"]["checkpoint_root"]).glob(f"{run['run_prefix']}_*"))
+    if existing:
+        raise RuntimeError(f"existing checkpoint root forbids automatic retry/resume for {run['id']}: {existing}")
     started_at = time.time()
     subprocess.run(command, cwd=ROOT, env=environment, check=True)
     checkpoint = checkpoint_for(run["run_prefix"], int(run["final_step"]), started_at)
-    return checkpoint, metrics_for(checkpoint)
+    return checkpoint, metrics_for(checkpoint, Path(run["artifact_dir"]) / "runtime" / run["id"])
 
 
 def finalize(manifest: dict, run: dict, checkpoint: Path, metrics: Path) -> None:
