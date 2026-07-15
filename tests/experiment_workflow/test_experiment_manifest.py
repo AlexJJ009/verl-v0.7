@@ -24,8 +24,8 @@ def test_stage123_manifest_normalizes_primary_run_identity():
     report = tool.normalize(tool.load(MANIFEST))
     assert report["resource_profile"]["max_response_length"] == 8192
     assert report["semantics"]["validation_datasets"] == ["HumanEval+", "MBPP+", "LiveCodeBench"]
-    assert [item["id"] for item in report["runs"]] == ["frac25-stage2", "frac25-stage3"]
-    assert [item["final_step"] for item in report["runs"]] == [20, 40]
+    assert [item["id"] for item in report["runs"]] == ["frac25-stage1-control", "frac25-stage2", "frac25-stage3"]
+    assert [item["final_step"] for item in report["runs"]] == [60, 20, 40]
     assert report["preflight"]["result_max_age_seconds"] == 3600
     assert report["calibration_policy"]["calibration_result_max_age_seconds"] == 86400
     assert len(report["manifest_sha256"]) == 64
@@ -77,7 +77,7 @@ def test_hash_changes_when_lifecycle_data_changes():
 
 def test_stage3_pending_producer_final_step_drift_is_rejected():
     tool = module(); data = tool.load(MANIFEST)
-    data["runs"][0]["final_step"] = 21
+    next(item for item in data["runs"] if item["id"] == "frac25-stage2")["final_step"] = 21
     with pytest.raises(ValueError, match="pending producer identity mismatch"):
         tool.normalize(data)
 
@@ -88,12 +88,12 @@ def test_pending_producer_follows_mutated_manifest_final_step_without_source_con
     producer_run["final_step"] = 21
     source = data["calibration_workloads"]["stage3"]["model_sources"][0]
     source["producer"]["final_step"] = 21
-    assert tool.normalize(data)["runs"][0]["final_step"] == 21
+    assert next(item for item in tool.normalize(data)["runs"] if item["id"] == "frac25-stage2")["final_step"] == 21
 
 
 def test_manifest_policy_errors_have_stable_code_message_and_context():
     tool = module(); data = tool.load(MANIFEST)
-    data["runs"][1]["source"]["run_id"] = "missing"
+    next(item for item in data["runs"] if item["id"] == "frac25-stage3")["source"]["run_id"] = "missing"
     with pytest.raises(tool.ManifestPolicyError) as raised:
         tool.normalize(data)
     assert raised.value.as_dict() == {

@@ -1,32 +1,52 @@
 {
   "adapter_type": "stage123_queue_v1",
   "bindings": {
-    "evidence_commit": "b50c3f83cd7664f0dbb6d611324c35d21974db15",
-    "implementation_tree_sha256": "b77cd4a6aa53414ff117fa8e25e2926af72112a2bd42ba8296dd4891c6c03438",
+    "evidence_commit": "a3708d0ae37275905e152ad79f438dbdfa4668f4",
+    "implementation_tree_sha256": "c2c19a5ee865a80a1dfb9679d46cc01dadae6cc12e7dcef37bde8c5741652a23",
     "input_hashes": {},
     "protected_asset_hashes": {
       ".claude/skills/experiment-registry": "81c6e7996f6f0ccbc43479ebea9dfe6b30965fdd99779ad1b7bd2a074255b5b9",
       "docs/joint_training/plans/active/qwen3_1p7b_code_stage123_plateau_breakthrough.md": "f680d4c7111fd1dd9ae62288f4d695301a7c1b348e5b662f73e274e8d938c887",
       "test_data": "0cfbee3ef14536b9ce4a9769ed4e0461f734af104316830af21b3aa2f3c4bd70"
     },
-    "recipe_gitlink": "9b83f9f488ac4b34e87a36a40d969d98d7d025f7"
+    "recipe_gitlink": "6fcccb353a87045a17f9d52b3821f0e20f7f9a9d"
   },
-  "bundle_sha256": "f2b7eb3664449054fa36b9b030b5af9fc451aff97c28cfa8f546d0524dfc145c",
+  "bundle_sha256": "684100a367fec6fece96e5f67f43d13452e8e97bbb5b651c418f2e4adedbdb71",
   "bundle_type": "experiment_batch_admission",
   "canonical_commands": [
     [
-      "bash",
-      "/workspace/verl/recipe/on_policy_wdl_sft/code_task/run_s2_code_qwen3_1p7b_stage123_common.sh"
+      "/data-1/verl07/run_train.sh",
+      "python",
+      "/workspace/verl/scripts/stage123_phase_adapter.py",
+      "--manifest",
+      "/workspace/verl/recipe/on_policy_wdl_sft/experiment_manifest/stage123.yaml",
+      "--run-id",
+      "frac25-stage1-control"
     ],
     [
-      "bash",
-      "/workspace/verl/recipe/on_policy_wdl_sft/code_task/run_s3_code_qwen3_1p7b_stage123_common.sh"
+      "/data-1/verl07/run_train.sh",
+      "python",
+      "/workspace/verl/scripts/stage123_phase_adapter.py",
+      "--manifest",
+      "/workspace/verl/recipe/on_policy_wdl_sft/experiment_manifest/stage123.yaml",
+      "--run-id",
+      "frac25-stage2"
+    ],
+    [
+      "/data-1/verl07/run_train.sh",
+      "python",
+      "/workspace/verl/scripts/stage123_phase_adapter.py",
+      "--manifest",
+      "/workspace/verl/recipe/on_policy_wdl_sft/experiment_manifest/stage123.yaml",
+      "--run-id",
+      "frac25-stage3"
     ]
   ],
-  "command_sha256": "10e46e575df23642ab7cda9a16f5a8bec0784d1fe7d44081ba5ba2db260b9bc8",
+  "command_sha256": "5d22e664fc4666133c67b946c74d3cf91d13938ef6eb26daeccb9604423197a2",
   "implementation_paths": [
     "scripts/experiment_execution_core.py",
-    "scripts/stage123_manifest_monitor.py"
+    "scripts/stage123_manifest_monitor.py",
+    "scripts/stage123_phase_adapter.py"
   ],
   "schema_version": 1
 }

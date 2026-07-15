@@ -23,7 +23,7 @@ def bundle(tool, tmp_path: Path) -> tuple[Path, dict]:
         "schema_version": 1,
         "bundle_type": "stage123_admission_bundle",
         "bundle_path": str(tmp_path / "admission_bundle.json"),
-        "run_ids": ["frac25-stage2", "frac25-stage3"],
+        "run_ids": ["frac25-stage1-control", "frac25-stage2", "frac25-stage3"],
         "bindings": {
             "manifest_sha256": "1" * 64,
             "resource_profile_sha256": "2" * 64,
@@ -94,7 +94,7 @@ def accepted_report(value: dict) -> dict:
 
 def test_admission_builder_never_self_binds_calibration_identity(tmp_path: Path) -> None:
     tool = module(); manifest = tmp_path / "manifest.json"; profile = tmp_path / "profile.sh"; calibration = tmp_path / "calibration.json"; preflight = tmp_path / "preflight.json"
-    manifest.write_text(json.dumps({"manifest_sha256": "a" * 64, "resource_profile": {"sha256": "c" * 64}, "runs": [{"id": "frac25-stage2"}, {"id": "frac25-stage3"}]})); profile.write_text("profile")
+    manifest.write_text(json.dumps({"manifest_sha256": "a" * 64, "resource_profile": {"sha256": "c" * 64}, "runs": [{"id": "frac25-stage1-control"}, {"id": "frac25-stage2"}, {"id": "frac25-stage3"}]})); profile.write_text("profile")
     calibration.write_text(json.dumps({"schema_version": 1, "result_type": "calibration_result", "decision": "passed"}))
     preflight.write_text(json.dumps({"schema_version": 1, "result_type": "preflight_result", "decision": "passed", "manifest_sha256": "a" * 64}))
     try:
@@ -195,6 +195,6 @@ def test_calibration_renderer_rejects_empty_phase_evidence(tmp_path: Path) -> No
     try:
         renderer.validate_pointer(pointer, run_id="run-a", decision_id="decision-a", scratch_root=scratch)
     except ValueError as exc:
-        assert "exactly stage2 and stage3" in str(exc)
+        assert "exactly stage1, stage2, and stage3" in str(exc)
     else:
         raise AssertionError("empty calibration phase evidence was accepted")

@@ -37,9 +37,9 @@ def test_preflight_primary_inputs_exclude_frac50() -> None:
         "stage123_preflight_admission",
         ROOT / "recipe/on_policy_wdl_sft/code_task/stage123_preflight.py",
     )
-    assert len(preflight.SHARDS) == 2
-    assert all("frac25" in name for name in preflight.SHARDS)
-    assert not any("frac50" in name for name in preflight.SHARDS)
+    assert preflight.PRIMARY_RUN_IDS == ("frac25-stage1-control", "frac25-stage2", "frac25-stage3")
+    assert all("frac25" in name for name in preflight.PRIMARY_RUN_IDS)
+    assert not any("frac50" in name for name in preflight.PRIMARY_RUN_IDS)
 
 
 def test_accepted_bundle_requires_complete_report_bindings() -> None:
@@ -47,7 +47,7 @@ def test_accepted_bundle_requires_complete_report_bindings() -> None:
     bundle = {
         "schema_version": 1,
         "bundle_type": "stage123_admission_bundle",
-        "run_ids": ["frac25-stage2", "frac25-stage3"],
+        "run_ids": ["frac25-stage1-control", "frac25-stage2", "frac25-stage3"],
         "bindings": {
             "manifest_sha256": "1" * 64,
             "resource_profile_sha256": "2" * 64,
@@ -69,7 +69,7 @@ def test_accepted_bundle_round_trip_uses_unsigned_bundle_hash() -> None:
         "schema_version": 1,
         "bundle_type": "stage123_admission_bundle",
         "bundle_path": "/tmp/admission_bundle.json",
-        "run_ids": ["frac25-stage2", "frac25-stage3"],
+        "run_ids": ["frac25-stage1-control", "frac25-stage2", "frac25-stage3"],
         "bindings": {
             "manifest_sha256": "1" * 64,
             "resource_profile_sha256": "2" * 64,

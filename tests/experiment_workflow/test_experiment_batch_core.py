@@ -95,10 +95,10 @@ def make_manifest(tool, tmp_path: Path, items):
 
 def write_valid_manifest(tool, tmp_path: Path) -> Path:
     commands = [
-        ["bash", str(ROOT / "recipe/on_policy_wdl_sft/code_task/run_s2_code_qwen3_1p7b_stage123_common.sh")],
-        ["bash", str(ROOT / "recipe/on_policy_wdl_sft/code_task/run_s3_code_qwen3_1p7b_stage123_common.sh")],
+        ["/data-1/verl07/run_train.sh", "python", "/workspace/verl/scripts/stage123_phase_adapter.py", "--manifest", "/workspace/verl/recipe/on_policy_wdl_sft/experiment_manifest/stage123.yaml", "--run-id", run_id]
+        for run_id in ("frac25-stage1-control", "frac25-stage2", "frac25-stage3")
     ]
-    implementation_paths = ["scripts/experiment_execution_core.py"]
+    implementation_paths = ["scripts/experiment_execution_core.py", "scripts/stage123_manifest_monitor.py", "scripts/stage123_phase_adapter.py"]
     recipe_head = subprocess.check_output(["git", "-C", str(ROOT / "recipe"), "rev-parse", "HEAD"], text=True).strip()
     evidence_commit = subprocess.check_output(["git", "-C", str(ROOT), "rev-parse", "HEAD"], text=True).strip()
     bundle = {
@@ -132,7 +132,7 @@ def write_valid_manifest(tool, tmp_path: Path) -> Path:
         "adapter_type": "stage123_queue_v1",
         "command_sha256": tool.sha256_json(commands),
         "implementation_tree_sha256": bundle["bindings"]["implementation_tree_sha256"],
-        "expected_run_ids": ["stage2", "stage3"],
+        "expected_run_ids": ["stage1-control", "stage2", "stage3"],
         "timeout_seconds": 30,
     }
     manifest = {
