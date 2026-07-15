@@ -66,6 +66,8 @@ def test_launch_renderer_is_deterministic_and_contains_no_secrets(tmp_path: Path
     assert first == tool.admission_launch_command(value, ROOT)
     rendered = " ".join(first)
     assert "ALLOW_QWEN3_1P7B_STAGE123_TRAINING=1" in rendered
+    assert "EXPERIMENT_BATCH_MANIFEST=" in rendered
+    assert rendered.endswith("run_code_task_qwen3_1p7b_stage123_queue.sh")
     assert "frac50" not in rendered.lower()
     assert "token" not in rendered.lower()
 

@@ -1,22 +1,22 @@
 {
   "authorization_id": "fixture-authorization",
   "batch_id": "experiment-batch-v1-fixture",
-  "batch_manifest_sha256": "b53d31785c370c4ec553ccba3bd94c3ed3739ba1c83a82296bd340e0ca527a3d",
+  "batch_manifest_sha256": "2f89aab61251a8cbc8746eedfbd3b86438ee7cd59ee501959a1c72c67bdce97a",
   "created_at": "2026-07-14T00:00:00Z",
   "failure_policy_id": "batch-fallback-v1",
   "items": [
     {
       "adapter_type": "stage123_queue_v1",
       "admission_bundle_path": "tests/experiment_workflow/fixtures/experiment_batch_admission_v1.json",
-      "admission_bundle_sha256": "209469de8acb4c3b7b80dc5ad1c20744678ca73c2f28d16f7f2af1d53b822c15",
+      "admission_bundle_sha256": "921e175cfcd2dc65e1d7deb061414b51f2bc68f0fe6529e9405d268e510ee6d9",
       "command_sha256": "5d22e664fc4666133c67b946c74d3cf91d13938ef6eb26daeccb9604423197a2",
       "expected_run_ids": [
-        "stage123-stage1-control",
-        "stage123-stage2",
-        "stage123-stage3"
+        "frac25-stage1-control",
+        "frac25-stage2",
+        "frac25-stage3"
       ],
       "goal_id": "stage123-primary-chain-execution",
-      "implementation_tree_sha256": "c2c19a5ee865a80a1dfb9679d46cc01dadae6cc12e7dcef37bde8c5741652a23",
+      "implementation_tree_sha256": "db3d9c79331f7d5b79fc86d0fc27ec76664efd97678482edc47e39c4b25f7096",
       "item_id": "stage123-primary",
       "plan_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
       "timeout_seconds": 30

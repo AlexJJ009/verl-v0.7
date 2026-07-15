@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+from types import SimpleNamespace
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -132,7 +133,7 @@ def write_valid_manifest(tool, tmp_path: Path) -> Path:
         "adapter_type": "stage123_queue_v1",
         "command_sha256": tool.sha256_json(commands),
         "implementation_tree_sha256": bundle["bindings"]["implementation_tree_sha256"],
-        "expected_run_ids": ["stage1-control", "stage2", "stage3"],
+        "expected_run_ids": ["frac25-stage1-control", "frac25-stage2", "frac25-stage3"],
         "timeout_seconds": 30,
     }
     manifest = {
@@ -298,3 +299,28 @@ def test_committed_batch_fixture_validates_without_starting_child() -> None:
     )
     assert result.returncode == 0
     assert json.loads(result.stdout)["ok"] is True
+
+
+def test_stage123_accepted_bundle_maps_to_frozen_phase_adapter_commands(tmp_path: Path, monkeypatch) -> None:
+    tool = load_core()
+    import execution_results
+
+    monkeypatch.setattr(execution_results, "validate_admission_bundle", lambda bundle, require_accepted: SimpleNamespace(authorized=True, code="accepted", message="ok"))
+    monkeypatch.setattr(execution_results, "validate_current_checkout", lambda bundle, repo_root, protected_baseline, require_accepted: SimpleNamespace(authorized=True, code="authorized", message="ok"))
+    input_path = tmp_path / "input.json"; input_path.write_text("{}")
+    report_path = tmp_path / "acceptance.json"; report_path.write_text("{}")
+    bundle = {
+        "schema_version": 1,
+        "bundle_type": "stage123_admission_bundle",
+        "inputs": {"manifest": str(input_path), "protected_baseline": str(input_path)},
+        "acceptance_report_path": str(report_path),
+        "bindings": {
+            "implementation_tree_sha256": "1" * 64,
+            "readiness_evidence_commit": "2" * 40,
+            "recipe_gitlink": "3" * 40,
+        },
+    }
+    validated = tool.validate_admission_bundle(bundle, tmp_path / "bundle.json", ROOT)
+    assert validated["adapter_type"] == "stage123_queue_v1"
+    assert [command[-1] for command in validated["commands"]] == ["frac25-stage1-control", "frac25-stage2", "frac25-stage3"]
+    assert all(command[2] == "/workspace/verl/scripts/stage123_phase_adapter.py" for command in validated["commands"])
