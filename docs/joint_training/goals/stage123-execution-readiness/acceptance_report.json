@@ -1,0 +1,100 @@
+{
+  "ac09_verdict": "PASS",
+  "ac_verdicts": {
+    "AC-01": "PASS",
+    "AC-02": "PASS",
+    "AC-03": "PASS",
+    "AC-04": "PASS",
+    "AC-05": "PASS",
+    "AC-06": "PASS",
+    "AC-07": "PASS",
+    "AC-08": "PASS"
+  },
+  "acceptance_report_sha256": "cdc0766a541150d42f89e4c63a0f8b6e7c3931195d17802f8576d29747343148",
+  "audit": {
+    "freshness_current_checkout": "PASS admission validator authorized current checkout and protected baseline before acceptance",
+    "no_deleted_skipped_loosened_trivial_tests": "PASS diff audit found no skip/xfail deletion or trivialization; full suite passed",
+    "no_formal_training_checkpoints_publication": "PASS zero optimizer steps, empty formal_checkpoint_files, no Stage123 tmux, no compute apps",
+    "no_real_external_services": "PASS readiness checks used local validators/fakes; no W&B/WxPusher/HF/GitHub/registry publication evidence",
+    "protected_assets": "PASS protected baseline compare matched",
+    "run_set": "PASS frac25-stage2, frac25-stage3 only"
+  },
+  "bundle_path": "docs/joint_training/goals/stage123-execution-readiness/admission_bundle.json",
+  "bundle_sha256": "97e8745829795232078533df19e069769c15972adcd43dacdab65cc44911233e",
+  "calibration_result_sha256": "80d09f5aad98d3d834162663cd6532a8da5f27a9b903421b364d14d4f18e340d",
+  "candidate_commit": "2020531b470ec932d7b00afd13080e1318fc8429",
+  "command_evidence": [
+    {
+      "command": "goal-plan-runtime validate-plan docs/joint_training/goals/stage123-execution-readiness",
+      "result": "PASS"
+    },
+    {
+      "command": "goal-plan-runtime validate-runtime docs/joint_training/goals/stage123-execution-readiness",
+      "result": "PASS goal_status=ACTIVE current_milestone=Milestone 6 pending_user_decisions=[]"
+    },
+    {
+      "command": "REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python -m pytest -q tests/experiment_workflow tests/joint_training/regression/test_validation_generation_logging.py",
+      "result": "PASS 194 passed, 8 warnings in 468.28s"
+    },
+    {
+      "command": "REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/render_calibration_result.py validate --input docs/joint_training/goals/stage123-execution-readiness/calibration_result.json --schema config/experiment_execution/calibration_result_schema_v1.json",
+      "result": "PASS ok=true sha256=80d09f5aad98d3d834162663cd6532a8da5f27a9b903421b364d14d4f18e340d"
+    },
+    {
+      "command": "REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/execution_results.py admission validate --bundle docs/joint_training/goals/stage123-execution-readiness/admission_bundle.json --protected-baseline docs/joint_training/goals/stage123-execution-readiness/protected-assets-baseline.jsonl --repo-root /data-1/code/verl",
+      "result": "PASS authorized current checkout matches admission bundle"
+    },
+    {
+      "command": "REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python docs/joint_training/goals/stage123-execution-readiness/tools/protected_asset_fingerprint.py compare --repo-root /data-1/code/verl --baseline docs/joint_training/goals/stage123-execution-readiness/protected-assets-baseline.jsonl",
+      "result": "PASS ok=true sha256=c739413ba6c4014f246f53bbaa5d86a4647b41cef640d580dbff1703864c7207"
+    },
+    {
+      "command": "REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/implementation_tree_identity.py --repo-root /data-1/code/verl --boundary-manifest config/experiment_execution/stage123_implementation_boundary_v1.json --format json",
+      "result": "PASS implementation_tree_sha256=91b8e419933b13d521faaf6eedf6f04cccdfdeccfad4d808759896f61c0fbf7e"
+    },
+    {
+      "command": "git status --short",
+      "result": "PASS only expected runtime/findings modifications and protected/untracked goal artifacts observed before acceptance writes"
+    },
+    {
+      "command": "tmux list-sessions",
+      "result": "PASS no Stage123 training session; sessions: docker-export, harness"
+    },
+    {
+      "command": "nvidia-smi --query-compute-apps=pid,used_memory --format=csv,noheader",
+      "result": "PASS empty output"
+    }
+  ],
+  "decision": "accepted",
+  "goal_id": "stage123-execution-readiness",
+  "implementation_tree_sha256": "91b8e419933b13d521faaf6eedf6f04cccdfdeccfad4d808759896f61c0fbf7e",
+  "input_hashes": {
+    "calibration_result_sha256": "80d09f5aad98d3d834162663cd6532a8da5f27a9b903421b364d14d4f18e340d",
+    "candidate_bundle_sha256": "97e8745829795232078533df19e069769c15972adcd43dacdab65cc44911233e",
+    "command_log_sha256": "f213317188e40fab767d787616498942d016a4fa7c835c24552f43ab8ab92f5a",
+    "implementation_tree_sha256": "91b8e419933b13d521faaf6eedf6f04cccdfdeccfad4d808759896f61c0fbf7e",
+    "manifest_sha256": "e665049cc67a40c32f0b104058bfe4e20c2529dc22328a485622bed78d3c8f0c",
+    "preflight_result_sha256": "23dac2c85db2cae8d7121a5b74cd63641db847e71d3fac48e41213dd415b3598",
+    "protected_baseline_sha256": "c739413ba6c4014f246f53bbaa5d86a4647b41cef640d580dbff1703864c7207",
+    "resource_profile_sha256": "d9b6a36dd9fcc4307f7b502e5511989e60c1a257f57c9ac70574acaf12eee2b5"
+  },
+  "manifest_sha256": "e665049cc67a40c32f0b104058bfe4e20c2529dc22328a485622bed78d3c8f0c",
+  "plan_id": "stage123-execution-readiness",
+  "plan_sha256": "fc079ef6634aaf8e40f8aa99f81e38755f3e96a611815690ca8ac4eba1750c67",
+  "plan_version": 8,
+  "preflight_result_sha256": "23dac2c85db2cae8d7121a5b74cd63641db847e71d3fac48e41213dd415b3598",
+  "protected_baseline_sha256": "c739413ba6c4014f246f53bbaa5d86a4647b41cef640d580dbff1703864c7207",
+  "readiness_evidence_commit": "2020531b470ec932d7b00afd13080e1318fc8429",
+  "resource_profile_sha256": "d9b6a36dd9fcc4307f7b502e5511989e60c1a257f57c9ac70574acaf12eee2b5",
+  "result_type": "acceptance_report",
+  "reviewer": {
+    "identity": "independent final-acceptance Reviewer",
+    "model": "GPT-5.5",
+    "reasoning_effort": "medium"
+  },
+  "run_ids": [
+    "frac25-stage2",
+    "frac25-stage3"
+  ],
+  "schema_version": 1
+}

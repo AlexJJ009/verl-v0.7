@@ -1,7 +1,7 @@
 # Stage123 Execution Readiness
 
 - Goal ID: `stage123-execution-readiness`
-- Plan version: `8`
+- Plan version: `9`
 - Plan status: `REVIEW_PENDING`
 - Serial position: `3 of 4`
 - Prerequisite Goal: `calibration-qualification` completed with
@@ -10,9 +10,9 @@
 ## Outcome
 
 Produce one immutable, independently accepted Stage123 admission bundle proving
-that the re-aligned FRAC25/P40 primary Stage2 -> Stage3 queue is deployable but not
-yet started, after compatibility repair and fresh calibration requalification of
-the resulting production identity.
+that the matched FRAC25/P40 three-run experiment (`frac25-stage1-control`,
+`frac25-stage2`, `frac25-stage3`) is deployable but not yet started, after fresh
+calibration requalification of the amended production identity.
 
 ## Starting Evidence
 
@@ -25,13 +25,19 @@ the resulting production identity.
 - Calibration acceptance guarantees that manifest/admission/queue/monitor/recovery
   production migration was completed before the probe and is bound by the passed
   `implementation_tree_sha256`.
+- Plan v8 and its accepted bundle are immutable historical evidence for the prior
+  two-run chain. Primary Chain Plan v5 invalidates that bundle because a scientific
+  decision requires a matched pure-Stage1 control. User decision
+  `EX-MATCHED-CONTROL-READINESS-01` authorizes this bounded Plan v9 amendment and a
+  fresh three-run admission; the old bundle cannot authorize formal training.
 
 ## Scope
 
 ### Included
 
-- Consume the exact passed calibration result without changing its manifest,
-  profile, workload, run set, or candidate bindings.
+- Preserve the accepted Plan v8 result as historical evidence while changing only
+  the manifest/run-set and production surfaces required to add the frozen matched
+  pure-Stage1 control from Primary Chain Plan v5.
 - Produce one canonical host-owned `host_facts.json`, then one fresh
   `preflight_result.json` for models, datasets, scorer dependencies,
   storage, container runtime, source checkpoints, provenance, machine facts, and
@@ -43,21 +49,21 @@ the resulting production identity.
   calibration result, preflight result, reviewer acceptance report, hashes, and
   exact launch command.
 - Run dry-run, fake-child, mutation, and non-weight-updating initialization checks.
-- Repair only the preflight/admission incompatibilities required by AC-01 through
-  AC-06: host/container runtime evidence, FRAC25-only inputs, authoritative result
-  schema, freshness enforcement, acceptance-report binding, and focused tests.
+- Implement only the matched-control changes required by AC-01 through AC-06:
+  control manifest entry and wrapper binding, three-run calibration/preflight and
+  admission identity, unified batch binding, monitor inventory, and focused tests.
 - After those production changes, require a fresh bounded zero-training-step
   calibration result before admission. GPU requalification is a `USER_DECISION`.
 
 ### Excluded
 
 - Any formal weight-updating Stage1, Stage2, or Stage3 training.
-- P60, FRAC50, a 27-run queue, broader sweep, or manifest/run-set change.
+- P60, FRAC50, a 27-run queue, broader sweep, or any run-set change beyond adding
+  the exact `frac25-stage1-control` frozen by Primary Chain Plan v5.
 - Rewriting the completed predecessor calibration result or treating it as current
   after the implementation identity changes.
-- Queue, monitor, training wrapper, trainer, manifest workload, resource profile,
-  recovery-policy, hyperparameter, or run-set changes beyond the named compatibility
-  repair.
+- Trainer, resource profile, recovery policy, hyperparameter, Stage2/Stage3 wrapper,
+  or workload changes beyond the exact matched-control construction.
 - Real W&B, WxPusher, Hugging Face, GitHub, registry mutation, or publication.
 - New receipts, adoption artifacts, per-AC wrappers, or review-document chains.
 - Modification, deletion, or staging of the three protected user assets named in
@@ -77,7 +83,8 @@ the resulting production identity.
 - Generic admission validation checks shared bindings and result classes without
   hard-coding Stage123 run facts.
 - Experiment-specific deployability policy is versioned and manifest-owned.
-- The admitted run set is exactly `frac25-stage2` and `frac25-stage3`.
+- The admitted run set is exactly `frac25-stage1-control`, `frac25-stage2`, and
+  `frac25-stage3`, in that order.
 - `scripts/experiment_execution_core.py` owns execution state, child lifecycle,
   deadline, cleanup, interruption, and resume. Queue shell performs configuration
   and delegates; monitor consumes persisted events/state.
@@ -128,7 +135,7 @@ the resulting production identity.
 ### AC-01 - Re-Aligned Production Identity Is Freshly Qualified
 
 - Given the named compatibility repair changes the frozen production identity,
-- When a separately authorized bounded zero-training-step requalification completes,
+- When the user-authorized bounded zero-training-step requalification completes,
 - Then a new authoritative `calibration_result.json` is `passed` and binds the exact
   post-repair manifest, profile, primary run set, implementation tree, evidence
   commit, and authorization identity; the predecessor result remains immutable
@@ -137,17 +144,17 @@ the resulting production identity.
   `REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python -m pytest -q tests/experiment_workflow/test_calibration_outcomes.py tests/experiment_workflow/test_experiment_manifest.py`
 - Additional verification command:
   `REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/implementation_tree_identity.py --repo-root /data-1/code/verl --boundary-manifest config/experiment_execution/stage123_implementation_boundary_v1.json --format json --output docs/joint_training/goals/stage123-execution-readiness/implementation-tree.jsonl`
-- Bounded requalification producer command, executable only after the Milestone 4
+- Bounded requalification producer command, executable only after the matching
   `USER_DECISION_RECORDED` event:
-  `tmux new-session -d -s stage123_readiness_requalification "cd /data-1/code/verl && export REPO_HOST=/data-1/code/verl CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 CALIBRATION_STATE_ROOT=/data-1/tmp/verl_agent_scratch/experiment_workflow/readiness-requalification/RD-GPU-REQUAL-01/state CALIBRATION_DEADLINE_SECONDS=5400 && export CALIBRATION_CHILD_COMMAND_JSON=\"\$(/data-1/verl07/run_train.sh python scripts/render_calibration_probe_command.py --manifest recipe/on_policy_wdl_sft/experiment_manifest/stage123.yaml --resource-profile recipe/on_policy_wdl_sft/code_task/qwen3_1p7b_stage123_resource_profile.sh --phases stage2,stage3 --repetitions 3 --training-steps 0 --scratch-root /data-1/tmp/verl_agent_scratch/experiment_workflow/readiness-requalification/RD-GPU-REQUAL-01 --execution-run-id stage123_readiness_requalification_RD-GPU-REQUAL-01 --authorization-decision-id RD-GPU-REQUAL-01)\" && /data-1/verl07/run_train.sh python scripts/experiment_execution_core.py queue --run-id stage123_readiness_requalification_RD-GPU-REQUAL-01 --state-root \"\$CALIBRATION_STATE_ROOT\" --timeout-seconds 5400 --command-json \"\$CALIBRATION_CHILD_COMMAND_JSON\""`
+  `tmux new-session -d -s stage123_matched_control_requalification "cd /data-1/code/verl && export REPO_HOST=/data-1/code/verl CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 CALIBRATION_STATE_ROOT=/data-1/tmp/verl_agent_scratch/experiment_workflow/readiness-requalification/RD-MATCHED-CONTROL-REQUAL-01/state CALIBRATION_DEADLINE_SECONDS=5400 && export CALIBRATION_CHILD_COMMAND_JSON=\"\$(/data-1/verl07/run_train.sh python scripts/render_calibration_probe_command.py --manifest recipe/on_policy_wdl_sft/experiment_manifest/stage123.yaml --resource-profile recipe/on_policy_wdl_sft/code_task/qwen3_1p7b_stage123_resource_profile.sh --phases stage1,stage2,stage3 --repetitions 3 --training-steps 0 --scratch-root /data-1/tmp/verl_agent_scratch/experiment_workflow/readiness-requalification/RD-MATCHED-CONTROL-REQUAL-01 --execution-run-id stage123_matched_control_requalification_RD-MATCHED-CONTROL-REQUAL-01 --authorization-decision-id RD-MATCHED-CONTROL-REQUAL-01)\" && /data-1/verl07/run_train.sh python scripts/experiment_execution_core.py queue --run-id stage123_matched_control_requalification_RD-MATCHED-CONTROL-REQUAL-01 --state-root \"\$CALIBRATION_STATE_ROOT\" --timeout-seconds 5400 --command-json \"\$CALIBRATION_CHILD_COMMAND_JSON\""`
 - Frozen requalification envelope: at most 8 L40S GPUs, at most 90 minutes aggregate,
   at most 3 repetitions per phase, zero optimizer steps, zero formal checkpoints,
   scratch-only outputs, and cleanup evidence. Authorization identity is the matching
-  `USER_DECISION_RECORDED.decision_id` plus the exact Plan v8 hash and candidate
+  `USER_DECISION_RECORDED.decision_id` plus the exact Plan v9 hash and candidate
   implementation-tree SHA256.
 - Authoritative result render command after the execution-core run and producer
   report both reach terminal `passed` state:
-  `REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/render_calibration_result.py render --run-id stage123_readiness_requalification_RD-GPU-REQUAL-01 --state-root /data-1/tmp/verl_agent_scratch/experiment_workflow/readiness-requalification/RD-GPU-REQUAL-01/state --latest-probe /data-1/tmp/verl_agent_scratch/experiment_workflow/readiness-requalification/RD-GPU-REQUAL-01/latest-probe.json --manifest recipe/on_policy_wdl_sft/experiment_manifest/stage123.yaml --resource-profile recipe/on_policy_wdl_sft/code_task/qwen3_1p7b_stage123_resource_profile.sh --implementation-tree docs/joint_training/goals/stage123-execution-readiness/implementation-tree.jsonl --evidence-commit "$(git rev-parse HEAD)" --runtime-ledger docs/joint_training/goals/stage123-execution-readiness/runtime.jsonl --decision-id RD-GPU-REQUAL-01 --output docs/joint_training/goals/stage123-execution-readiness/calibration_result.json`
+  `REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/render_calibration_result.py render --run-id stage123_matched_control_requalification_RD-MATCHED-CONTROL-REQUAL-01 --state-root /data-1/tmp/verl_agent_scratch/experiment_workflow/readiness-requalification/RD-MATCHED-CONTROL-REQUAL-01/state --latest-probe /data-1/tmp/verl_agent_scratch/experiment_workflow/readiness-requalification/RD-MATCHED-CONTROL-REQUAL-01/latest-probe.json --manifest recipe/on_policy_wdl_sft/experiment_manifest/stage123.yaml --resource-profile recipe/on_policy_wdl_sft/code_task/qwen3_1p7b_stage123_resource_profile.sh --implementation-tree docs/joint_training/goals/stage123-execution-readiness/implementation-tree.jsonl --evidence-commit "$(git rev-parse HEAD)" --runtime-ledger docs/joint_training/goals/stage123-execution-readiness/runtime.jsonl --decision-id RD-MATCHED-CONTROL-REQUAL-01 --output docs/joint_training/goals/stage123-execution-readiness/calibration_result.json`
 - Authoritative result validation command:
   `REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/render_calibration_result.py validate --input docs/joint_training/goals/stage123-execution-readiness/calibration_result.json --schema config/experiment_execution/calibration_result_schema_v1.json`
 - Rendering must bind manifest/profile hashes, current implementation-tree SHA256,
@@ -157,7 +164,7 @@ the resulting production identity.
 - The renderer resolves the report only through the producer-generated
   `latest-probe.json`; requires its `run_root`/report path and SHA256 to match the
   terminal execution-core state for
-  `stage123_readiness_requalification_RD-GPU-REQUAL-01`; requires pointer fields
+  `stage123_matched_control_requalification_RD-MATCHED-CONTROL-REQUAL-01`; requires pointer fields
   `schema_version=2`, `run_id`, `authorization_decision_id`, `report_sha256`,
   `generated_at_utc`, `report_started_at_utc`, and `report_completed_at_utc`; and
   requires the decision-specific state/scratch roots to be newly created after the
@@ -192,8 +199,8 @@ the resulting production identity.
 
 - Given manifest rendering, queue dry-run, and monitor inventory,
 - When the three surfaces enumerate runs,
-- Then all enumerate exactly `frac25-stage2` and `frac25-stage3`; FRAC50, P60, and
-  hidden environment-variable filtering are absent.
+- Then all enumerate exactly `frac25-stage1-control`, `frac25-stage2`, and
+  `frac25-stage3`; FRAC50, P60, and hidden environment-variable filtering are absent.
 - Verification command:
   `REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python -m pytest -q tests/experiment_workflow/test_experiment_manifest.py tests/experiment_workflow/test_manifest_queue_monitor_contract.py tests/experiment_workflow/test_stage123_end_to_end.py`
 - Expected evidence: identical run IDs and a dry-run that starts no tmux/container.
@@ -307,11 +314,12 @@ any Goal-attributable content or status change fails closed.
 
 ## Milestones
 
-1. Amend and independently review the converged re-alignment contract.
-2. Implement the named preflight/admission compatibility repair and focused tests.
+1. Amend and independently review the matched-control Readiness contract.
+2. Implement the exact three-run manifest, control wrapper/binding,
+   calibration/preflight/admission/batch identity, and focused tests.
 3. Commit and recompute the complete production implementation identity.
-4. `USER_DECISION`: authorize the exact bounded zero-training-step calibration
-   requalification command and envelope frozen in AC-01; render the fresh
+4. Execute the already authorized exact bounded zero-training-step three-phase
+   calibration requalification command frozen in AC-01; render the fresh
    authoritative calibration result.
 5. Run one fast preflight, build/mutation-test the candidate admission bundle, and
    confirm no formal execution or publication.
@@ -331,7 +339,10 @@ any Goal-attributable content or status change fails closed.
   `1097.1178007125854s`, and end-to-end probe `1097.252543926239s`.
   The frozen `5400s` ceiling provides `4302.747456073761s` slack and approximately
   `4.92x` the measured end-to-end duration for cleanup/startup variance. Starting it
-  remains a separate `USER_DECISION`; this Plan review does not authorize GPU work.
+  is authorized by `EX-MATCHED-CONTROL-READINESS-01`. Stage1 uses the same
+  single-model topology hash as Stage3, so adding three Stage1 repetitions is
+  conservatively bounded by the measured Stage3 repetition total; the resulting
+  estimated three-phase total remains below half of the frozen `5400s` ceiling.
 - AC-03 numeric-budget waiver: references to Stage2/Stage3 and the three manifest,
   queue, and monitor surfaces define identity/cardinality, not a performance or
   resource budget; no feasibility measurement is applicable.
@@ -344,19 +355,21 @@ any Goal-attributable content or status change fails closed.
 - `AUTO_ADVANCE`: Plan validation/review, finding lifecycle, named compatibility
   repair, focused CPU tests, identity recomputation, reviewer prompt generation,
   and all deterministic evidence checks inside the frozen ACs.
-- `USER_DECISION`: starting the bounded GPU requalification, deleting resources not
-  created by this Goal, changing manifest/profile/run set, starting formal training,
+- `USER_DECISION`: deleting resources not created by this Goal, changing
+  manifest/profile/run set beyond the exact matched control, starting any training
+  before accepted admission,
   using a real external service, or resolving any new `CONTRADICTION`/`AC_CHANGE`.
-- The Milestone 4 decision must name the exact Plan v8 hash, decision id, maximum
+- The Milestone 4 decision must name the exact Plan v9 hash, decision id, maximum
   8-GPU/5400-second/3-repetition envelope, output path, and zero-step requirement.
 - No milestone may start while a matching `USER_DECISION_RECORDED` event is absent.
 
 ## Runtime Contract
 
-- Start only after Plan v8 is independently `READY`.
-- The current user authorization covers Plan amendment, compatibility repair, CPU
-  validation, and Plan Review. It does not authorize Milestone 4 GPU work or formal
-  training.
+- Start only after Plan v9 is independently `READY`.
+- User authorization `EX-MATCHED-CONTROL-READINESS-01` covers the Plan amendment,
+  matched-control implementation, CPU validation, bounded zero-step requalification,
+  independent acceptance, and subsequent formal Primary Chain launch only after the
+  new accepted bundle passes every gate.
 - Every project Python command uses the explicit `REPO_HOST` container invocation.
 - Long-running checks use tmux; persistent CI uses PM2, never systemd.
 - Classify findings before action and validate runtime after classifications and
@@ -368,10 +381,10 @@ any Goal-attributable content or status change fails closed.
   rather than continuing implementation.
 - If two related implementation-review rounds leave the same finding open, stop
   before a third ordinary fix and perform a convergence review.
-- The named compatibility repair is authorized by Plan v8 and must remain limited to
-  preflight, generic admission validation, focused tests, and active reliability
-  documentation. Any broader production change is a new contradiction.
-- Stop for the Milestone 4 GPU authorization gate, any new `CONTRADICTION` or
+- The matched-control repair is authorized by Plan v9 and must remain limited to
+  manifest/control wrapper binding, generic calibration/preflight/admission/batch
+  identity, focused tests, and active reliability documentation.
+- Stop for any new `CONTRADICTION` or
   `AC_CHANGE`, convergence failure, protected-asset risk, weight-updating training,
   or need for a real external service.
 - The implementer cannot self-review or self-accept.

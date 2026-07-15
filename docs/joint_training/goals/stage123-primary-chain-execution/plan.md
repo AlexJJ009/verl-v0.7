@@ -1,17 +1,18 @@
 # Stage123 Primary Chain Experiment Execution
 
 - Goal ID: `stage123-primary-chain-execution`
-- Plan version: `1`
-- Plan status: `DRAFT`
+- Plan version: `5`
+- Plan status: `DRAFT - BLOCKED ON PREREQUISITE GOALS`
 - Serial position: `4 of 4`
 - Prerequisite Goal: `stage123-execution-readiness` completed with an immutable
   independently accepted admission bundle
 
 ## Outcome
 
-Execute, monitor, verify, and conditionally release the single admitted FRAC25/P40
-Stage2 -> extracted-model2 -> Stage3 primary chain without changing its approved
-configuration.
+Execute one matched FRAC25/P40 control-versus-Stage2->Stage3 experiment, preserve
+its exact execution truth, and produce a frozen decision that either supports or
+rejects the specified plateau-breakthrough hypothesis for this configuration, or
+declares the experiment operationally inconclusive.
 
 ## Starting Evidence
 
@@ -19,12 +20,175 @@ configuration.
   manifest, profile, calibration result, preflight result, acceptance report,
   implementation-tree SHA256, Readiness evidence commit, run set, hashes, and launch
   command.
-- The admitted run set is exactly `frac25-stage2` and `frac25-stage3`.
+- The predecessor Readiness bundle admits only `frac25-stage2` and
+  `frac25-stage3`; Plan v2 invalidates that bundle because a scientifically valid
+  experiment also requires one matched pure-Stage1 control.
 - Execution is operational work, not implementation: a code/config/manifest/profile
   change invalidates admission and returns to Readiness.
 - The accepted bundle includes `implementation_tree_sha256`; a production-tree
   change returns first to Calibration Qualification, while evidence-only expiry or
   live-preflight change returns to Readiness.
+- A historical pure-Stage1 step100 aggregate exists in the offline W&B output log,
+  but it is not the control for this experiment: it used response length `4096`, the
+  retained step100 checkpoint no longer exists, and current Stage123 uses response
+  length `8192`. It is context only and cannot support or reject the hypothesis.
+- A legacy Stage2 attempt with suffix `1783777744` reached only step0 validation and
+  was deliberately stopped. Its logs and empty checkpoint root are diagnostic
+  evidence only and must never be resumed, merged, or counted as an experimental arm.
+
+## Required Prerequisite Outcomes
+
+This Goal remains non-executable until both prerequisite outcomes are independently
+accepted:
+
+1. **Matched Stage123 Readiness**: a fresh Readiness contract has implemented and
+   independently accepted the three-run manifest, control wrapper, Stage2/Stage3
+   wrappers, admission bundle, preflight, calibration applicability, and exact
+   launch command. The predecessor two-run bundle cannot authorize this Goal.
+2. **Experiment Batch Orchestration**: a separate reusable Goal has extended the
+   already accepted experiment execution core and persisted-event monitor with
+   deterministic batch routing and operator pause/stop control, and independently
+   accepted the focused tests described below. It must consolidate existing code,
+   not introduce a parallel queue/monitor authority. This is a cross-experiment
+   capability and is intentionally not implemented inside this scientific Goal.
+
+The Stage123 Plan Reviewer must reject `READY` when either prerequisite is missing,
+when any required script is only described rather than present and tested, or when
+the queue/monitor would require an AI agent to make a deterministic phase transition.
+
+## Batch Orchestration Contract
+
+- An **atomic experiment** is one hypothesis, one matched control/treatment matrix,
+  and one support/reject/inconclusive decision. This Goal is one atomic experiment.
+- An **experiment batch** is an ordered list of already-`READY`, already-authorized
+  atomic experiment bundles. The batch may run for one or two days and may contain
+  this Goal plus later independently accepted Goals; it must never invent an
+  experiment, alter a bundle, or bypass a Goal's launch authorization.
+- `scripts/experiment_execution_core.py` remains the only Python execution-state and
+  transition authority. The prerequisite Goal extends this file with a batch mode
+  and operator-control mode instead of adding another batch queue implementation.
+  Batch mode consumes a signed/hashed batch manifest, starts only the exact admitted
+  command for the next item, records the active item, and supports
+  `pause_after_current` and `stop_now`.
+- The existing persisted-event monitor implementation is generalized for batch use
+  rather than copied. `scripts/stage123_manifest_monitor.py` may be renamed to a
+  generic path or retained as a thin compatibility entrypoint, but there must be one
+  shared monitor implementation and one event schema. It remains read-only with
+  respect to execution state and does not infer completion from tmux, checkpoints,
+  W&B, or registry state.
+- The existing Stage123 public queue shell remains a thin experiment adapter that
+  validates its manifest/admission and delegates lifecycle to
+  `experiment_execution_core.py`. Experiment-specific phase launchers remain thin
+  commands; they do not create a second persisted-state authority.
+- Operator pause/resume/stop is implemented as a subcommand of the same execution
+  core or a thin CLI that calls its shared control API. A human can stop the active
+  run at any time; resume means continuing the remaining batch after human review,
+  not resuming a failed experiment from a checkpoint.
+- `scripts/training_queue_monitor.sh` is not reused as execution authority because it
+  observes tmux/checkpoint/metrics paths. It may remain for legacy observational and
+  release workflows, but the Stage123/batch monitor must remain Python-event-owned.
+- The prerequisite Goal must delete or reduce any superseded Stage123-specific
+  implementation according to an explicit deletion budget. Compatibility wrappers
+  may delegate, but duplicate lifecycle, fallback, or monitor logic is forbidden.
+- No Codex, Agent, cron job, or language-model process participates in normal batch
+  execution, monitoring, failure classification, phase transition, or fallback.
+  Deterministic work is performed entirely by scripts.
+
+### Failure And Fallback Policy
+
+- An experiment-local terminal failure marks that atomic experiment
+  `INCONCLUSIVE_OPERATIONAL_FAILURE`, preserves its logs/checkpoints/state, cleans
+  resources owned by that item, skips all remaining phases of that atomic
+  experiment, and starts the next pre-authorized batch item.
+- There is no automatic parameter correction and no automatic same-run retry or
+  checkpoint resume. OOM, timeout, scorer failure, child exit, provenance failure,
+  or validation failure cannot change microbatch, vLLM utilization, tensor
+  parallelism, max length, workers, timeout, batch size, optimizer, steps, data,
+  seed, objective, or evaluator.
+- The batch stops instead of falling forward when a shared invariant fails:
+  admission/batch hash mismatch, protected-asset mutation, checkpoint-mount loss,
+  insufficient frozen disk gate, GPU/driver unavailability, execution-state
+  corruption, operator `stop_now`, or two consecutive experiments ending with the
+  same normalized failure code. This prevents a shared defect from consuming the
+  whole queue.
+- Fallback always means the next already-reviewed and already-authorized atomic
+  experiment in the immutable batch manifest. It never means an improvised run,
+  changed parameter set, replacement checkpoint, extra seed, or hidden ablation.
+- A human may pause or stop the batch, amend only not-yet-started future experiment
+  Goals, obtain new review/admission/authorization, and then submit a new batch
+  manifest hash. The active immutable batch is never edited in place.
+
+## Experiment Design
+
+### Scientific Question
+
+Does a 20-step joint Stage2 intervention at the FRAC25 beta `0.1` Stage1 step40
+plateau, followed by a 40-step Stage1-like Stage3 continuation from extracted
+model2, produce a better effective-step100 model than a matched 60-step pure
+Stage1 continuation from the same step40 weights?
+
+### Frozen Hypothesis
+
+- `H1`: the admitted `Stage2(20) -> Stage3(40)` arm has a higher final macro
+  `pass@1` across HumanEval+, MBPP+, and LiveCodeBench than the matched pure-Stage1
+  control and is not worse on at least two of the three datasets.
+- `H0`: the chain does not satisfy `H1`. A valid completed experiment that does not
+  satisfy `H1` rejects the plateau-breakthrough claim for this exact P40,
+  beta `0.1`, lambda `0.8`, 20+40-step configuration; it does not prove that every
+  Stage2 intervention is ineffective.
+
+### Frozen Experimental Matrix
+
+| Arm | Initial weights | Objective | Training budget | Training data | Final effective step |
+| --- | --- | --- | ---: | --- | ---: |
+| `frac25-stage1-control` | FRAC25 beta `0.1` step40 actor | Stage1-like single-model beta `0.1` | 60 steps | exact ordered union of the frozen Stage2 and Stage3 rows | 100 |
+| `frac25-stage2` | same FRAC25 beta `0.1` step40 actor | fixed-model2 rollout, joint fused loss, beta `0.1`, lambda `0.8` | 20 steps | frozen Stage2 rows | 60 |
+| `frac25-stage3` | model2 extracted from final admitted Stage2 checkpoint | Stage1-like single-model beta `0.1` | 40 steps | frozen Stage3 rows | 100 |
+
+All arms use the same Qwen3-1.7B base identity, prompt/scorer/timeout semantics,
+resource profile, response length `8192`, full HumanEval+/MBPP+/LiveCodeBench
+validation, sampled-decoding semantic hash, validation dataset hashes, and final
+evaluation command. The control and chain consume the same total 3840 training
+rows in the same order; only the objective/topology and the Stage2-to-Stage3
+handoff differ. Optimizer state is reinitialized for both arms because the retained
+step40 artifact contains model state but no optimizer shards.
+
+The manifest, admission bundle, preflight, calibration applicability, run-set
+checks, queue, monitor, release checks, and launch command must be regenerated and
+independently accepted for all three run IDs before this Goal can start. No training
+may start against the predecessor two-run bundle.
+
+### Primary Estimand And Decision Rule
+
+- The primary metric is the unweighted macro mean of final full-validation
+  `val-core/<dataset>/acc/pass@1` over HumanEval+, MBPP+, and LiveCodeBench.
+- Secondary evidence is the three-dataset delta vector, Stage2-to-Stage3 retention,
+  extraction/timeout rates, and execution/recovery integrity. Secondary evidence
+  explains the result but cannot override the frozen primary rule.
+- `HYPOTHESIS_SUPPORTED`: both arms and all evaluations are valid; chain macro
+  `pass@1` is strictly greater than control macro `pass@1`; and chain final
+  `pass@1` is greater than or equal to control on at least two datasets.
+- `HYPOTHESIS_REJECTED_FOR_CONFIGURATION`: both arms and all evaluations are valid,
+  but the support rule is not satisfied. Mixed gains, a macro tie/loss, or a gain
+  concentrated in one dataset all reject this exact configuration.
+- `INCONCLUSIVE`: an arm, handoff, evaluator, binding, or required artifact is
+  invalid or incomplete. Operational failure never becomes scientific rejection.
+- The decision is computed once from the frozen final checkpoints. No best-step
+  selection, threshold adjustment, dataset removal, rerun, or interpretation-driven
+  configuration change is allowed after metrics are visible.
+
+### Outcome And Failure Matrix
+
+| Observed outcome | Required action | Scientific decision |
+| --- | --- | --- |
+| Pre-launch binding, control construction, storage, dependency, or scorer failure | Do not start Ray; return to Readiness or classify the blocking finding | `INCONCLUSIVE` |
+| Valid control completes; Stage2 or extraction fails | Preserve control and failure evidence; do not substitute another chain | `INCONCLUSIVE` |
+| Valid Stage2 completes; Stage3 fails or uses invalid provenance | Preserve all artifacts; no ad hoc continuation or replacement checkpoint | `INCONCLUSIVE` |
+| Both final arms valid and support rule passes | Produce bound decision/report; release remains separately gated | `HYPOTHESIS_SUPPORTED` |
+| Both final arms valid and support rule fails | Produce bound decision/report without adding P60/FRAC50 | `HYPOTHESIS_REJECTED_FOR_CONFIGURATION` |
+| Metrics are mixed but valid | Apply the frozen rule; record the full delta vector | support or reject by rule, never `INCONCLUSIVE` merely because the result is inconvenient |
+| Local experiment valid but release/publication fails | Preserve local scientific decision; record release/publication state separately | unchanged |
+| Legacy `1783777744` artifacts conflict with a new run | Fail closed; quarantine by identity, never delete automatically | `INCONCLUSIVE` until conflict is resolved |
 
 ## Scope
 
@@ -36,23 +200,32 @@ configuration.
   bind provenance before Stage3.
 - Complete Stage3 and verify required validation, checkpoints, metrics, provenance,
   cleanup, and final execution state.
-- Apply only the frozen automatic recovery/resume policy and record structured
-  failures and attempts.
+- Complete the matched pure-Stage1 control and verify that its data, compute,
+  evaluator, model, and resource identities match the chain contract.
+- Produce `experiment_decision.json` and `experiment_report.md` containing the
+  frozen hypothesis, both final metric vectors, macro values, exact deltas, decision
+  code, execution validity, artifact hashes, and explicit limits of inference.
+- Apply the frozen failure-to-next-experiment policy and record structured failures,
+  cleanup, skipped phases, and batch transitions.
 - Run the training-result release gate after successful local completion.
 - Publish eligible successful results to the local registry and existing W&B project
   only if separately authorized by the user and the release gate passes.
-- Obtain independent final acceptance of execution truth and release correctness.
+- Obtain independent final acceptance of execution truth, decision correctness, and
+  release correctness.
 
 ### Excluded
 
-- Any change to code, manifest, resource profile, calibration/preflight/acceptance
-  artifacts, implementation tree, Readiness evidence commit, run set,
-  hyperparameters, source checkpoints, data,
-  validation breadth, or recovery policy.
+- Any post-admission change to code, manifest, resource profile,
+  calibration/preflight/acceptance artifacts, implementation tree, Readiness
+  evidence commit, run set, hyperparameters, source checkpoints, data, validation
+  breadth, decision rule, or recovery policy.
+- Implementation of the matched-control manifest/launcher and production changes
+  needed to obtain the new three-run admission bundle; those changes belong to a
+  renewed Readiness contract before this execution Goal starts.
 - P60, FRAC50, a 27-run queue, additional seeds, retries outside frozen policy,
   broader sweeps, or a replacement experiment.
-- Scientific interpretation or a claim that the plateau-breakthrough hypothesis is
-  supported; this Goal verifies execution, not research conclusions.
+- Generalization beyond the exact P40 configuration, causal claims beyond the
+  matched control, paper claims, or claims about P60/FRAC50/other seeds.
 - Publication of failed, incomplete, release-ineligible, or unapproved runs.
 - Modification, deletion, or staging of protected user assets.
 
@@ -60,6 +233,8 @@ configuration.
 
 - Human launch intent and a valid admission bundle are both required; neither is
   sufficient alone.
+- The accepted admission bundle must be a new three-run bundle produced after Plan
+  v2; the predecessor two-run bundle is invalid for this experiment.
 - Before Ray starts, exact Plan, commit, manifest, profile, calibration, preflight,
   acceptance, run-set, source-artifact, and protected-status bindings are rechecked.
 - The implementation binding is independently recomputed with
@@ -73,19 +248,18 @@ configuration.
 - Stage3 starts only from the admitted extracted model2 and verified provenance.
 - Python persisted state is execution authority. Monitor output, tmux presence, W&B,
   and registry state are observations, not substitute authority.
-- Automatic recovery is limited to one resume attempt for a failure explicitly
-  classified as resumable by the admitted policy. The only resumable codes are
-  `host_interruption`, `container_runtime_interruption`, and
-  `checkpoint_available_child_exit`. Persisted attempt records contain `attempt`,
-  `max_attempts=2`, `resume_from_checkpoint`, `failure_code`, `manifest_sha256`,
-  `implementation_tree_sha256`, `bundle_sha256`, `started_at`, and `completed_at`.
-  Configuration, dependency,
-  provenance, OOM, repeated deadline, data, scorer, or binding failures are not
-  automatically altered or downscoped.
+- Failed items are terminal for the active batch. Persisted records bind the failure
+  code, cleanup result, skipped phases, next batch item, manifest SHA256,
+  implementation-tree SHA256, bundle SHA256, batch-manifest SHA256, start/end time,
+  and operator-control state. No item receives an automatic retry or resume.
 - Any code/config/artifact binding change is `AC_CHANGE`; stop and return to a new
   Readiness candidate rather than patching during execution.
 - Failed or incomplete runs remain local diagnostic evidence. Release requires the
   repository release gate to pass.
+- Scientific decision and release decision are separate authorities. A valid local
+  experiment can support or reject the hypothesis even when publication is not
+  authorized or transport fails; an invalid experiment cannot be made conclusive by
+  release metadata.
 
 ## Acceptance Criteria
 
@@ -102,18 +276,30 @@ configuration.
 - Expected evidence: pre-launch canonical tree comparison, admission validation
   report, and immutable bundle hash.
 
-### AC-02 - Only The Primary Run Set Executes
+### AC-02 - Only The Frozen Three-Run Matrix Executes
 
 - Given persisted execution events and system process evidence,
 - When the queue runs,
-- Then only `frac25-stage2` and `frac25-stage3` execute; no P60, FRAC50, 27-run,
-  hidden ablation, or additional run starts.
+- Then only `frac25-stage1-control`, `frac25-stage2`, and `frac25-stage3` execute;
+  no P60, FRAC50, 27-run, hidden ablation, or additional run starts.
 - Verification command:
   `REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/experiment_manifest.py render recipe/on_policy_wdl_sft/experiment_manifest/stage123.yaml --format json`
 - Expected evidence: admitted run IDs matched to state, tmux, container, checkpoint,
   and metrics records.
 
-### AC-03 - Stage2 Completes With Required Evidence
+### AC-03 - Matched Stage1 Control Completes With Required Evidence
+
+- Given the admitted step40 source and frozen control contract,
+- When the pure-Stage1 control reaches effective step100,
+- Then it has exactly 60 training steps, the exact ordered union of Stage2 and Stage3
+  rows, the shared 8192 response limit and validation semantics, complete final
+  checkpoint/metrics, and no chain-specific objective or model2 extraction.
+- Verification command:
+  `CONTROL_RUN_NAME=$(REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/experiment_manifest.py run recipe/on_policy_wdl_sft/experiment_manifest/stage123.yaml --run-id frac25-stage1-control --field run_prefix) && REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/training_result_release_gate.py check --run-name "$CONTROL_RUN_NAME"`
+- Expected evidence: completed persisted control state, data-order/provenance hashes,
+  final checkpoint, full validation vector, and release-gate diagnostic result.
+
+### AC-04 - Stage2 Completes With Required Evidence
 
 - Given the admitted Stage2 configuration,
 - When Stage2 reaches terminal state,
@@ -124,7 +310,7 @@ configuration.
 - Expected evidence: persisted completed state, checkpoint/metrics paths, validation
   evidence, and release-gate diagnostic result without premature publication.
 
-### AC-04 - Model2 Extraction And Provenance Are Exact
+### AC-05 - Model2 Extraction And Provenance Are Exact
 
 - Given the completed Stage2 checkpoint,
 - When model2 is extracted,
@@ -135,7 +321,7 @@ configuration.
   `REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python -m pytest -q tests/experiment_workflow/test_stage123_end_to_end.py tests/experiment_workflow/test_stage123_preflight_model_identity.py`
 - Expected evidence: runtime provenance validation plus artifact hashes.
 
-### AC-05 - Stage3 Completes From The Admitted Extraction
+### AC-06 - Stage3 Completes From The Admitted Extraction
 
 - Given the verified extracted model2 and provenance,
 - When Stage3 runs,
@@ -145,18 +331,20 @@ configuration.
   `STAGE3_RUN_NAME=$(REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/experiment_manifest.py run recipe/on_policy_wdl_sft/experiment_manifest/stage123.yaml --run-id frac25-stage3 --field run_prefix) && REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/training_result_release_gate.py check --run-name "$STAGE3_RUN_NAME"`
 - Expected evidence: completed persisted state and matching runtime artifacts.
 
-### AC-06 - Recovery Obeys The Frozen Policy
+### AC-07 - Failure Routing Obeys The Frozen Policy
 
 - Given any interruption or failure,
-- When failure classification and recovery policy run,
-- Then only an explicitly resumable failure receives at most one same-binding resume;
-  all other failures stop without configuration changes, test weakening, benchmark
-  downscope, or unapproved reruns.
+- When failure classification and batch routing run,
+- Then the failed atomic experiment becomes terminal and inconclusive, its remaining
+  phases are skipped, owned resources are cleaned, and the next pre-authorized item
+  starts unless a frozen batch-stop invariant applies; no parameter change, retry,
+  checkpoint resume, test weakening, or benchmark downscope occurs.
 - Verification command:
   `REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python -m pytest -q tests/experiment_workflow/test_failure_classifier.py tests/experiment_workflow/test_validation_deadline_cleanup.py tests/experiment_workflow/test_stage123_end_to_end.py`
-- Expected evidence: attempt history, structured classification, and unchanged hashes.
+- Expected evidence: terminal failure record, cleanup, skipped-phase records,
+  deterministic next-item or batch-stop decision, and unchanged hashes.
 
-### AC-07 - Monitoring And Cleanup Reflect Execution Truth
+### AC-08 - Monitoring And Cleanup Reflect Execution Truth
 
 - Given queue, monitor, container, GPU, checkpoint, and persisted-state evidence,
 - When each phase terminates,
@@ -167,7 +355,22 @@ configuration.
 - Expected evidence: live `tmux`, Docker, `nvidia-smi`, state, log, checkpoint, and Ray
   failure-marker audit.
 
-### AC-08 - Release Is Conditional And Accurate
+### AC-09 - Scientific Decision Is Frozen And Reproducible
+
+- Given valid final control and chain checkpoints with complete full-validation
+  metrics,
+- When the experiment decision is rendered,
+- Then `experiment_decision.json` and `experiment_report.md` bind the Plan hash,
+  three-run manifest/bundle, source step40 artifact, final checkpoints, evaluator
+  semantics, metric vectors, macro values, delta vector, decision rule, one of the
+  three allowed decision codes, and limits of inference.
+- Verification command:
+  `REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python docs/joint_training/goals/stage123-primary-chain-execution/tools/render_experiment_decision.py validate --decision docs/joint_training/goals/stage123-primary-chain-execution/experiment_decision.json --plan docs/joint_training/goals/stage123-primary-chain-execution/plan.md --manifest recipe/on_policy_wdl_sft/experiment_manifest/stage123.yaml`
+- Expected evidence: independently recomputed per-dataset values, macro/delta math,
+  exact decision code, rejection of metric mutation or semantic mismatch, and no
+  best-step/threshold selection after results are known.
+
+### AC-10 - Release Is Conditional And Accurate
 
 - Given successful or failed execution outcomes,
 - When release checks run,
@@ -175,7 +378,7 @@ configuration.
   only after release-gate PASS; registry/W&B publication occurs only under explicit
   publication authorization and is verified without checkpoint/artifact payload sync.
 - Verification command:
-  `for RUN_ID in frac25-stage2 frac25-stage3; do RUN_NAME=$(REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/experiment_manifest.py run recipe/on_policy_wdl_sft/experiment_manifest/stage123.yaml --run-id "$RUN_ID" --field run_prefix) && REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/training_result_release_gate.py check --run-name "$RUN_NAME"; done`
+  `for RUN_ID in frac25-stage1-control frac25-stage2 frac25-stage3; do RUN_NAME=$(REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/experiment_manifest.py run recipe/on_policy_wdl_sft/experiment_manifest/stage123.yaml --run-id "$RUN_ID" --field run_prefix) && REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/training_result_release_gate.py check --run-name "$RUN_NAME"; done`
 - Expected evidence: release decisions, registry rows and W&B sync markers only for
   eligible authorized success, or structured local-only completion if publication
   was not authorized/available.
@@ -183,38 +386,93 @@ configuration.
   `local_execution_complete_publication_blocked`; it never rewrites training state
   as failed.
 
-### AC-09 - Independent Acceptance Verifies Execution, Not Hypothesis
+### AC-11 - Independent Acceptance Verifies Execution And Decision
 
 - Given committed admitted configuration and terminal execution evidence,
 - When a fresh independent reviewer audits the run from local authoritative state,
-- Then AC-01 through AC-08 are individually PASS, no unapproved run/config change
-  occurred, and acceptance makes no unsupported scientific-performance claim.
+- Then AC-01 through AC-10 are individually PASS, no unapproved run/config change
+  occurred, the scientific decision is recomputed from authoritative evidence, and
+  acceptance does not generalize beyond the frozen configuration.
 - Verification command:
   `goal-plan-runtime validate-runtime docs/joint_training/goals/stage123-primary-chain-execution`
 - Expected evidence: reviewer-owned acceptance bound to Plan, admission bundle,
-  execution state, artifacts, release decision, and terminal execution-evidence
-  commit.
+  execution state, artifacts, experiment decision/report, release decision, and
+  terminal execution-evidence commit.
 
 ## Milestones
 
-1. Revalidate admission bundle and record explicit launch authorization.
-2. Launch and monitor admitted Stage2 through terminal validation and cleanup.
-3. Extract model2 and independently verify provenance before Stage3.
-4. Launch and monitor admitted Stage3 through terminal validation and cleanup.
-5. Verify full local artifact/result integrity and recovery history.
-6. Apply release gate and, only if separately authorized, publish eligible results.
-7. Obtain independent final execution acceptance.
+1. Revalidate a newly and independently accepted three-run Readiness bundle,
+   quarantine the legacy attempt by identity, and record explicit launch authorization.
+2. Launch and monitor the matched pure-Stage1 control through terminal validation.
+3. Launch and monitor admitted Stage2 through terminal validation and cleanup.
+4. Extract model2 and independently verify provenance before Stage3.
+5. Launch and monitor admitted Stage3 through terminal validation and cleanup.
+6. Verify full local artifact/result integrity and recovery history, then render and
+   independently recompute the frozen experiment decision.
+7. Apply release gate and, only if separately authorized, publish eligible results.
+8. Obtain independent final execution-and-decision acceptance.
 
-Milestones are hard ordered. Normal successful transitions are autonomous. Stage3
-cannot start before Milestone 3 passes.
+Milestones are hard ordered. Normal successful transitions are autonomous. Stage2
+may start only after the control has completed so metric visibility cannot trigger a
+control change; Stage3 cannot start before model2 provenance passes.
+
+## Feasibility Probes
+
+- Batch-core reuse probe: `scripts/experiment_execution_core.py` already owns atomic
+  state persistence, append-only execution events, child start/poll/cleanup, deadline
+  handling, and terminal states; the public Stage123 queue already delegates to it,
+  and `scripts/stage123_manifest_monitor.py` already consumes its persisted events.
+  The missing capability is ordered multi-experiment routing and operator control in
+  that same authority, not another queue/monitor implementation.
+- AC-02 run-count probe: the predecessor manifest currently validates with exactly
+  two runs and therefore cannot satisfy Plan v2. The required three-run manifest and
+  fresh admission are explicit pre-launch work, not assumed evidence.
+- AC-03 source probe: the retained FRAC25 Stage1 root contains model-only
+  `global_step_40/actor` shards and `data.pt`, but no optimizer shards. Plan v2
+  therefore freezes optimizer reinitialization for both control and chain rather
+  than claiming exact optimizer-state continuation.
+- AC-09 historical-baseline probe: the prior Stage1 step100 output log SHA256 is
+  `7702c4c25464403e8db6b04d24fe726fa626d440d3d88b89ddaba777fd1df7fd`
+  and records HumanEval+ `0.5`, MBPP+ `0.48677248677248675`, LiveCodeBench
+  `0.1875`, macro `0.3914241622574956`; its config SHA256 is
+  `1289234de19981d47fc287941866dd4dd663d9ed07d85566d8604ba3b48b38c0`
+  and uses response length `4096`. This measured semantic mismatch is why it is
+  excluded as the control rather than silently reused.
+- AC-09 threshold waiver: the decision rule is comparative and deterministic; it
+  does not promise an absolute score, throughput, latency, memory, or storage budget.
+  Strict macro improvement plus the two-dataset non-regression condition is the
+  frozen scientific estimand, not an environment performance budget.
+- AC-03/04/06 step counts and 3840-row total are experiment assignments derived from
+  batch size 64 and the frozen 20+40-step chain. They are not performance budgets.
+
+## Progression Policy
+
+- `AUTO_ADVANCE`: Plan validation, independent Plan review, verification of the
+  separately completed three-run Readiness and batch-orchestration prerequisites,
+  preflight/admission validation, control launch after explicit launch authorization,
+  normal hard-ordered phase transitions, deterministic failure-to-next-experiment
+  routing, evidence collection, frozen-rule decision rendering, focused validation,
+  milestone review, runtime validation, release-gate checks, and final acceptance
+  request.
+- `USER_DECISION`: starting or amending the prerequisite Readiness work; starting
+  this Goal; formal GPU training launch; any production,
+  manifest, run-set, data, evaluator, resource-profile, fallback, or decision-rule
+  change; destructive cleanup of legacy/user artifacts; a frozen shared batch-stop
+  invariant; any request to repair/retry/requeue a failed experiment; protected-asset
+  risk; publication to registry/W&B; adding P60, FRAC50, seeds, reruns, or broader
+  benchmarks; contradiction, AC change, or convergence failure.
+- The launch decision authorizes only the frozen three-run local experiment and
+  Milestones 1-6 and 8. Milestone 7 publication remains separately gated.
 
 ## Runtime Contract
 
-- Start only after this Plan is `READY`, Readiness is complete, and the user
-  explicitly authorizes formal primary-chain execution using the admitted bundle.
-- One launch authorization covers Milestones 1-5 and 7. Registry/W&B publication in
-  Milestone 6 requires separate explicit publication authorization unless the launch
-  authorization explicitly includes it.
+- Start only after this Plan is `READY`, a new three-run Readiness contract is
+  complete, and the user explicitly authorizes formal primary-chain execution using
+  that accepted bundle. The completed predecessor two-run Readiness Goal is not
+  sufficient.
+- One launch authorization covers local execution Milestones 1-6 and final review
+  Milestone 8. Registry/W&B publication in Milestone 7 requires separate explicit
+  publication authorization unless the launch authorization explicitly includes it.
 - Long-running training and monitoring run in tmux. Persistent CI uses PM2 only.
 - Every project Python command uses the explicit `REPO_HOST` container invocation.
 - Findings are classified before action and runtime is validated before transitions,
@@ -226,21 +484,25 @@ cannot start before Milestone 3 passes.
   rather than continuing implementation.
 - If two related implementation-review rounds leave the same finding open, stop
   before a third ordinary fix and perform a convergence review.
-- Operational recovery within the frozen one-resume policy is autonomous.
-- Stop for any binding/config/code change, non-resumable failure, repeated failure,
+- Deterministic failure-to-next-experiment routing within the frozen batch manifest
+  is autonomous; failed experiments are never modified or resumed.
+- Stop the batch for any shared batch-stop invariant, binding/config/code change,
   convergence failure, protected-asset risk, new run/sweep, required benchmark
   downscope, or need for an unapproved external service.
 - The implementer cannot self-review or self-accept.
 
 ## Reviewer Contract
 
-- Plan review verifies this is one admitted execution outcome and does not smuggle in
-  ablations, configuration work, or scientific interpretation.
+- Plan review verifies one matched experiment outcome, a fair control, an exact
+  estimand, exhaustive outcome handling, and no hidden ablations or post-result
+  threshold selection.
 - Milestone reviews use persisted state plus live tmux/process/container/GPU/log/
   checkpoint/Ray evidence and verify exact bindings and phase ordering.
-- Final review independently audits execution truth, recovery, provenance, release,
-  protected assets, and absence of unapproved runs.
-- Outside scientific opinions are deferred and cannot weaken execution acceptance.
+- Final review independently audits execution truth, recovery, provenance, the
+  recomputed scientific decision, release, protected assets, and absence of
+  unapproved runs.
+- Scientific opinions outside the frozen hypothesis and inference limits are
+  deferred and cannot replace or weaken the deterministic decision.
 - `ACCEPTED` requires every applicable AC to be `PASS`.
 
 ## Verification Commands
@@ -252,5 +514,5 @@ cannot start before Milestone 3 passes.
 
 ## Deferred Follow-ups
 
-- P60, FRAC50, broader sweeps, additional seeds, scientific interpretation, and paper
+- P60, FRAC50, broader sweeps, additional seeds, mechanism generalization, and paper
   claims require separate Plans and fresh readiness acceptance.
