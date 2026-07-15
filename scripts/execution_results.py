@@ -251,7 +251,7 @@ def validate_acceptance_report(report: dict[str, Any], bundle: dict[str, Any], *
     if candidate_commit and report.get("candidate_commit") != candidate_commit:
         return EvidenceDecision(False, "acceptance_binding", "acceptance candidate commit does not match current HEAD", {})
     if plan_path is not None:
-        if report.get("plan_id") != "stage123-execution-readiness" or report.get("plan_version") != 8 or report.get("plan_sha256") != file_sha256(plan_path):
+        if report.get("plan_id") != "stage123-execution-readiness" or report.get("plan_version") != 9 or report.get("plan_sha256") != file_sha256(plan_path):
             return EvidenceDecision(False, "acceptance_plan_binding", "acceptance report Plan binding mismatch", {})
     verdicts = report.get("ac_verdicts")
     if not isinstance(verdicts, dict) or any(verdicts.get(f"AC-{index:02d}") != "PASS" for index in range(1, 9)):
@@ -418,6 +418,7 @@ def build_admission_bundle(
     value = {
         "schema_version": 1,
         "bundle_type": "stage123_admission_bundle",
+        "adapter_type": "stage123_queue_v1",
         "bundle_path": str(output),
         "run_ids": run_ids,
         "bindings": {
@@ -427,6 +428,7 @@ def build_admission_bundle(
             "calibration_result_sha256": file_sha256(calibration_path),
             "preflight_result_sha256": file_sha256(preflight_path),
             "readiness_evidence_commit": evidence_commit,
+            "recipe_gitlink": subprocess.check_output(["git", "-C", str((repo_root or ROOT) / "recipe"), "rev-parse", "HEAD"], text=True).strip(),
             "protected_baseline_sha256": file_sha256(protected_baseline_path) if protected_baseline_path else "",
             "calibration_completed_at": calibration.get("completed_at"),
             "preflight_completed_at": preflight.get("completed_at"),
@@ -484,6 +486,7 @@ def admission_launch_command(bundle: dict[str, Any], repo_host: Path) -> list[st
         "STAGE123_ADMISSION_BUNDLE=" + bundle_path,
         "STAGE123_IMPLEMENTATION_TREE_SHA256=" + bindings["implementation_tree_sha256"],
         "STAGE123_BUNDLE_SHA256=" + bundle["bundle_sha256"],
+        "EXPERIMENT_BATCH_MANIFEST=" + str(repo_host / "docs/joint_training/goals/stage123-primary-chain-execution/experiment_batch_manifest.json"),
         "bash",
         str(repo_host / "recipe/on_policy_wdl_sft/code_task/run_code_task_qwen3_1p7b_stage123_queue.sh"),
     ]

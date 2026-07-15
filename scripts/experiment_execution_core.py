@@ -15,6 +15,10 @@ import sys
 import time
 from typing import Any, Callable, Protocol
 
+SCRIPTS_DIR = Path(__file__).resolve().parent
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+
 
 TERMINAL_STATES = {"succeeded", "failed", "deadline_exceeded", "cleanup_failed"}
 BATCH_TERMINAL_STATES = {"completed", "completed_with_failures", "shared_failure", "stopped"}
@@ -257,6 +261,48 @@ def _validate_hex(value: Any, length: int, label: str) -> str:
 
 
 def validate_admission_bundle(bundle: dict[str, Any], bundle_path: Path, repo_root: Path) -> dict[str, Any]:
+    if bundle.get("bundle_type") == "stage123_admission_bundle":
+        from execution_results import validate_admission_bundle as validate_stage123_bundle
+        from execution_results import validate_current_checkout
+
+        structural = validate_stage123_bundle(bundle, require_accepted=True)
+        inputs = bundle.get("inputs", {})
+        protected_baseline = Path(inputs.get("protected_baseline", ""))
+        current = validate_current_checkout(bundle, repo_root, protected_baseline, require_accepted=True)
+        if not structural.authorized or not current.authorized:
+            decision = structural if not structural.authorized else current
+            raise BatchValidationError(f"Stage123 admission rejected: {decision.code}: {decision.message}")
+        commands = [
+            [
+                "/data-1/verl07/run_train.sh",
+                "python",
+                "/workspace/verl/scripts/stage123_phase_adapter.py",
+                "--manifest",
+                "/workspace/verl/recipe/on_policy_wdl_sft/experiment_manifest/stage123.yaml",
+                "--run-id",
+                run_id,
+            ]
+            for run_id in ("frac25-stage1-control", "frac25-stage2", "frac25-stage3")
+        ]
+        bindings = bundle["bindings"]
+        input_hashes = {
+            path: file_sha256(Path(path))
+            for path in inputs.values()
+            if isinstance(path, str) and path and Path(path).is_file()
+        }
+        if bundle.get("acceptance_report_path"):
+            input_hashes[bundle["acceptance_report_path"]] = file_sha256(Path(bundle["acceptance_report_path"]))
+        return {
+            "adapter_type": "stage123_queue_v1",
+            "commands": commands,
+            "command_sha256": sha256_json(commands),
+            "bindings": {
+                "implementation_tree_sha256": bindings["implementation_tree_sha256"],
+                "evidence_commit": bindings["readiness_evidence_commit"],
+                "recipe_gitlink": bindings["recipe_gitlink"],
+                "input_hashes": input_hashes,
+            },
+        }
     if bundle.get("schema_version") != 1 or bundle.get("bundle_type") != "experiment_batch_admission":
         raise BatchValidationError("unsupported admission bundle")
     adapter_type = bundle.get("adapter_type")
