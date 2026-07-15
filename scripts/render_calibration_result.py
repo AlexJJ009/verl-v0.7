@@ -13,6 +13,8 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 PREDICTION_METRICS = {"validation_elapsed_seconds", "phase_elapsed_seconds", "peak_rss_gib", "gpu_wait_fraction"}
+REQUIRED_PHASES = ["stage1", "stage2", "stage3"]
+PRIMARY_RUN_IDS = ["frac25-stage1-control", "frac25-stage2", "frac25-stage3"]
 
 
 def sha256(path: Path) -> str:
@@ -83,8 +85,8 @@ def validate_pointer(pointer_path: Path, *, run_id: str, decision_id: str, scrat
     if report.get("status") != "passed" or report.get("run_id") != run_id or report.get("authorization_decision_id") != decision_id:
         raise ValueError("producer report identity or status mismatch")
     phases = report.get("phases")
-    if not isinstance(phases, list) or [item.get("phase") for item in phases] != ["stage2", "stage3"]:
-        raise ValueError("producer report must contain exactly stage2 and stage3")
+    if not isinstance(phases, list) or [item.get("phase") for item in phases] != REQUIRED_PHASES:
+        raise ValueError("producer report must contain exactly stage1, stage2, and stage3")
     if any(not isinstance(item.get("repetitions"), list) or len(item["repetitions"]) != 3 or any(rep.get("status") != "passed" for rep in item["repetitions"]) for item in phases):
         raise ValueError("producer report repetition evidence is incomplete")
     if report.get("optimizer_steps") != 0 or report.get("formal_checkpoints") != []:
@@ -133,7 +135,7 @@ def render(args: argparse.Namespace) -> int:
         "resource_profile_sha256": profile_hash,
         "implementation_tree_sha256": tree_hash,
         "evidence_commit": args.evidence_commit,
-        "workload_identity": {"run_ids": ["frac25-stage2", "frac25-stage3"], "producer_report_sha256": pointer["report_sha256"]},
+        "workload_identity": {"run_ids": PRIMARY_RUN_IDS, "producer_report_sha256": pointer["report_sha256"]},
         "policy_id": load(policy_path)["policy_id"],
         "policy_sha256": sha256(policy_path),
         "authorization_identity": {"decision_id": args.decision_id, "run_id": args.run_id, "plan_version": 8},
@@ -157,7 +159,7 @@ def validate(args: argparse.Namespace) -> int:
         raise ValueError(f"invalid calibration result schema: {missing}")
     if value.get("decision") != "passed":
         raise ValueError("calibration result is not passed")
-    if value.get("workload_identity", {}).get("run_ids") != ["frac25-stage2", "frac25-stage3"]:
+    if value.get("workload_identity", {}).get("run_ids") != PRIMARY_RUN_IDS:
         raise ValueError("calibration result run set mismatch")
     validate_prediction_comparison(value.get("prediction_comparison", {}))
     print(json.dumps({"ok": True, "sha256": sha256(Path(args.input))}, sort_keys=True))

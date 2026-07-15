@@ -304,13 +304,27 @@ def validate_admission_bundle(bundle: dict[str, Any], bundle_path: Path, repo_ro
     if bundle.get("command_sha256") != command_hash:
         raise BatchValidationError("canonical command hash mismatch")
     if adapter_type == "stage123_queue_v1":
-        allowed_scripts = {
-            str(repo_root / "recipe/on_policy_wdl_sft/code_task/run_s2_code_qwen3_1p7b_stage123_common.sh"),
-            str(repo_root / "recipe/on_policy_wdl_sft/code_task/run_s3_code_qwen3_1p7b_stage123_common.sh"),
+        required_paths = {
+            "scripts/experiment_execution_core.py",
+            "scripts/stage123_manifest_monitor.py",
+            "scripts/stage123_phase_adapter.py",
         }
-        for command in commands:
-            if len(command) < 2 or command[0] != "bash" or command[1] not in allowed_scripts:
-                raise BatchValidationError("stage123 phase command is not canonical")
+        if not required_paths.issubset(set(implementation_paths)):
+            raise BatchValidationError("stage123 admission does not bind the core, monitor, and phase adapter")
+        expected_commands = [
+            [
+                "/data-1/verl07/run_train.sh",
+                "python",
+                "/workspace/verl/scripts/stage123_phase_adapter.py",
+                "--manifest",
+                "/workspace/verl/recipe/on_policy_wdl_sft/experiment_manifest/stage123.yaml",
+                "--run-id",
+                run_id,
+            ]
+            for run_id in ("frac25-stage1-control", "frac25-stage2", "frac25-stage3")
+        ]
+        if commands != expected_commands:
+            raise BatchValidationError("stage123 phase commands do not match the frozen manifest-driven adapter matrix")
     current_recipe = subprocess.run(
         ["git", "-C", str(repo_root / "recipe"), "rev-parse", "HEAD"],
         capture_output=True,

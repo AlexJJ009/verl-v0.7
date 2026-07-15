@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "policy_id": "stage123-calibration-policy-v1",
-  "required_phases": ["stage2", "stage3"],
+  "required_phases": ["stage1", "stage2", "stage3"],
   "max_repetitions": 3,
   "training_steps": 0,
   "optimizer_enabled": false,

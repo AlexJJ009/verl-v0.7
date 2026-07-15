@@ -312,8 +312,8 @@ def validate_current_checkout(bundle: dict[str, Any], repo_root: Path, protected
 def validate_admission_bundle(bundle: dict[str, Any], *, require_accepted: bool = False) -> EvidenceDecision:
     if bundle.get("schema_version") != 1 or bundle.get("bundle_type") != "stage123_admission_bundle":
         return EvidenceDecision(False, "admission_schema", "unsupported admission bundle schema", {})
-    if bundle.get("run_ids") != ["frac25-stage2", "frac25-stage3"]:
-        return EvidenceDecision(False, "admission_run_set", "admission bundle run set is not the primary pair", {"run_ids": bundle.get("run_ids")})
+    if bundle.get("run_ids") != ["frac25-stage1-control", "frac25-stage2", "frac25-stage3"]:
+        return EvidenceDecision(False, "admission_run_set", "admission bundle run set is not the matched primary matrix", {"run_ids": bundle.get("run_ids")})
     bindings = bundle.get("bindings")
     if not isinstance(bindings, dict):
         return EvidenceDecision(False, "admission_bindings", "admission bundle lacks bindings", {})

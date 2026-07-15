@@ -193,7 +193,14 @@ def cmd_run(args) -> int:
     item = next((run for run in report["runs"] if run["id"] == args.run_id), None)
     if item is None:
         raise SystemExit(f"unknown run id: {args.run_id}")
-    print(json.dumps({**item, "manifest_sha256": report["manifest_sha256"], "resource_profile": report["resource_profile"], "paths": report["paths"], "preflight": report["preflight"], "semantics": report["semantics"]}, indent=2, sort_keys=True))
+    rendered = {**item, "manifest_sha256": report["manifest_sha256"], "resource_profile": report["resource_profile"], "paths": report["paths"], "preflight": report["preflight"], "semantics": report["semantics"]}
+    if args.field:
+        if args.field not in rendered:
+            raise SystemExit(f"unknown run field: {args.field}")
+        value = rendered[args.field]
+        print(value if isinstance(value, str) else json.dumps(value, sort_keys=True))
+    else:
+        print(json.dumps(rendered, indent=2, sort_keys=True))
     return 0
 
 
@@ -248,7 +255,7 @@ def main() -> int:
     for name, fn in (("validate", cmd_validate), ("render", cmd_render)):
         p = sub.add_parser(name); p.add_argument("manifest", type=Path); p.set_defaults(func=fn)
         if name == "render": p.add_argument("--format", choices=("json", "tsv"), default="json")
-    p = sub.add_parser("run"); p.add_argument("manifest", type=Path); p.add_argument("--run-id", required=True); p.set_defaults(func=cmd_run)
+    p = sub.add_parser("run"); p.add_argument("manifest", type=Path); p.add_argument("--run-id", required=True); p.add_argument("--field"); p.set_defaults(func=cmd_run)
     p = sub.add_parser("inventory"); p.add_argument("--root", type=Path, required=True); p.add_argument("--output", type=Path, required=True); p.set_defaults(func=cmd_inventory)
     args = parser.parse_args()
     try:

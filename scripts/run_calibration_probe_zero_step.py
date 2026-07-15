@@ -27,6 +27,8 @@ if str(ROOT) not in sys.path:
 from scripts.calibration_prediction import qualify
 
 PHASE_SCRIPT = ROOT / "recipe/on_policy_wdl_sft/code_task/run_code_task_operational_calibration_phase.sh"
+REQUIRED_PHASES = ["stage1", "stage2", "stage3"]
+PRIMARY_RUN_IDS = ["frac25-stage1-control", "frac25-stage2", "frac25-stage3"]
 WORKLOAD = Path("/data-1/tmp/verl_agent_scratch/experiment_workflow/calibration/code_validation_16_16_32.parquet")
 WORKLOAD_MANIFEST = WORKLOAD.with_suffix(".manifest.json")
 REQUIRED_METRICS = {
@@ -170,7 +172,7 @@ def phase_environment(rendered: dict[str, Any], phase: str, repetition: int, out
         if not stage3_model.is_dir() or proxy["rollout_model_parameter_count"] != stage3_workload["rollout_model_parameter_count_sum"]:
             raise RuntimeError("stage3 calibration proxy identity mismatch")
         proxy_kind = proxy["purpose"]
-    phase_code = "2" if phase == "stage2" else "3"
+    phase_code = {"stage1": "1", "stage2": "2", "stage3": "3"}[phase]
     ray_tmpdir = Path("/data-1/tmp/verl_agent_scratch/r") / f"{phase_code}{repetition}"
     shutil.rmtree(ray_tmpdir, ignore_errors=True)
     env = {
@@ -191,7 +193,9 @@ def phase_environment(rendered: dict[str, Any], phase: str, repetition: int, out
         "CALIBRATION_STAGE1_MODEL2": stage2_sources["model2"]["path"],
         "CALIBRATION_STAGE1_RUN_PREFIX": stage1_source["stage1_run_prefix"],
         "CALIBRATION_STAGE1_HANDOFF_STEP": str(stage1_source["handoff_step"]),
-        "CALIBRATION_TRAIN_FILE": runs["stage2"]["train_file"],
+        "CALIBRATION_TRAIN_FILE": runs[phase]["train_file"],
+        "STAGE1_INIT_MODEL_PATH": rendered["paths"]["stage1_init_model"],
+        "STAGE1_INIT_PROVENANCE_PATH": rendered["paths"]["stage1_init_provenance"],
         "CALIBRATION_STAGE3_MODEL_PATH": str(stage3_model),
         "CALIBRATION_STAGE3_PROXY_KIND": proxy_kind,
     }
@@ -382,7 +386,7 @@ def main() -> int:
     args = parser.parse_args()
     enable_child_subreaper()
     phases = args.phases.split(",")
-    if phases != ["stage2", "stage3"]:
+    if phases != REQUIRED_PHASES:
         raise SystemExit("phase_set")
     if args.training_steps != 0 or args.optimizer_enabled.lower() != "false":
         raise SystemExit("training_disabled")
@@ -393,7 +397,7 @@ def main() -> int:
     rendered = load_manifest(args.manifest)
     if rendered["manifest_sha256"] != args.manifest_sha256 or rendered["resource_profile"]["sha256"] != args.resource_profile_sha256:
         raise SystemExit("identity_mismatch")
-    if [item["id"] for item in rendered["runs"]] != ["frac25-stage2", "frac25-stage3"]:
+    if [item["id"] for item in rendered["runs"]] != PRIMARY_RUN_IDS:
         raise SystemExit("primary_run_set")
     if not WORKLOAD.is_file() or not WORKLOAD_MANIFEST.is_file():
         raise SystemExit("workload_missing")
