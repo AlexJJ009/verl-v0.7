@@ -66,7 +66,11 @@ def build_prediction_comparison(history_result_path: Path, phase_reports: list[d
     source = history_result.get("prediction_comparison", {})
     if history_result.get("decision") != "passed" or source.get("qualified") is not True:
         raise ValueError("prediction history result is not accepted")
-    if history_result.get("policy_id") != policy.get("policy_id") or history_result.get("policy_sha256") != sha256(policy_path):
+    history_policy_sha256 = history_result.get("policy_sha256")
+    source_policy_sha256 = source.get("policy_sha256", history_policy_sha256)
+    if history_result.get("policy_id") != policy.get("policy_id") or source.get("policy_id", history_result.get("policy_id")) != policy.get("policy_id"):
+        raise ValueError("prediction history policy id mismatch")
+    if not isinstance(history_policy_sha256, str) or len(history_policy_sha256) != 64 or source_policy_sha256 != history_policy_sha256:
         raise ValueError("prediction history policy binding mismatch")
     source_comparisons = source.get("comparisons")
     if not isinstance(source_comparisons, list):

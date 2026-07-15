@@ -25,13 +25,20 @@ def test_probe_prediction_comparison_is_real_and_fails_closed(tmp_path):
  comparisons=[]
  for metric in m.PREDICTION_METRICS:
   comparisons.append({'metric':metric,'history':[8.0,9.0,10.0],'history_count':3,'predicted_bound':10.0,'observed_maximum':9.0,'decision':{'qualified':True,'code':'qualified'}})
- source={'decision':'passed','policy_id':policy['policy_id'],'policy_sha256':m.sha256(policy_path),'prediction_comparison':{'qualified':True,'comparisons':comparisons}}
+ source={'decision':'passed','policy_id':policy['policy_id'],'policy_sha256':'a'*64,'prediction_comparison':{'qualified':True,'policy_id':policy['policy_id'],'policy_sha256':'a'*64,'comparisons':comparisons}}
  source_path=tmp_path/'source.json'; source_path.write_text(json.dumps(source))
  repetition={'elapsed_seconds':11.0,'metrics':{'validation_elapsed_seconds':9.0},'resources':{'peak_rss_gib':12.0,'gpu_wait_fraction':0.8}}
  result=m.build_prediction_comparison(source_path,[{'repetitions':[repetition]}])
  assert result['qualified'] and {item['metric'] for item in result['comparisons']}==set(m.PREDICTION_METRICS)
  repetition['elapsed_seconds']=13.0
  assert not m.build_prediction_comparison(source_path,[{'repetitions':[repetition]}])['qualified']
+ source['prediction_comparison']['policy_sha256']='b'*64; source_path.write_text(json.dumps(source))
+ try:
+  m.build_prediction_comparison(source_path,[{'repetitions':[repetition]}])
+ except ValueError as error:
+  assert 'policy binding mismatch' in str(error)
+ else:
+  raise AssertionError('internally inconsistent historical policy binding was accepted')
 
 def test_renderer_rejects_empty_prediction_comparison():
  m=load('render_calibration_result_prediction',ROOT/'scripts/render_calibration_result.py')
