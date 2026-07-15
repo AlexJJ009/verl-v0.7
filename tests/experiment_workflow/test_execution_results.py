@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import json
 from pathlib import Path
 import sys
@@ -200,3 +201,32 @@ def test_calibration_renderer_rejects_empty_phase_evidence(tmp_path: Path) -> No
         assert "exactly stage1, stage2, and stage3" in str(exc)
     else:
         raise AssertionError("empty calibration phase evidence was accepted")
+
+
+def test_calibration_renderer_binds_current_authorized_plan(tmp_path: Path) -> None:
+    renderer_spec = importlib.util.spec_from_file_location("calibration_renderer_plan", ROOT / "scripts/render_calibration_result.py")
+    renderer = importlib.util.module_from_spec(renderer_spec)
+    assert renderer_spec.loader
+    renderer_spec.loader.exec_module(renderer)
+    goal = tmp_path / "goal"
+    goal.mkdir()
+    plan = goal / "plan.md"
+    plan.write_text("# Plan v9\n")
+    plan_sha256 = hashlib.sha256(plan.read_bytes()).hexdigest()
+    ledger = goal / "runtime.jsonl"
+    ledger.write_text(json.dumps({
+        "event": "USER_DECISION_RECORDED",
+        "decision_id": "decision-v9",
+        "plan_version": 9,
+        "plan_sha256": plan_sha256,
+        "time": "2026-07-15T00:00:00Z",
+    }) + "\n")
+    decision = renderer.matching_authorization(ledger, "decision-v9")
+    assert decision["plan_version"] == 9
+    plan.write_text("# Mutated plan\n")
+    try:
+        renderer.matching_authorization(ledger, "decision-v9")
+    except ValueError as exc:
+        assert "does not match the current plan" in str(exc)
+    else:
+        raise AssertionError("stale authorization plan hash was accepted")

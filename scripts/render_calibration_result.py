@@ -38,6 +38,29 @@ def implementation_hash(path: Path) -> str:
     return sha256(path)
 
 
+def matching_authorization(ledger_path: Path, decision_id: str) -> dict:
+    decisions = []
+    if ledger_path.is_file():
+        for line in ledger_path.read_text().splitlines():
+            if line.strip():
+                value = json.loads(line)
+                if value.get("event") == "USER_DECISION_RECORDED" and value.get("decision_id") == decision_id:
+                    decisions.append(value)
+    if not decisions:
+        raise ValueError("matching USER_DECISION_RECORDED event is missing")
+    decision = decisions[-1]
+    plan_version = decision.get("plan_version")
+    plan_sha256 = decision.get("plan_sha256")
+    if not isinstance(plan_version, int) or plan_version < 1:
+        raise ValueError("authorization decision lacks a valid plan version")
+    if not isinstance(plan_sha256, str) or len(plan_sha256) != 64:
+        raise ValueError("authorization decision lacks a valid plan hash")
+    plan_path = ledger_path.parent / "plan.md"
+    if not plan_path.is_file() or sha256(plan_path) != plan_sha256:
+        raise ValueError("authorization decision does not match the current plan")
+    return decision
+
+
 def validate_prediction_comparison(value: dict) -> None:
     policy_path = ROOT / "config/experiment_execution/calibration_policy_v1.json"
     policy = load(policy_path)
@@ -99,16 +122,8 @@ def validate_pointer(pointer_path: Path, *, run_id: str, decision_id: str, scrat
 
 def render(args: argparse.Namespace) -> int:
     ledger_path = Path(args.runtime_ledger)
-    decisions = []
-    if ledger_path.is_file():
-        for line in ledger_path.read_text().splitlines():
-            if line.strip():
-                value = json.loads(line)
-                if value.get("event") == "USER_DECISION_RECORDED" and value.get("decision_id") == args.decision_id:
-                    decisions.append(value)
-    if not decisions:
-        raise ValueError("matching USER_DECISION_RECORDED event is missing")
-    decision_time = datetime.fromisoformat(decisions[-1]["time"].replace("Z", "+00:00")).timestamp()
+    decision = matching_authorization(ledger_path, args.decision_id)
+    decision_time = datetime.fromisoformat(decision["time"].replace("Z", "+00:00")).timestamp()
     if Path(args.state_root).stat().st_mtime <= decision_time:
         raise ValueError("decision-specific state root predates authorization decision")
     pointer, report = validate_pointer(Path(args.latest_probe), run_id=args.run_id, decision_id=args.decision_id, scratch_root=Path(args.state_root).parent)
@@ -138,7 +153,12 @@ def render(args: argparse.Namespace) -> int:
         "workload_identity": {"run_ids": PRIMARY_RUN_IDS, "producer_report_sha256": pointer["report_sha256"]},
         "policy_id": load(policy_path)["policy_id"],
         "policy_sha256": sha256(policy_path),
-        "authorization_identity": {"decision_id": args.decision_id, "run_id": args.run_id, "plan_version": 8},
+        "authorization_identity": {
+            "decision_id": args.decision_id,
+            "run_id": args.run_id,
+            "plan_version": decision["plan_version"],
+            "plan_sha256": decision["plan_sha256"],
+        },
         "started_at": started,
         "completed_at": completed,
         "phase_evidence": [{"phase": phase, "status": "passed", "repetitions": data.get("repetitions", [])} for phase, data in ((item["phase"], item) for item in report.get("phases", []))],
