@@ -1,18 +1,19 @@
 # Stage123 Primary Chain Experiment Execution
 
 - Goal ID: `stage123-primary-chain-execution`
-- Plan version: `14`
-- Plan status: `DRAFT - V14 CERTIFIED STAGE2-HANDOFF AMENDMENT`
+- Plan version: `15`
+- Plan status: `DRAFT - V15 UNIFIED VALIDATION PROTOCOL RERUN`
 - Serial position: `4 of 4`
 - Prerequisite Goal: `stage123-execution-readiness` completed with an immutable
   independently accepted admission bundle
 
 ## Outcome
 
-Execute one matched FRAC25/P40 control-versus-Stage2->Stage3 experiment, preserve
-its exact execution truth, and produce a frozen decision that either supports or
-rejects the specified plateau-breakthrough hypothesis for this configuration, or
-declares the experiment operationally inconclusive.
+Execute one fresh matched FRAC25/P40 control-versus-Stage2->Stage3 experiment under
+one frozen validation-decoder protocol, preserve its exact execution truth, and
+produce a frozen decision that either supports or rejects the specified
+plateau-breakthrough hypothesis for this configuration, or declares the experiment
+operationally inconclusive.
 
 ## Starting Evidence
 
@@ -41,6 +42,12 @@ declares the experiment operationally inconclusive.
   This is an operational contradiction, not a scientific result. This amendment
   preserves fresh admission at atomic-item start while preventing an already
   admitted running item from invalidating itself between phases.
+- The completed V14 control, Stage2, and Stage3 artifacts are historical local
+  diagnostic evidence only. Their online validation decoder drifted: Control and
+  Stage3 used sampled `pass@1` at temperature `1.0`, while Stage2 used temperature
+  `0.2`. They cannot support or reject the scientific hypothesis and must not be
+  reused as a control, Stage2 handoff, Stage3 source, or final decision input for
+  this V15 experiment.
 
 ## Required Prerequisite Outcomes
 
@@ -431,6 +438,25 @@ may start against the predecessor two-run bundle.
   execution state, artifacts, experiment decision/report, release decision, and
   terminal execution-evidence commit.
 
+### AC-12 - Unified Validation Decoder And Fresh Rerun Identity
+
+- Given the V15 validation-protocol amendment,
+- When the new three-phase chain is admitted and executed,
+- Then every main online validation point for Control Stage1, Stage2, and Stage3
+  uses exactly `do_sample=True`, `temperature=0.2`, `top_p=0.95`, and `n=1`; the
+  training rollout remains explicitly `temperature=1.0` and `top_p=1.0`; the shared
+  profile serializes and hashes all decoder fields; and a CPU-only phase-contract
+  audit fails closed on any unapproved drift. The V15 chain has one fresh root, fresh
+  run names, fresh manifest/admission/profile identities, and executes Control ->
+  Stage2 -> extraction -> Stage3 without V13/V14 reuse.
+- Verification commands:
+  `bash -lc 'source recipe/on_policy_wdl_sft/code_task/qwen3_1p7b_stage123_resource_profile.sh && stage123_profile_snapshot'`
+  and
+  `REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python -m pytest -q tests/experiment_workflow/test_stage123_validation_protocol.py tests/experiment_workflow/test_stage123_admission_bundle.py tests/experiment_workflow/test_stage123_end_to_end.py`
+- Expected evidence: one emitted profile serialization containing the exact frozen
+  decoder values; a rendered fresh three-run manifest; a passing phase-contract
+  audit; and no referenced source path beneath the historical V13/V14 runtime roots.
+
 ## Milestones
 
 1. Revalidate a newly and independently accepted three-run Readiness bundle,
@@ -679,3 +705,75 @@ and cannot create another handoff.
   fail closed.
 - Before GPU launch, `batch-validate` must accept the new one-phase manifest and
   reject any manifest containing Stage2 or an old state root.
+
+## Plan v15 Unified Validation Protocol And Fresh Rerun Amendment
+
+This amendment resolves `F-EX-PLAN-09` under the user's explicit authorization. It
+supersedes V13/V14 reuse only for the new experiment: V15 does not reuse the prior
+completed control, Stage2, extracted model2, or Stage3. It runs a fresh atomic
+three-phase matrix after a new admission bundle is accepted. The old runtime ledgers,
+metrics, provenance, certificates, and final reports remain diagnostic evidence and
+must state that their cross-phase main validation decoder was inconsistent.
+
+### Frozen Decoder Contract
+
+The main online curve is a low-temperature one-sample code-generation measurement:
+
+```text
+training rollout: do_sample=True, temperature=1.0, top_p=1.0
+main validation: do_sample=True, temperature=0.2, top_p=0.95, n=1
+```
+
+All three phases use the same full HumanEval+, MBPP+, and LiveCodeBench validation
+files, prompt eligibility filter, evaluator/reward implementation, timeout policy,
+maximum response length, and main validation decoder. The shared Stage123 resource
+profile is the sole owner of these fields; every wrapper sources it before admission
+and must not independently default a contradictory validation value. The profile
+serialization, hash, manifest binding, admission bundle, preflight report, and
+implementation identity all change for V15.
+
+`do_sample=False, n=1` greedy evaluation is a required terminal confirmation for
+candidate checkpoints, not the main online curve. Sampled high-temperature or
+multi-sample metrics are diagnostic/offline evidence only and cannot replace the
+frozen main decision vector.
+
+### Pre-Run Consistency Audit
+
+Before any V15 GPU work, a CPU-only audit must render the fresh manifest and verify:
+
+1. the decoder contract above is serialized once and identical for Stage1, Stage2,
+   and Stage3;
+2. rollout decoder, `beta`, learning rate, data seed/shuffle policy, batch/length
+   profile, validation files/hashes, validation cadence, evaluator identity, and
+   timeout policy are identical unless the manifest declares the difference as the
+   intended phase treatment;
+3. the only allowed model-topology differences are Stage2 joint fixed-model2 rollout
+   with the frozen fusion setting and Stage1/Stage3 single-model topology; and
+4. no new root references any V13/V14 control, Stage2, extracted-model2, Stage3, or
+   state root as an input.
+
+Any other difference is a finding and blocks launch until classified and reviewed.
+
+### Cleanup Boundary
+
+After `tmux`, container, process, and GPU checks prove no active workload, V15 may
+delete only agent-generated completed calibration, dry-run, probe, and obsolete
+Stage123 scratch roots under `/data-1/tmp/verl_agent_scratch/experiment_workflow/`.
+It must retain the append-only goal ledgers, source manifests, small provenance and
+metrics evidence, protected assets, `/data-1/wandb_runs`, and all user-owned paths.
+It must inventory deleted roots and reclaimed bytes in the runtime ledger. Existing
+checkpoint/model artifacts remain outside this cleanup authorization until a later
+path-level retention decision.
+
+### V15 Review And Execution Order
+
+1. Independently review this amendment before implementation.
+2. Implement the centralized decoder contract and focused regression tests.
+3. Validate the amended Plan, runtime ledger, rendered manifest, profile hash, and
+   CPU-only phase-contract audit; obtain an independent implementation review.
+4. Perform the permitted scratch cleanup and record exact paths/bytes.
+5. Obtain a new V15 admission bundle and independently review the fresh pre-run
+   evidence.
+6. Launch exactly one fresh Control -> Stage2 -> extraction -> Stage3 chain only
+   after its explicit GPU admission is recorded; no reuse, retry, resume, parameter
+   tuning, external publication, or external service is allowed.
