@@ -1,0 +1,18 @@
+{
+  "authorization_decision_id": "D-EX-V18-CALIBRATION-APPLICABILITY-01",
+  "candidate_capacity_sha256": "7cab911b63caba6c001e29e1b0a7cb7d7bacf04b0e23a642e7638ed0cd91e2f5",
+  "candidate_manifest_sha256": "1d2c5d55da7d758784b7383a574449cecc9bd67281a2b17752150dcb542d14fc",
+  "candidate_resource_profile_sha256": "d687caf1146c9b32a2f51dcf71e876cf5f987fe62b4db69f1043caaff52ddbe8",
+  "capacity_differences": [],
+  "completed_at": "2026-07-16T11:29:17.455960Z",
+  "decision": "applicable",
+  "evidence_commit": "13f0e2765fe4ac3adab2642cb4cc239147888ee1",
+  "implementation_tree_sha256": "f97f5478f0c32c602d36f3eacea43073ea9b865a3396916aa584af33754fb39b",
+  "plan_sha256": "471c12f95e1969948105626d25ddb90659bc2e8242d8309fe9576a9145850852",
+  "result_type": "stage123_calibration_applicability",
+  "schema_version": 1,
+  "source_calibration_result_sha256": "24647c4c5031ab199e40a2338b18dec02788c355600bed96192bb22faf43f880",
+  "source_capacity_sha256": "7cab911b63caba6c001e29e1b0a7cb7d7bacf04b0e23a642e7638ed0cd91e2f5",
+  "source_manifest_sha256": "323bcc6084c1b01653bdf3cb5b299cab51c76864c8ca24878a9e5b002cb76278",
+  "source_resource_profile_sha256": "d9b6a36dd9fcc4307f7b502e5511989e60c1a257f57c9ac70574acaf12eee2b5"
+}
