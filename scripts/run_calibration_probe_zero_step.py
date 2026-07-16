@@ -28,6 +28,8 @@ from scripts.calibration_prediction import qualify
 
 PHASE_SCRIPT = ROOT / "recipe/on_policy_wdl_sft/code_task/run_code_task_operational_calibration_phase.sh"
 REQUIRED_PHASES = ["stage1", "stage2", "stage3"]
+TREATMENT_ONLY_PHASES = ["stage2", "stage3"]
+ALLOWED_PHASE_SETS = (REQUIRED_PHASES, TREATMENT_ONLY_PHASES)
 PRIMARY_RUN_IDS = ["frac25-stage1-control", "frac25-stage2", "frac25-stage3"]
 WORKLOAD = Path("/data-1/tmp/verl_agent_scratch/experiment_workflow/calibration/code_validation_16_16_32.parquet")
 WORKLOAD_MANIFEST = WORKLOAD.with_suffix(".manifest.json")
@@ -390,7 +392,7 @@ def main() -> int:
     args = parser.parse_args()
     enable_child_subreaper()
     phases = args.phases.split(",")
-    if phases != REQUIRED_PHASES:
+    if phases not in ALLOWED_PHASE_SETS:
         raise SystemExit("phase_set")
     if args.training_steps != 0 or args.optimizer_enabled.lower() != "false":
         raise SystemExit("training_disabled")

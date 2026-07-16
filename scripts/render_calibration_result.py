@@ -14,6 +14,8 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 PREDICTION_METRICS = {"validation_elapsed_seconds", "phase_elapsed_seconds", "peak_rss_gib", "gpu_wait_fraction"}
 REQUIRED_PHASES = ["stage1", "stage2", "stage3"]
+TREATMENT_ONLY_PHASES = ["stage2", "stage3"]
+ALLOWED_PHASE_SETS = (REQUIRED_PHASES, TREATMENT_ONLY_PHASES)
 PRIMARY_RUN_IDS = ["frac25-stage1-control", "frac25-stage2", "frac25-stage3"]
 
 
@@ -108,8 +110,9 @@ def validate_pointer(pointer_path: Path, *, run_id: str, decision_id: str, scrat
     if report.get("status") != "passed" or report.get("run_id") != run_id or report.get("authorization_decision_id") != decision_id:
         raise ValueError("producer report identity or status mismatch")
     phases = report.get("phases")
-    if not isinstance(phases, list) or [item.get("phase") for item in phases] != REQUIRED_PHASES:
-        raise ValueError("producer report must contain exactly stage1, stage2, and stage3")
+    phase_names = [item.get("phase") for item in phases] if isinstance(phases, list) else []
+    if phase_names not in ALLOWED_PHASE_SETS:
+        raise ValueError("producer report must contain stage1,stage2,stage3 or treatment-only stage2,stage3")
     if any(not isinstance(item.get("repetitions"), list) or len(item["repetitions"]) != 3 or any(rep.get("status") != "passed" for rep in item["repetitions"]) for item in phases):
         raise ValueError("producer report repetition evidence is incomplete")
     if report.get("optimizer_steps") != 0 or report.get("formal_checkpoints") != []:

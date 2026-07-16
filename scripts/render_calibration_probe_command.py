@@ -3,13 +3,15 @@ from __future__ import annotations
 import argparse,json,subprocess,sys
 from pathlib import Path
 
+ALLOWED_PHASE_SETS = (['stage1', 'stage2', 'stage3'], ['stage2', 'stage3'])
+
 def fail(code,message,**context):
     print(json.dumps({"ok":False,"failure":{"code":code,"message":message,"context":context}},sort_keys=True),file=sys.stderr); return 1
 
 def main()->int:
     p=argparse.ArgumentParser(); p.add_argument("--manifest",type=Path,required=True); p.add_argument("--resource-profile",type=Path,required=True); p.add_argument("--phases",required=True); p.add_argument("--repetitions",type=int,required=True); p.add_argument("--training-steps",type=int,required=True); p.add_argument("--scratch-root",type=Path,required=True); p.add_argument("--execution-run-id",default="stage123-readiness-requalification"); p.add_argument("--authorization-decision-id",default="unspecified"); a=p.parse_args()
     phases=a.phases.split(",")
-    if phases!=["stage1","stage2","stage3"]: return fail("phase_set","probe phases must be stage1,stage2,stage3",phases=phases)
+    if phases not in ALLOWED_PHASE_SETS: return fail("phase_set","probe phases must be stage1,stage2,stage3 or treatment-only stage2,stage3",phases=phases)
     if not 1<=a.repetitions<=3: return fail("repetitions","probe repetitions must be 1..3",repetitions=a.repetitions)
     if a.training_steps!=0: return fail("training_steps","calibration cannot train",training_steps=a.training_steps)
     if not str(a.scratch_root).startswith("/data-1/tmp/verl_agent_scratch/"): return fail("scratch_root","outputs must stay in calibration scratch",path=str(a.scratch_root))

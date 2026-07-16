@@ -599,3 +599,11 @@ The final decision JSON and report must contain `control_reuse` with the certifi
 SHA256, old control identity, old failure boundary, and a plain-language statement that
 the completed matched Stage1 control was reused as baseline evidence while treatment
 Stage2 -> extraction -> Stage3 executed under a new identity.
+
+### Treatment-only requalification clarification
+
+When a committed implementation repair changes only the Stage2/Stage3 treatment
+execution wrappers, bounded zero-step requalification uses the exact ordered phase set
+`stage2,stage3`. It never invokes Stage1, creates no control checkpoint, produces zero
+optimizer/training steps, and cannot replace or modify the certified completed control.
+The calibration renderer and result validator must reject every other subset.

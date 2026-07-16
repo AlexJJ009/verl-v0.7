@@ -15,6 +15,23 @@ def test_probe_renderer_is_zero_step_json():
  result=subprocess.run([sys.executable,str(ROOT/'scripts/render_calibration_probe_command.py'),'--manifest',str(ROOT/'recipe/on_policy_wdl_sft/experiment_manifest/stage123.yaml'),'--resource-profile',str(ROOT/'recipe/on_policy_wdl_sft/code_task/qwen3_1p7b_stage123_resource_profile.sh'),'--phases','stage1,stage2,stage3','--repetitions','3','--training-steps','0','--scratch-root','/data-1/tmp/verl_agent_scratch/experiment_workflow/calibration'],check=True,capture_output=True,text=True)
  command=json.loads(result.stdout); assert command[1].endswith('run_calibration_probe_zero_step.py') and '--training-steps' in command and command[command.index('--training-steps')+1]=='0' and command[command.index('--optimizer-enabled')+1]=='false'
  history=Path(command[command.index('--prediction-history-result')+1]); assert history==ROOT/'docs/joint_training/goals/calibration-qualification/calibration_result.json'
+
+def test_treatment_only_requalification_allows_only_stage2_then_stage3():
+ renderer=load('render_calibration_probe_treatment_only',ROOT/'scripts/render_calibration_probe_command.py')
+ probe=load('run_calibration_probe_treatment_only',ROOT/'scripts/run_calibration_probe_zero_step.py')
+ result=load('render_calibration_result_treatment_only',ROOT/'scripts/render_calibration_result.py')
+ expected=(['stage1','stage2','stage3'],['stage2','stage3'])
+ assert renderer.ALLOWED_PHASE_SETS==expected
+ assert probe.ALLOWED_PHASE_SETS==expected
+ assert result.ALLOWED_PHASE_SETS==expected
+ assert ['stage1','stage3'] not in renderer.ALLOWED_PHASE_SETS
+
+def test_probe_renderer_rejects_noncontiguous_treatment_subset():
+ base=[sys.executable,str(ROOT/'scripts/render_calibration_probe_command.py'),'--manifest',str(ROOT/'recipe/on_policy_wdl_sft/experiment_manifest/stage123.yaml'),'--resource-profile',str(ROOT/'recipe/on_policy_wdl_sft/code_task/qwen3_1p7b_stage123_resource_profile.sh'),'--repetitions','3','--training-steps','0','--scratch-root','/data-1/tmp/verl_agent_scratch/experiment_workflow/calibration']
+ accepted=subprocess.run(base+['--phases','stage2,stage3'],capture_output=True,text=True)
+ rejected=subprocess.run(base+['--phases','stage1,stage3'],capture_output=True,text=True)
+ assert accepted.returncode==0
+ assert rejected.returncode==1 and 'phase_set' in rejected.stderr
 def test_prediction_fails_closed_and_qualifies():
  m=load('calibration_prediction',ROOT/'scripts/calibration_prediction.py'); policy=json.loads((ROOT/'config/experiment_execution/calibration_policy_v1.json').read_text())
  assert m.qualify([1,2],10,10,policy).code=='insufficient_history'; assert m.qualify([1,2,3],10,13,policy).code=='prediction_exceeded'; assert m.qualify([1,2,3],10,12,policy).qualified
