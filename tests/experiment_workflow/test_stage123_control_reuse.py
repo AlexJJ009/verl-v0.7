@@ -277,6 +277,7 @@ def test_certified_stage2_handoff_prepares_new_stage3_only_identity(tmp_path: Pa
     result = subprocess.run([sys.executable, str(TOOL), "validate-treatment", "--admission", str(admission), "--allow-prepared", "--run-id", "frac25-stage3"], text=True, capture_output=True)
     assert result.returncode == 0, result.stdout + result.stderr
     manifest = yaml.safe_load((output_root / "stage3-handoff-manifest.yaml").read_text())
+    assert [run["id"] for run in manifest["runs"]] == ["frac25-stage3"]
     stage3 = next(run for run in manifest["runs"] if run["id"] == "frac25-stage3")
     assert stage3["source"]["model2_path"] == str(paths["extracted"])
     assert stage3["source"]["provenance_file"] == str(paths["stage2_provenance"])

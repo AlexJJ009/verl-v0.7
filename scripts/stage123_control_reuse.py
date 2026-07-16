@@ -511,6 +511,7 @@ def prepare_stage3_handoff(args: argparse.Namespace) -> int:
         }
     )
     stage3["source"] = source
+    manifest["runs"] = [stage3]
     manifest_path.write_text(yaml.safe_dump(manifest, sort_keys=False))
     admission = {
         "schema_version": 1,
@@ -590,6 +591,8 @@ def validate_treatment(args: argparse.Namespace) -> int:
             raise ValueError("Stage3 handoff admission certificate type mismatch")
         manifest = yaml.safe_load(manifest_path.read_text())
         runs = {run.get("id"): run for run in manifest.get("runs", []) if isinstance(run, dict)} if isinstance(manifest, dict) else {}
+        if tuple(runs) != (STAGE3_ID,):
+            raise ValueError("Stage3 handoff manifest must contain exactly Stage3")
         stage3 = runs.get(STAGE3_ID, {})
         source = stage3.get("source", {}) if isinstance(stage3, dict) else {}
         if source.get("model2_path") != certificate["stage2"]["extracted_model2"] or source.get("provenance_file") != certificate["stage2"]["provenance_path"]:

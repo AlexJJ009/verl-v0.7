@@ -115,11 +115,16 @@ def stage_environment(manifest: dict, run: dict, environment: dict[str, str]) ->
             }
         )
     elif phase == "stage3":
-        stage2 = run_by_id(manifest, source["run_id"])
+        model2_path = source.get("model2_path")
+        provenance_file = source.get("provenance_file")
+        if model2_path is None or provenance_file is None:
+            stage2 = run_by_id(manifest, source["run_id"])
+            model2_path = str(Path(stage2["artifact_dir"]) / "stage2_final_model2")
+            provenance_file = stage2["provenance_file"]
         environment.update(
             {
-                "STAGE2_MODEL2_PATH": source.get("model2_path", str(Path(stage2["artifact_dir"]) / "stage2_final_model2")),
-                "STAGE2_PROVENANCE_FILE": source.get("provenance_file", stage2["provenance_file"]),
+                "STAGE2_MODEL2_PATH": model2_path,
+                "STAGE2_PROVENANCE_FILE": provenance_file,
             }
         )
     return environment
