@@ -215,13 +215,166 @@ def certify(args: argparse.Namespace) -> int:
 
 def validate_certificate(path: Path) -> dict[str, Any]:
     certificate = load_json(path)
-    if certificate.get("result_type") != "stage123_certified_control_reuse" or certificate.get("eligible") is not True:
-        raise ValueError("control reuse certificate is not eligible")
-    for section, key in (("control", "provenance_path"), ("old_failure", "batch_state_path"), ("old_failure", "stage2_state_path")):
-        value = certificate.get(section, {}).get(key)
-        if not isinstance(value, str) or not Path(value).is_file():
-            raise ValueError(f"certificate missing preserved evidence: {section}.{key}")
-    return certificate
+    if certificate.get("eligible") is not True:
+        raise ValueError("reuse certificate is not eligible")
+    if certificate.get("result_type") == "stage123_certified_control_reuse":
+        for section, key in (("control", "provenance_path"), ("old_failure", "batch_state_path"), ("old_failure", "stage2_state_path")):
+            value = certificate.get(section, {}).get(key)
+            if not isinstance(value, str) or not Path(value).is_file():
+                raise ValueError(f"certificate missing preserved evidence: {section}.{key}")
+        return certificate
+    if certificate.get("result_type") == "stage123_certified_stage2_handoff":
+        stage2 = certificate.get("stage2", {})
+        failure = certificate.get("old_stage3_failure", {})
+        required_files = {
+            "stage2 provenance": stage2.get("provenance_path"),
+            "stage2 metrics": stage2.get("metrics"),
+            "stage2 validation": stage2.get("validation"),
+            "old batch state": failure.get("batch_state_path"),
+            "old stage2 state": failure.get("stage2_state_path"),
+            "old stage3 state": failure.get("stage3_state_path"),
+            "old queue log": failure.get("queue_log_path"),
+        }
+        for label, value in required_files.items():
+            if not isinstance(value, str) or not Path(value).is_file():
+                raise ValueError(f"handoff certificate missing {label}")
+        for label, value, expected in (
+            ("stage2 provenance", Path(stage2["provenance_path"]), stage2.get("provenance_sha256")),
+            ("stage2 metrics", Path(stage2["metrics"]), stage2.get("metrics_sha256")),
+            ("stage2 validation", Path(stage2["validation"]), stage2.get("validation_sha256")),
+            ("old batch state", Path(failure["batch_state_path"]), failure.get("batch_state_sha256")),
+            ("old stage2 state", Path(failure["stage2_state_path"]), failure.get("stage2_state_sha256")),
+            ("old stage3 state", Path(failure["stage3_state_path"]), failure.get("stage3_state_sha256")),
+            ("old queue log", Path(failure["queue_log_path"]), failure.get("queue_log_sha256")),
+        ):
+            if digest(value) != expected:
+                raise ValueError(f"handoff certificate {label} hash mismatch")
+        extracted = Path(str(stage2.get("extracted_model2", "")))
+        if tree_digest(extracted) != stage2.get("extracted_model2_tree_sha256"):
+            raise ValueError("handoff certificate extracted model2 tree mismatch")
+        joint = Path(str(stage2.get("joint_model", "")))
+        if tree_digest(joint) != stage2.get("joint_model_tree_sha256"):
+            raise ValueError("handoff certificate joint model tree mismatch")
+        source_admission = certificate.get("source_admission", {})
+        source_manifest = certificate.get("source_manifest", {})
+        for label, record in (("source admission", source_admission), ("source manifest", source_manifest)):
+            path = Path(str(record.get("path", "")))
+            if not path.is_file() or digest(path) != record.get("sha256"):
+                raise ValueError(f"handoff certificate {label} binding mismatch")
+        artifact_dir = Path(str(failure.get("stage3_artifact_dir", "")))
+        if artifact_dir.exists() and any(artifact_dir.rglob("*")):
+            raise ValueError("handoff certificate Stage3 artifact boundary changed")
+        return certificate
+    raise ValueError("unsupported reuse certificate type")
+
+
+def stage3_pretraining_proof(
+    *,
+    batch: dict[str, Any],
+    stage2_state: dict[str, Any],
+    stage3_state: dict[str, Any],
+    queue_log: Path,
+    stage3_artifact_dir: Path,
+) -> list[str]:
+    failures: list[str] = []
+    stage2_transitions = [(event.get("from"), event.get("to")) for event in stage2_state.get("transitions", [])]
+    if stage2_state.get("run_id") != STAGE2_ID or stage2_state.get("status") != "succeeded" or stage2_state.get("attempt") != 1:
+        failures.append("stage2 state does not prove one completed Stage2 execution")
+    if stage2_transitions != [("pending", "running"), ("running", "succeeded")]:
+        failures.append("stage2 state does not preserve pending->running->succeeded")
+    stage3_transitions = [(event.get("from"), event.get("to")) for event in stage3_state.get("transitions", [])]
+    if stage3_state.get("run_id") != STAGE3_ID or stage3_state.get("status") != "failed" or stage3_state.get("attempt") != 1:
+        failures.append("stage3 state does not prove one failed child")
+    if stage3_transitions != [("pending", "running"), ("running", "failed")]:
+        failures.append("stage3 state does not preserve pending->running->failed")
+    if stage3_state.get("failure", {}).get("context", {}).get("returncode") != 1:
+        failures.append("stage3 state does not preserve expected admission child exit")
+    if batch.get("status") != "completed_with_failures":
+        failures.append("source batch is not terminal completed_with_failures")
+    phases = {entry.get("run_id"): entry.get("status") for entry in batch.get("phases", [])}
+    if phases.get(STAGE2_ID) != "succeeded" or phases.get(STAGE3_ID) != "failed":
+        failures.append("source batch phases do not prove succeeded Stage2 and failed Stage3")
+    marker = "authorized treatment host facts are stale or failed"
+    if not queue_log.is_file() or marker not in queue_log.read_text(errors="replace"):
+        failures.append("queue log lacks the preserved pre-training Stage3 admission failure")
+    if stage3_artifact_dir.exists() and any(stage3_artifact_dir.rglob("*")):
+        failures.append("failed Stage3 produced forbidden artifact evidence")
+    return failures
+
+
+def certify_stage2_handoff(args: argparse.Namespace) -> int:
+    stage2_provenance = load_json(args.stage2_provenance)
+    stage2_state = load_json(args.stage2_state)
+    stage3_state = load_json(args.stage3_state)
+    batch = load_json(args.batch_state)
+    source_admission = load_json(args.source_admission)
+    control_certificate = validate_certificate(Path(str(source_admission.get("certificate_path", ""))))
+    source_manifest = Path(args.source_manifest)
+    metrics = Path(str(stage2_provenance.get("metrics", "")))
+    validation = expected_validation(metrics, int(stage2_provenance.get("final_step", -1)))
+    extracted = Path(str(stage2_provenance.get("source", {}).get("extracted_model2", "")))
+    joint = Path(str(stage2_provenance.get("source", {}).get("joint_model", "")))
+    failures = stage3_pretraining_proof(
+        batch=batch,
+        stage2_state=stage2_state,
+        stage3_state=stage3_state,
+        queue_log=args.queue_log,
+        stage3_artifact_dir=args.stage3_artifact_dir,
+    )
+    if stage2_provenance.get("run_id") != STAGE2_ID or stage2_provenance.get("phase") != "stage2" or stage2_provenance.get("release_eligible") is not True:
+        failures.append("stage2 provenance is not a release-eligible completed Stage2 record")
+    for label, path in {"source manifest": source_manifest, "stage2 metrics": metrics, "stage2 validation": validation, "stage2 extracted model2": extracted, "stage2 joint model": joint}.items():
+        if not path.exists():
+            failures.append(f"missing {label}: {path}")
+    if metrics.is_file() and digest(metrics) != stage2_provenance.get("metrics_sha256"):
+        failures.append("stage2 provenance metrics hash mismatch")
+    if not isinstance(stage2_provenance.get("manifest_sha256"), str) or len(stage2_provenance["manifest_sha256"]) != 64:
+        failures.append("stage2 provenance lacks manifest identity")
+    certificate = {
+        "schema_version": 1,
+        "result_type": "stage123_certified_stage2_handoff",
+        "eligible": not failures,
+        "failure_boundary": "child-started_pre-wrapper-training-work",
+        "disclosure": "The completed treatment Stage2 extracted model2 is reused only by one new Stage3-only identity after the preserved Stage3 child failed at treatment admission before wrapper or training work. The old item remains terminal evidence and is not retried or resumed.",
+        "training_plane": control_certificate["training_plane"],
+        "control_reuse_certificate": {
+            "path": str(source_admission["certificate_path"]),
+            "sha256": digest(Path(source_admission["certificate_path"])),
+        },
+        "source_admission": {"path": str(args.source_admission), "sha256": digest(args.source_admission)},
+        "source_manifest": {"path": str(source_manifest), "sha256": digest(source_manifest) if source_manifest.is_file() else None, "stage2_manifest_sha256": stage2_provenance.get("manifest_sha256")},
+        "stage2": {
+            "provenance_path": str(args.stage2_provenance),
+            "provenance_sha256": digest(args.stage2_provenance),
+            "checkpoint": stage2_provenance.get("checkpoint"),
+            "final_step": stage2_provenance.get("final_step"),
+            "metrics": str(metrics),
+            "metrics_sha256": digest(metrics) if metrics.is_file() else None,
+            "validation": str(validation),
+            "validation_sha256": digest(validation) if validation.is_file() else None,
+            "joint_model": str(joint),
+            "joint_model_tree_sha256": tree_digest(joint) if joint.is_dir() else None,
+            "extracted_model2": str(extracted),
+            "extracted_model2_tree_sha256": tree_digest(extracted) if extracted.is_dir() else None,
+            "train_file_sha256": stage2_provenance.get("train_file_sha256"),
+        },
+        "old_stage3_failure": {
+            "batch_state_path": str(args.batch_state),
+            "batch_state_sha256": digest(args.batch_state),
+            "stage2_state_path": str(args.stage2_state),
+            "stage2_state_sha256": digest(args.stage2_state),
+            "stage3_state_path": str(args.stage3_state),
+            "stage3_state_sha256": digest(args.stage3_state),
+            "queue_log_path": str(args.queue_log),
+            "queue_log_sha256": digest(args.queue_log) if args.queue_log.is_file() else None,
+            "stage3_artifact_dir": str(args.stage3_artifact_dir),
+        },
+        "failures": failures,
+    }
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(json.dumps(certificate, indent=2, sort_keys=True) + "\n")
+    print(json.dumps(certificate, sort_keys=True))
+    return 0 if certificate["eligible"] else 1
 
 
 def prepare(args: argparse.Namespace) -> int:
@@ -316,6 +469,100 @@ def prepare(args: argparse.Namespace) -> int:
     return 0
 
 
+def prepare_stage3_handoff(args: argparse.Namespace) -> int:
+    certificate = validate_certificate(args.certificate)
+    if certificate.get("result_type") != "stage123_certified_stage2_handoff":
+        raise ValueError("Stage3 handoff preparation requires a certified Stage2 handoff")
+    execution_id = args.execution_id
+    if not execution_id or "/" in execution_id:
+        raise ValueError("execution_id must be a non-empty path-safe identifier")
+    if args.output_root.exists():
+        raise ValueError(f"Stage3 handoff output root already exists: {args.output_root}")
+    if not str(args.artifact_root).startswith("/data-2/"):
+        raise ValueError("Stage3 handoff artifact root must remain under /data-2")
+    if digest(args.source_manifest) != certificate["source_manifest"].get("sha256"):
+        raise ValueError("Stage3 handoff source manifest binding mismatch")
+    args.output_root.mkdir(parents=True)
+    state_root = args.output_root / "state"
+    monitor_path = args.output_root / "monitor" / "stage3-handoff-monitor.log"
+    provenance_path = args.output_root / "provenance" / "stage3-handoff.provenance.json"
+    state_root.mkdir()
+    monitor_path.parent.mkdir()
+    provenance_path.parent.mkdir()
+    manifest_path = args.output_root / "stage3-handoff-manifest.yaml"
+    manifest = yaml.safe_load(args.source_manifest.read_text())
+    if not isinstance(manifest, dict) or not isinstance(manifest.get("runs"), list):
+        raise ValueError("Stage3 handoff source manifest lacks runs")
+    runs_by_id = {run.get("id"): run for run in manifest["runs"] if isinstance(run, dict)}
+    if STAGE3_ID not in runs_by_id:
+        raise ValueError("Stage3 handoff source manifest lacks Stage3")
+    stage3 = runs_by_id[STAGE3_ID]
+    stage3["run_prefix"] = f"{stage3['run_prefix']}-HANDOFF-{execution_id}"
+    stage3["artifact_dir"] = str(args.artifact_root / STAGE3_ID)
+    stage3["provenance_file"] = str(args.artifact_root / f"{STAGE3_ID}.provenance.json")
+    source = dict(stage3.get("source", {}))
+    source.update(
+        {
+            "run_id": STAGE2_ID,
+            "model2_path": certificate["stage2"]["extracted_model2"],
+            "provenance_file": certificate["stage2"]["provenance_path"],
+            "handoff_certificate_path": str(args.certificate),
+            "handoff_certificate_sha256": digest(args.certificate),
+        }
+    )
+    stage3["source"] = source
+    manifest_path.write_text(yaml.safe_dump(manifest, sort_keys=False))
+    admission = {
+        "schema_version": 1,
+        "bundle_type": "stage123_stage2_handoff_admission",
+        "status": "prepared_not_authorized",
+        "execution_id": execution_id,
+        "certificate_path": str(args.certificate),
+        "certificate_sha256": digest(args.certificate),
+        "original_manifest_sha256": certificate["training_plane"]["manifest_sha256"],
+        "source_manifest_path": str(args.source_manifest),
+        "source_manifest_sha256": digest(args.source_manifest),
+        "treatment_manifest_path": str(manifest_path),
+        "treatment_manifest_sha256": digest(manifest_path),
+        "expected_run_ids": [STAGE3_ID],
+        "state_root": str(state_root),
+        "monitor_path": str(monitor_path),
+        "provenance_path": str(provenance_path),
+        "stage2_handoff_disclosure": certificate["disclosure"],
+    }
+    admission["admission_sha256"] = hashlib.sha256(canonical_json(admission).encode()).hexdigest()
+    admission_path = args.output_root / "stage3-handoff-admission.json"
+    admission_path.write_text(json.dumps(admission, indent=2, sort_keys=True) + "\n")
+    provenance_path.write_text(json.dumps({"schema_version": 1, "status": "prepared_not_authorized", "execution_id": execution_id, "handoff_certificate_sha256": admission["certificate_sha256"], "stage2_handoff": admission["stage2_handoff_disclosure"]}, indent=2, sort_keys=True) + "\n")
+    commands = [["/data-1/verl07/run_train.sh", "python", "/workspace/verl/scripts/stage123_phase_adapter.py", "--manifest", str(manifest_path), "--run-id", STAGE3_ID]]
+    batch_manifest = {
+        "schema_version": 1,
+        "prepared_not_authorized": True,
+        "authorization_id": f"pending-training-authorization:{execution_id}",
+        "batch_id": f"stage123-stage2-handoff-{execution_id}",
+        "created_at": "prepared-without-training",
+        "failure_policy_id": "batch-fallback-v1",
+        "operator_control_path": str(args.output_root / "operator-controls.jsonl"),
+        "items": [{
+            "item_id": f"stage123-stage2-handoff-{execution_id}",
+            "goal_id": "stage123-primary-chain-execution",
+            "plan_sha256": "0" * 64,
+            "adapter_type": "stage123_stage2_handoff_v1",
+            "admission_bundle_path": str(admission_path),
+            "admission_bundle_sha256": digest(admission_path),
+            "implementation_tree_sha256": "0" * 64,
+            "expected_run_ids": [STAGE3_ID],
+            "command_sha256": hashlib.sha256(canonical_json(commands).encode()).hexdigest(),
+            "timeout_seconds": 86400,
+        }],
+    }
+    batch_manifest["batch_manifest_sha256"] = hashlib.sha256(canonical_json(batch_manifest).encode()).hexdigest()
+    batch_path = args.output_root / "stage3-handoff-batch-manifest.json"
+    batch_path.write_text(json.dumps(batch_manifest, indent=2, sort_keys=True) + "\n")
+    print(json.dumps({"ok": True, "admission_path": str(admission_path), "batch_manifest_path": str(batch_path), "state_root": str(state_root), "monitor_path": str(monitor_path), "provenance_path": str(provenance_path)}, sort_keys=True))
+    return 0
+
+
 def validate_treatment(args: argparse.Namespace) -> int:
     admission = load_json(args.admission)
     expected_hash = admission.pop("admission_sha256", None)
@@ -331,8 +578,22 @@ def validate_treatment(args: argparse.Namespace) -> int:
     if not manifest_path.is_file() or digest(manifest_path) != admission.get("treatment_manifest_sha256"):
         raise ValueError("treatment manifest is missing")
     expected_run_ids = admission.get("expected_run_ids")
-    if not isinstance(expected_run_ids, list) or expected_run_ids != [STAGE2_ID, STAGE3_ID]:
-        raise ValueError("treatment admission run ids must be exactly Stage2 then Stage3")
+    expected_by_type = {
+        "stage123_treatment_reuse_admission": [STAGE2_ID, STAGE3_ID],
+        "stage123_stage2_handoff_admission": [STAGE3_ID],
+    }
+    expected = expected_by_type.get(admission.get("bundle_type"))
+    if expected is None or not isinstance(expected_run_ids, list) or expected_run_ids != expected:
+        raise ValueError("treatment admission run ids do not match its admission type")
+    if admission.get("bundle_type") == "stage123_stage2_handoff_admission":
+        if certificate.get("result_type") != "stage123_certified_stage2_handoff":
+            raise ValueError("Stage3 handoff admission certificate type mismatch")
+        manifest = yaml.safe_load(manifest_path.read_text())
+        runs = {run.get("id"): run for run in manifest.get("runs", []) if isinstance(run, dict)} if isinstance(manifest, dict) else {}
+        stage3 = runs.get(STAGE3_ID, {})
+        source = stage3.get("source", {}) if isinstance(stage3, dict) else {}
+        if source.get("model2_path") != certificate["stage2"]["extracted_model2"] or source.get("provenance_file") != certificate["stage2"]["provenance_path"]:
+            raise ValueError("Stage3 handoff manifest does not bind certified Stage2 extraction")
     if args.run_id is not None and args.run_id not in expected_run_ids:
         raise ValueError("requested run id is not admitted for treatment reuse")
     if not args.allow_prepared and admission.get("status") != "authorized":
@@ -383,7 +644,10 @@ def authorize_treatment(args: argparse.Namespace) -> int:
     if admission.get("status") != "prepared_not_authorized":
         raise ValueError("treatment admission is not in the preparable state")
     # Verify all immutable recovery inputs before adding fresh host evidence.
-    validate_args = argparse.Namespace(admission=args.admission, allow_prepared=True, run_id=STAGE2_ID)
+    expected_run_ids = admission.get("expected_run_ids")
+    if not isinstance(expected_run_ids, list) or not expected_run_ids:
+        raise ValueError("treatment admission lacks an initial run id")
+    validate_args = argparse.Namespace(admission=args.admission, allow_prepared=True, run_id=expected_run_ids[0])
     validate_treatment(validate_args)
     host_facts = load_json(args.host_facts)
     if host_facts.get("artifact_type") != "stage123_host_facts" or host_facts.get("ok") is not True:
@@ -430,6 +694,17 @@ def main() -> int:
     prepare_parser.add_argument("--artifact-root", type=Path, required=True)
     prepare_parser.add_argument("--execution-id", required=True)
     prepare_parser.set_defaults(func=prepare)
+    certify_handoff_parser = sub.add_parser("certify-stage2-handoff")
+    for name in ("stage2_provenance", "stage2_state", "stage3_state", "batch_state", "queue_log", "source_admission", "source_manifest", "stage3_artifact_dir", "output"):
+        certify_handoff_parser.add_argument(f"--{name.replace('_', '-')}", type=Path, required=True)
+    certify_handoff_parser.set_defaults(func=certify_stage2_handoff)
+    prepare_handoff_parser = sub.add_parser("prepare-stage3-handoff")
+    prepare_handoff_parser.add_argument("--certificate", type=Path, required=True)
+    prepare_handoff_parser.add_argument("--source-manifest", type=Path, required=True)
+    prepare_handoff_parser.add_argument("--output-root", type=Path, required=True)
+    prepare_handoff_parser.add_argument("--artifact-root", type=Path, required=True)
+    prepare_handoff_parser.add_argument("--execution-id", required=True)
+    prepare_handoff_parser.set_defaults(func=prepare_stage3_handoff)
     validate_parser = sub.add_parser("validate-treatment")
     validate_parser.add_argument("--admission", type=Path, required=True)
     validate_parser.add_argument("--allow-prepared", action="store_true")

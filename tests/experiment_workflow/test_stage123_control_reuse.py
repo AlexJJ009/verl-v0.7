@@ -139,6 +139,175 @@ def certify(paths: dict[str, Path], output: Path) -> subprocess.CompletedProcess
     )
 
 
+def completed_stage2_handoff_fixture(tmp_path: Path) -> dict[str, Path]:
+    paths = fixture(tmp_path)
+    control_certificate = tmp_path / "control-certificate.json"
+    assert certify(paths, control_certificate).returncode == 0
+    source_root = tmp_path / "treatment-source"
+    prepare = subprocess.run(
+        [
+            sys.executable,
+            str(TOOL),
+            "prepare",
+            "--certificate",
+            str(control_certificate),
+            "--manifest",
+            str(paths["manifest"]),
+            "--output-root",
+            str(source_root),
+            "--artifact-root",
+            "/data-2/model_weights/stage123-test/source",
+            "--execution-id",
+            "source",
+        ],
+        text=True,
+        capture_output=True,
+    )
+    assert prepare.returncode == 0, prepare.stderr
+    stage2_root = tmp_path / "completed-stage2"
+    extracted = stage2_root / "stage2_final_model2"
+    joint = stage2_root / "stage2_final_joint"
+    extracted.mkdir(parents=True)
+    joint.mkdir()
+    (extracted / "model.safetensors").write_bytes(b"model2")
+    (joint / "model.safetensors").write_bytes(b"joint")
+    runtime = stage2_root / "runtime" / "logs"
+    metrics = runtime / "metrics" / "OnPolicyWDLSFT-CodeTask" / "stage2.jsonl"
+    validation = runtime / "validation" / "20.jsonl"
+    metrics.parent.mkdir(parents=True)
+    validation.parent.mkdir(parents=True)
+    metrics.write_text('{"step":20}\n')
+    validation.write_text('{"HumanEval+":0.5}\n')
+    stage2_provenance = tmp_path / "completed-stage2.provenance.json"
+    write_json(
+        stage2_provenance,
+        {
+            "schema_version": 1,
+            "run_id": "frac25-stage2",
+            "phase": "stage2",
+            "release_eligible": True,
+            "manifest_sha256": "c" * 64,
+            "checkpoint": str(tmp_path / "checkpoint-stage2"),
+            "final_step": 20,
+            "metrics": str(metrics),
+            "metrics_sha256": sha(metrics),
+            "train_file_sha256": "d" * 64,
+            "source": {"type": "stage2_complete", "joint_model": str(joint), "extracted_model2": str(extracted)},
+        },
+    )
+    stage2_state = tmp_path / "completed-stage2-state.json"
+    stage3_state = tmp_path / "failed-stage3-state.json"
+    batch_state = tmp_path / "completed-stage2-batch.json"
+    write_json(
+        stage2_state,
+        {"run_id": "frac25-stage2", "attempt": 1, "status": "succeeded", "transitions": [{"from": "pending", "to": "running"}, {"from": "running", "to": "succeeded"}]},
+    )
+    write_json(
+        stage3_state,
+        {"run_id": "frac25-stage3", "attempt": 1, "status": "failed", "failure": {"context": {"returncode": 1}}, "transitions": [{"from": "pending", "to": "running"}, {"from": "running", "to": "failed"}]},
+    )
+    write_json(
+        batch_state,
+        {"status": "completed_with_failures", "phases": [{"run_id": "frac25-stage2", "status": "succeeded"}, {"run_id": "frac25-stage3", "status": "failed"}]},
+    )
+    queue_log = tmp_path / "stage3-admission-failure.log"
+    queue_log.write_text('{"error":"authorized treatment host facts are stale or failed","ok":false}\n')
+    return {**paths, **locals()}
+
+
+def certify_stage2_handoff(paths: dict[str, Path], output: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [
+            sys.executable,
+            str(TOOL),
+            "certify-stage2-handoff",
+            "--stage2-provenance",
+            str(paths["stage2_provenance"]),
+            "--stage2-state",
+            str(paths["stage2_state"]),
+            "--stage3-state",
+            str(paths["stage3_state"]),
+            "--batch-state",
+            str(paths["batch_state"]),
+            "--queue-log",
+            str(paths["queue_log"]),
+            "--source-admission",
+            str(paths["source_root"] / "treatment-admission.json"),
+            "--source-manifest",
+            str(paths["source_root"] / "treatment-manifest.yaml"),
+            "--stage3-artifact-dir",
+            str(paths["tmp_path"] / "failed-stage3-artifacts"),
+            "--output",
+            str(output),
+        ],
+        text=True,
+        capture_output=True,
+    )
+
+
+def test_certified_stage2_handoff_prepares_new_stage3_only_identity(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    paths = completed_stage2_handoff_fixture(tmp_path)
+    source_batch = paths["batch_state"].read_bytes()
+    certificate = tmp_path / "stage2-handoff-certificate.json"
+    certified = certify_stage2_handoff(paths, certificate)
+    assert certified.returncode == 0, certified.stdout + certified.stderr
+    assert paths["batch_state"].read_bytes() == source_batch
+    output_root = tmp_path / "stage3-handoff"
+    prepared = subprocess.run(
+        [
+            sys.executable,
+            str(TOOL),
+            "prepare-stage3-handoff",
+            "--certificate",
+            str(certificate),
+            "--source-manifest",
+            str(paths["source_root"] / "treatment-manifest.yaml"),
+            "--output-root",
+            str(output_root),
+            "--artifact-root",
+            "/data-2/model_weights/stage123-test/handoff",
+            "--execution-id",
+            "handoff-001",
+        ],
+        text=True,
+        capture_output=True,
+    )
+    assert prepared.returncode == 0, prepared.stdout + prepared.stderr
+    admission = output_root / "stage3-handoff-admission.json"
+    result = subprocess.run([sys.executable, str(TOOL), "validate-treatment", "--admission", str(admission), "--allow-prepared", "--run-id", "frac25-stage3"], text=True, capture_output=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+    manifest = yaml.safe_load((output_root / "stage3-handoff-manifest.yaml").read_text())
+    stage3 = next(run for run in manifest["runs"] if run["id"] == "frac25-stage3")
+    assert stage3["source"]["model2_path"] == str(paths["extracted"])
+    assert stage3["source"]["provenance_file"] == str(paths["stage2_provenance"])
+
+    host_facts = tmp_path / "host-facts.json"
+    write_json(host_facts, {"artifact_type": "stage123_host_facts", "ok": True, "tmux": {"stage123_conflicts": []}})
+
+    def fake_run(command: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        if command[0] == "nvidia-smi":
+            return subprocess.CompletedProcess(command, 0, "\n".join(["NVIDIA L40S"] * 8), "")
+        return subprocess.CompletedProcess(command, 0, sha(paths["profile"]), "")
+
+    monkeypatch.setattr(control_reuse.subprocess, "run", fake_run)
+    args = SimpleNamespace(admission=admission, batch_manifest=output_root / "stage3-handoff-batch-manifest.json", host_facts=host_facts, decision_id="D-stage3")
+    assert control_reuse.authorize_treatment(args) == 0
+    authorized = output_root / "authorized-treatment-batch-manifest.json"
+    batch_validate = subprocess.run([sys.executable, str(ROOT / "scripts/experiment_execution_core.py"), "batch-validate", "--manifest", str(authorized), "--repo-root", str(ROOT)], text=True, capture_output=True)
+    assert batch_validate.returncode == 0, batch_validate.stdout + batch_validate.stderr
+    assert json.loads(authorized.read_text())["items"][0]["expected_run_ids"] == ["frac25-stage3"]
+
+
+def test_certified_stage2_handoff_rejects_post_failure_stage3_artifacts(tmp_path: Path):
+    paths = completed_stage2_handoff_fixture(tmp_path)
+    artifact = paths["tmp_path"] / "failed-stage3-artifacts"
+    artifact.mkdir()
+    (artifact / "metrics.jsonl").write_text("unexpected\n")
+    result = certify_stage2_handoff(paths, tmp_path / "stage2-handoff-certificate.json")
+    assert result.returncode != 0
+    assert "failed Stage3 produced forbidden artifact evidence" in result.stdout
+
+
 def test_certified_control_reuse_preserves_old_evidence_and_prepares_distinct_treatment(tmp_path: Path):
     paths = fixture(tmp_path)
     old_batch = paths["batch"].read_bytes()

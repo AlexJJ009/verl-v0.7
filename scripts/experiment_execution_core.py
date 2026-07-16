@@ -23,7 +23,7 @@ if str(SCRIPTS_DIR) not in sys.path:
 TERMINAL_STATES = {"succeeded", "failed", "deadline_exceeded", "cleanup_failed"}
 BATCH_TERMINAL_STATES = {"completed", "completed_with_failures", "shared_failure", "stopped"}
 CONTROL_ACTIONS = {"pause_after_current", "stop_now", "continue_remaining"}
-ACCEPTED_ADAPTER_TYPES = {"stage123_queue_v1", "stage123_treatment_reuse_v1", "cpu_fixture_v1"}
+ACCEPTED_ADAPTER_TYPES = {"stage123_queue_v1", "stage123_treatment_reuse_v1", "stage123_stage2_handoff_v1", "cpu_fixture_v1"}
 
 
 @dataclass(frozen=True)
@@ -261,14 +261,14 @@ def _validate_hex(value: Any, length: int, label: str) -> str:
 
 
 def validate_admission_bundle(bundle: dict[str, Any], bundle_path: Path, repo_root: Path, expected_run_ids: list[str] | None = None) -> dict[str, Any]:
-    if bundle.get("bundle_type") == "stage123_treatment_reuse_admission":
+    if bundle.get("bundle_type") in {"stage123_treatment_reuse_admission", "stage123_stage2_handoff_admission"}:
         admission_hash = bundle.get("admission_sha256")
         if not isinstance(admission_hash, str) or admission_hash != sha256_json(_without_hash(bundle, "admission_sha256")):
             raise BatchValidationError("treatment admission file hash mismatch")
         if bundle.get("status") != "authorized":
             raise BatchValidationError("treatment admission is prepared but not authorized")
         treatment_check = subprocess.run(
-            [sys.executable, str(repo_root / "scripts/stage123_control_reuse.py"), "validate-treatment", "--admission", str(bundle_path), "--run-id", "frac25-stage2"],
+            [sys.executable, str(repo_root / "scripts/stage123_control_reuse.py"), "validate-treatment", "--admission", str(bundle_path), "--run-id", str(bundle.get("expected_run_ids", [""])[0])],
             text=True,
             capture_output=True,
             check=False,
@@ -276,8 +276,12 @@ def validate_admission_bundle(bundle: dict[str, Any], bundle_path: Path, repo_ro
         if treatment_check.returncode != 0:
             raise BatchValidationError(f"treatment admission validation failed: {treatment_check.stderr.strip() or treatment_check.stdout.strip()}")
         run_ids = tuple(bundle.get("expected_run_ids", ()))
-        if run_ids != ("frac25-stage2", "frac25-stage3") or tuple(expected_run_ids or run_ids) != run_ids:
-            raise BatchValidationError("treatment admission run ids must be exactly Stage2 then Stage3")
+        expected_by_type = {
+            "stage123_treatment_reuse_admission": ("frac25-stage2", "frac25-stage3"),
+            "stage123_stage2_handoff_admission": ("frac25-stage3",),
+        }
+        if run_ids != expected_by_type[bundle["bundle_type"]] or tuple(expected_run_ids or run_ids) != run_ids:
+            raise BatchValidationError("treatment admission run ids do not match its admission type")
         certificate_path = Path(str(bundle.get("certificate_path", "")))
         if not certificate_path.is_file() or file_sha256(certificate_path) != bundle.get("certificate_sha256"):
             raise BatchValidationError("treatment control certificate binding mismatch")
@@ -297,7 +301,7 @@ def validate_admission_bundle(bundle: dict[str, Any], bundle_path: Path, repo_ro
             for run_id in run_ids
         ]
         return {
-            "adapter_type": "stage123_treatment_reuse_v1",
+            "adapter_type": "stage123_treatment_reuse_v1" if bundle["bundle_type"] == "stage123_treatment_reuse_admission" else "stage123_stage2_handoff_v1",
             "commands": commands,
             "command_sha256": sha256_json(commands),
             "bindings": {
@@ -944,7 +948,7 @@ class BatchExecutor:
                     "STAGE123_BATCH_ITEM_ID": item.item_id,
                     "STAGE123_BATCH_ADMISSION_BUNDLE_SHA256": item.admission_bundle_sha256,
                 }
-                if item.adapter_type == "stage123_treatment_reuse_v1":
+                if item.adapter_type in {"stage123_treatment_reuse_v1", "stage123_stage2_handoff_v1"}:
                     phase_env["STAGE123_TREATMENT_REUSE_ADMISSION"] = str(item.admission_bundle_path)
                     phase_env["STAGE123_ADMISSION_BUNDLE"] = str(item.admission_bundle_path)
                 spec = RunSpec(

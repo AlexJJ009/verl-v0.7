@@ -118,8 +118,8 @@ def stage_environment(manifest: dict, run: dict, environment: dict[str, str]) ->
         stage2 = run_by_id(manifest, source["run_id"])
         environment.update(
             {
-                "STAGE2_MODEL2_PATH": str(Path(stage2["artifact_dir"]) / "stage2_final_model2"),
-                "STAGE2_PROVENANCE_FILE": stage2["provenance_file"],
+                "STAGE2_MODEL2_PATH": source.get("model2_path", str(Path(stage2["artifact_dir"]) / "stage2_final_model2")),
+                "STAGE2_PROVENANCE_FILE": source.get("provenance_file", stage2["provenance_file"]),
             }
         )
     return environment

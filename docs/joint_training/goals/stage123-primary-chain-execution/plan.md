@@ -1,8 +1,8 @@
 # Stage123 Primary Chain Experiment Execution
 
 - Goal ID: `stage123-primary-chain-execution`
-- Plan version: `13`
-- Plan status: `DRAFT - V13 CERTIFIED CONTROL-REUSE AMENDMENT`
+- Plan version: `14`
+- Plan status: `DRAFT - V14 CERTIFIED STAGE2-HANDOFF AMENDMENT`
 - Serial position: `4 of 4`
 - Prerequisite Goal: `stage123-execution-readiness` completed with an immutable
   independently accepted admission bundle
@@ -195,7 +195,8 @@ may start against the predecessor two-run bundle.
 | --- | --- | --- |
 | Pre-launch binding, control construction, storage, dependency, or scorer failure | Do not start Ray; return to Readiness or classify the blocking finding | `INCONCLUSIVE` |
 | Valid control completes; Stage2 or extraction fails | Preserve control and failure evidence; do not substitute another chain | `INCONCLUSIVE` |
-| Valid Stage2 completes; Stage3 fails or uses invalid provenance | Preserve all artifacts; no ad hoc continuation or replacement checkpoint | `INCONCLUSIVE` |
+| Valid Stage2 completes; Stage3 fails before wrapper/training work solely at a certified admission boundary | Preserve the old terminal item and artifacts; create a new Stage3-only identity only through the V14 certified handoff protocol | `INCONCLUSIVE` until the new Stage3 completes |
+| Valid Stage2 completes; Stage3 fails after wrapper/training work, uses invalid provenance, or lacks V14 certificate proof | Preserve all artifacts; no continuation or replacement checkpoint | `INCONCLUSIVE` |
 | Both final arms valid and support rule passes | Produce bound decision/report; release remains separately gated | `HYPOTHESIS_SUPPORTED` |
 | Both final arms valid and support rule fails | Produce bound decision/report without adding P60/FRAC50 | `HYPOTHESIS_REJECTED_FOR_CONFIGURATION` |
 | Metrics are mixed but valid | Apply the frozen rule; record the full delta vector | support or reject by rule, never `INCONCLUSIVE` merely because the result is inconvenient |
@@ -318,7 +319,9 @@ may start against the predecessor two-run bundle.
 - Given the admitted Stage2 configuration,
 - When Stage2 reaches terminal state,
 - Then its final step, full required validation, checkpoint, metrics, resource
-  profile, manifest binding, and cleanup state are complete and structured.
+  profile, manifest binding, and cleanup state are complete and structured. A V14
+  Stage3-only recovery may consume it only after a certificate binds all of that
+  evidence and proves that the prior Stage3 failure was pre-training work.
 - Verification command:
   `STAGE2_RUN_NAME=$(REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/experiment_manifest.py run recipe/on_policy_wdl_sft/experiment_manifest/stage123.yaml --run-id frac25-stage2 --field run_prefix) && REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/training_result_release_gate.py check --run-name "$STAGE2_RUN_NAME"`
 - Expected evidence: persisted completed state, checkpoint/metrics paths, validation
@@ -330,7 +333,9 @@ may start against the predecessor two-run bundle.
 - When model2 is extracted,
 - Then the extracted artifact and provenance bind source run, source checkpoint,
   final Stage2 step, submodel index, manifest/profile/commit hashes, output hash, and
-  release eligibility; any mismatch blocks Stage3.
+  release eligibility; any mismatch blocks Stage3. A V14 handoff certificate must
+  bind the extracted-model2 tree hash and the Stage2 provenance/metrics hashes before
+  a new Stage3-only identity can reference the artifact.
 - Verification command:
   `REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python -m pytest -q tests/experiment_workflow/test_stage123_end_to_end.py tests/experiment_workflow/test_stage123_preflight_model_identity.py`
 - Expected evidence: runtime provenance validation plus artifact hashes.
@@ -341,6 +346,10 @@ may start against the predecessor two-run bundle.
 - When Stage3 runs,
 - Then it uses only that input, reaches its admitted final step, completes required
   validation, writes checkpoint/metrics/provenance, and reaches a clean terminal state.
+- A V14 Stage3-only identity is permitted only when its independent admission binds a
+  certified completed Stage2 handoff, a new state root/monitor/provenance root, and
+  the exact original Stage3 scientific configuration. It is not a retry or resume of
+  the terminal Stage2->Stage3 item.
 - Verification command:
   `STAGE3_RUN_NAME=$(REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/experiment_manifest.py run recipe/on_policy_wdl_sft/experiment_manifest/stage123.yaml --run-id frac25-stage3 --field run_prefix) && REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/training_result_release_gate.py check --run-name "$STAGE3_RUN_NAME"`
 - Expected evidence: completed persisted state and matching runtime artifacts.
@@ -358,6 +367,10 @@ may start against the predecessor two-run bundle.
   binding mismatch, or failed required host-health check fails closed before the
   affected training wrapper is invoked. A child process that only performs admission
   or pre-wrapper filesystem checks is not training work and must be reported as such.
+- The sole V14 exception to ordinary terminal-item routing is a certified completed
+  Stage2 handoff after a provably pre-training Stage3 admission failure. It creates a
+  new Stage3-only execution identity; it never mutates, resumes, retries, or rewrites
+  the old item, and all other terminal Stage3 failures remain terminal.
 - Verification command:
   `REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python -m pytest -q tests/experiment_workflow/test_failure_classifier.py tests/experiment_workflow/test_validation_deadline_cleanup.py tests/experiment_workflow/test_stage123_end_to_end.py`
 - Expected evidence: terminal failure record, cleanup, skipped-phase records,
@@ -607,3 +620,62 @@ execution wrappers, bounded zero-step requalification uses the exact ordered pha
 `stage2,stage3`. It never invokes Stage1, creates no control checkpoint, produces zero
 optimizer/training steps, and cannot replace or modify the certified completed control.
 The calibration renderer and result validator must reject every other subset.
+
+## Plan v14 Certified Stage2-Handoff Amendment
+
+This amendment resolves `F-EX-M2-25`. It is limited to the concrete terminal item
+`treatment-reuse-20260716T0317Z`: its Stage2 child completed 20 admitted steps and
+produced `stage2_final_joint`, `stage2_final_model2`, metrics, and provenance; its
+Stage3 child exited at treatment admission before the Stage3 wrapper or training work
+because the now-removed host-facts age gate rejected the bound facts. The old state,
+queue log, admission, checkpoints, and artifacts remain immutable terminal evidence.
+
+### Certified Stage2-Handoff Boundary
+
+A handoff is eligible only when a deterministic certificate independently verifies:
+
+1. the source item is terminal and its Stage2 state completed exactly once with no
+   retry/resume;
+2. the Stage2 provenance is release-eligible and its manifest hash, train-data hash,
+   final step, metrics hash, extracted-model2 path, and extracted-model2 tree hash all
+   match the preserved source files;
+3. the source Stage3 state failed exactly once before training work, and the bound
+   queue log proves failure at the treatment-admission boundary; any Stage3 checkpoint,
+   metrics, validation, provenance, Ray workload, optimizer step, or GPU training
+   evidence rejects handoff; and
+4. the original treatment manifest, control-reuse certificate, admission, host-facts
+   binding, and resource-profile/training-plane identities remain recomputable and
+   mutually consistent.
+
+The certificate must fail closed on every missing, changed, or contradictory path.
+It stores the source paths and SHA256/tree hashes, the old terminal-state hashes, the
+old failure boundary, and the exact extracted model2 path. It does not grant launch
+authorization.
+
+### New Stage3-Only Identity
+
+Only a passing certificate may prepare a new execution identity containing exactly
+`frac25-stage3`. Preparation must create a new manifest with the original Stage3
+scientific settings unchanged, bind `STAGE2_MODEL2_PATH` and `STAGE2_PROVENANCE_FILE`
+to the certified source paths, and create a separate admission file, batch manifest,
+state root, monitor path, and provenance root. It must not copy, delete, or modify any
+old state or checkpoint. Direct Stage3 invocation and batch execution both validate
+the new admission and certificate; authorization repeats host-facts schema/`ok`,
+host-facts hash, GPU inventory, and resource-profile identity checks without any
+wall-clock TTL.
+
+The final decision/report must disclose both the certified control reuse and certified
+Stage2 handoff reuse, including their certificate hashes and the fact that Stage3 ran
+under a new identity after a pre-training admission failure. A Stage3 training,
+provenance, binding, or validation failure after this new identity starts is terminal
+and cannot create another handoff.
+
+### V14 Verification
+
+- `REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python -m pytest -q tests/experiment_workflow/test_stage123_control_reuse.py tests/experiment_workflow/test_stage123_end_to_end.py tests/experiment_workflow/test_manifest_queue_monitor_contract.py`
+- A CPU fixture must prove: an eligible completed Stage2 plus pre-training Stage3
+  failure creates an exact Stage3-only admission; altered Stage2 provenance/model tree,
+  post-wrapper Stage3 evidence, invalid host facts, or an attempted old-root reuse all
+  fail closed.
+- Before GPU launch, `batch-validate` must accept the new one-phase manifest and
+  reject any manifest containing Stage2 or an old state root.
