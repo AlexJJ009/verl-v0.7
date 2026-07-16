@@ -267,7 +267,14 @@ def validate_acceptance_report(report: dict[str, Any], bundle: dict[str, Any], *
     return EvidenceDecision(True, "accepted", "acceptance report authorizes readiness", {})
 
 
-def validate_current_checkout(bundle: dict[str, Any], repo_root: Path, protected_baseline: Path, *, require_accepted: bool = False) -> EvidenceDecision:
+def validate_current_checkout(
+    bundle: dict[str, Any],
+    repo_root: Path,
+    protected_baseline: Path,
+    *,
+    require_accepted: bool = False,
+    enforce_result_freshness: bool = True,
+) -> EvidenceDecision:
     inputs = bundle.get("inputs")
     if not isinstance(inputs, dict):
         return EvidenceDecision(False, "admission_inputs", "admission bundle lacks canonical input paths", {})
@@ -294,8 +301,9 @@ def validate_current_checkout(bundle: dict[str, Any], repo_root: Path, protected
                 return EvidenceDecision(False, "input_hash", f"{key} does not match admission bundle", {})
         if rendered_resource_profile_sha256(profile_path) != expected["resource_profile_sha256"]:
             return EvidenceDecision(False, "resource_profile", "resource profile has changed", {})
-        enforce_freshness(calibration, int(manifest["calibration_policy"]["calibration_result_max_age_seconds"]), "calibration result")
-        enforce_freshness(preflight, int(manifest["preflight"]["result_max_age_seconds"]), "preflight result")
+        if enforce_result_freshness:
+            enforce_freshness(calibration, int(manifest["calibration_policy"]["calibration_result_max_age_seconds"]), "calibration result")
+            enforce_freshness(preflight, int(manifest["preflight"]["result_max_age_seconds"]), "preflight result")
     except (OSError, KeyError, ValueError, subprocess.CalledProcessError) as exc:
         return EvidenceDecision(False, "current_checkout", str(exc), {})
     if require_accepted:
@@ -307,6 +315,71 @@ def validate_current_checkout(bundle: dict[str, Any], repo_root: Path, protected
         if not decision.authorized:
             return decision
     return EvidenceDecision(True, "authorized", "current checkout matches admission bundle", {})
+
+
+def validate_batch_phase_admission(
+    bundle: dict[str, Any],
+    bundle_path: Path,
+    record_path: Path,
+    repo_root: Path,
+    *,
+    run_id: str,
+    batch_id: str,
+    batch_manifest_sha256: str,
+    item_id: str,
+    admission_bundle_sha256: str,
+    command_sha256: str,
+    record_sha256: str,
+) -> EvidenceDecision:
+    try:
+        record = load_object(record_path)
+        unsigned = {key: value for key, value in record.items() if key != "record_sha256"}
+        if record.get("record_sha256") != result_sha256(unsigned) or record.get("record_sha256") != record_sha256:
+            return EvidenceDecision(False, "batch_admission_record_hash", "batch admission record hash mismatch", {})
+        expected = {
+            "schema_version": 1,
+            "status": "active",
+            "batch_id": batch_id,
+            "batch_manifest_sha256": batch_manifest_sha256,
+            "item_id": item_id,
+            "admission_bundle_sha256": admission_bundle_sha256,
+            "command_sha256": command_sha256,
+        }
+        mismatched = [key for key, value in expected.items() if record.get(key) != value]
+        if mismatched:
+            return EvidenceDecision(False, "batch_admission_record_binding", "batch admission record binding mismatch", {"mismatched": mismatched})
+        run_ids = record.get("expected_run_ids")
+        if not isinstance(run_ids, list) or run_id not in run_ids:
+            return EvidenceDecision(False, "batch_admission_run_id", "run id is not admitted for the active batch item", {"run_id": run_id})
+        if file_sha256(bundle_path) != admission_bundle_sha256:
+            return EvidenceDecision(False, "batch_admission_bundle_hash", "admission bundle file hash mismatch", {})
+        state_path = Path(record["batch_state_path"])
+        state = load_object(state_path)
+        active = state.get("current_item_admission")
+        if (
+            state.get("status") != "running"
+            or state.get("current_item_id") != item_id
+            or not isinstance(active, dict)
+            or active.get("path") != str(record_path)
+            or active.get("sha256") != record_sha256
+        ):
+            return EvidenceDecision(False, "batch_admission_not_live", "batch item admission is not live", {})
+    except (OSError, KeyError, ValueError, json.JSONDecodeError) as exc:
+        return EvidenceDecision(False, "batch_admission_record", str(exc), {})
+    structural = validate_admission_bundle(bundle, require_accepted=True)
+    if not structural.authorized:
+        return structural
+    inputs = bundle.get("inputs", {})
+    baseline = inputs.get("protected_baseline")
+    if not isinstance(baseline, str) or not baseline:
+        return EvidenceDecision(False, "protected_baseline", "protected baseline is required", {})
+    return validate_current_checkout(
+        bundle,
+        repo_root,
+        Path(baseline),
+        require_accepted=True,
+        enforce_result_freshness=False,
+    )
 
 
 def validate_admission_bundle(bundle: dict[str, Any], *, require_accepted: bool = False) -> EvidenceDecision:
@@ -507,6 +580,17 @@ def admission_main(argv: list[str]) -> int:
     validate.add_argument("--acceptance-report", type=Path)
     validate.add_argument("--protected-baseline", type=Path)
     validate.add_argument("--repo-root", type=Path, required=True)
+    validate_phase = sub.add_parser("validate-phase")
+    validate_phase.add_argument("--bundle", type=Path, required=True)
+    validate_phase.add_argument("--record", type=Path, required=True)
+    validate_phase.add_argument("--record-sha256", required=True)
+    validate_phase.add_argument("--run-id", required=True)
+    validate_phase.add_argument("--batch-id", required=True)
+    validate_phase.add_argument("--batch-manifest-sha256", required=True)
+    validate_phase.add_argument("--item-id", required=True)
+    validate_phase.add_argument("--admission-bundle-sha256", required=True)
+    validate_phase.add_argument("--command-sha256", required=True)
+    validate_phase.add_argument("--repo-root", type=Path, required=True)
     render = sub.add_parser("render-launch")
     render.add_argument("--bundle", type=Path, required=True)
     render.add_argument("--repo-host", type=Path, required=True)
@@ -526,6 +610,23 @@ def admission_main(argv: list[str]) -> int:
         actual_hash = result_sha256(unsigned)
         if expected_hash != actual_hash:
             decision = EvidenceDecision(False, "bundle_hash", "admission bundle hash mismatch", {"expected": expected_hash, "actual": actual_hash})
+        elif args.action == "validate-phase":
+            if expected_hash != actual_hash:
+                decision = EvidenceDecision(False, "bundle_hash", "admission bundle hash mismatch", {"expected": expected_hash, "actual": actual_hash})
+            else:
+                decision = validate_batch_phase_admission(
+                    bundle,
+                    args.bundle,
+                    args.record,
+                    args.repo_root,
+                    run_id=args.run_id,
+                    batch_id=args.batch_id,
+                    batch_manifest_sha256=args.batch_manifest_sha256,
+                    item_id=args.item_id,
+                    admission_bundle_sha256=args.admission_bundle_sha256,
+                    command_sha256=args.command_sha256,
+                    record_sha256=args.record_sha256,
+                )
         else:
             require_accepted = args.action == "render-launch" or getattr(args, "require_accepted", False)
             decision = validate_admission_bundle(bundle, require_accepted=require_accepted)
@@ -539,7 +640,7 @@ def admission_main(argv: list[str]) -> int:
                         decision = EvidenceDecision(False, "protected_baseline", "protected baseline is required", {})
                     else:
                         decision = validate_current_checkout(bundle, validation_root, Path(baseline_value), require_accepted=require_accepted)
-        if args.action == "validate":
+        if args.action in {"validate", "validate-phase"}:
             print(json.dumps(decision.as_dict(), sort_keys=True))
             return 0 if decision.authorized else 1
         if not decision.authorized:
@@ -555,7 +656,7 @@ def admission_main(argv: list[str]) -> int:
 def main() -> int:
     if len(sys.argv) >= 2 and sys.argv[1] == "admission":
         return admission_main(sys.argv[2:])
-    raise SystemExit("usage: execution_results.py admission {validate,render-launch} ...")
+    raise SystemExit("usage: execution_results.py admission {validate,validate-phase,render-launch} ...")
 
 
 if __name__ == "__main__":

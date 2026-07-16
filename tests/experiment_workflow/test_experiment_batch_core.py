@@ -39,11 +39,13 @@ class FakeAdapter:
         self.on_start = on_start
         self.on_poll = on_poll
         self.started: list[list[str]] = []
+        self.environments: list[dict[str, str]] = []
         self.results: dict[str, int] = {}
 
     def start(self, command: list[str], env: dict[str, str]) -> str:
         child_id = str(len(self.started) + 1)
         self.started.append(command)
+        self.environments.append(dict(env))
         self.results[child_id] = self.outcomes.pop(0)
         if self.on_start is not None:
             self.on_start()
@@ -305,8 +307,14 @@ def test_stage123_accepted_bundle_maps_to_frozen_phase_adapter_commands(tmp_path
     tool = load_core()
     import execution_results
 
+    freshness_modes = []
     monkeypatch.setattr(execution_results, "validate_admission_bundle", lambda bundle, require_accepted: SimpleNamespace(authorized=True, code="accepted", message="ok"))
-    monkeypatch.setattr(execution_results, "validate_current_checkout", lambda bundle, repo_root, protected_baseline, require_accepted: SimpleNamespace(authorized=True, code="authorized", message="ok"))
+    monkeypatch.setattr(
+        execution_results,
+        "validate_current_checkout",
+        lambda bundle, repo_root, protected_baseline, require_accepted, **kwargs: freshness_modes.append(kwargs["enforce_result_freshness"])
+        or SimpleNamespace(authorized=True, code="authorized", message="ok"),
+    )
     input_path = tmp_path / "input.json"; input_path.write_text("{}")
     report_path = tmp_path / "acceptance.json"; report_path.write_text("{}")
     bundle = {
@@ -321,6 +329,25 @@ def test_stage123_accepted_bundle_maps_to_frozen_phase_adapter_commands(tmp_path
         },
     }
     validated = tool.validate_admission_bundle(bundle, tmp_path / "bundle.json", ROOT)
+    tool.validate_admission_bundle(bundle, tmp_path / "bundle.json", ROOT, static_after_item_start=True)
     assert validated["adapter_type"] == "stage123_queue_v1"
     assert [command[-1] for command in validated["commands"]] == ["frac25-stage1-control", "frac25-stage2", "frac25-stage3"]
     assert all(command[2] == "/workspace/verl/scripts/stage123_phase_adapter.py" for command in validated["commands"])
+    assert freshness_modes == [True, False]
+
+
+def test_batch_item_persists_live_admission_and_passes_it_to_all_phases(tmp_path: Path) -> None:
+    tool = load_core()
+    item = make_item(tool, "one", "run-one", phases=2)
+    manifest = make_manifest(tool, tmp_path, [item])
+    adapter = FakeAdapter([0, 0])
+    state = tool.BatchExecutor(manifest, tmp_path / "state", adapter, FakeClock()).run()
+    assert state["status"] == "completed"
+    assert len(adapter.environments) == 2
+    record_path = Path(adapter.environments[0]["STAGE123_BATCH_ADMISSION_RECORD"])
+    record = json.loads(record_path.read_text())
+    assert record["status"] == "active"
+    assert record["expected_run_ids"] == list(item.expected_run_ids)
+    assert all(environment["STAGE123_BATCH_ADMISSION_RECORD"] == str(record_path) for environment in adapter.environments)
+    assert all(environment["STAGE123_BATCH_ADMISSION_RECORD_SHA256"] == record["record_sha256"] for environment in adapter.environments)
+    assert all(environment["STAGE123_BATCH_COMMAND_SHA256"] == item.command_sha256 for environment in adapter.environments)

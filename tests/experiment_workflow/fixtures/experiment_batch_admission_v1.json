@@ -1,17 +1,17 @@
 {
   "adapter_type": "stage123_queue_v1",
   "bindings": {
-    "evidence_commit": "999df137826f4488d1d052543e753040b20bf811",
-    "implementation_tree_sha256": "df0fb3e0fba227d2af25eb5cfbb8684eab5847614c9fbf2e010a676157de4134",
+    "evidence_commit": "425f844734607b6e02bcd83a1de702d6e3239a30",
+    "implementation_tree_sha256": "7bf078ec4cf86577eb6fdf6e71c207d3dec283454294c195ed4bafa5c3b2dbd4",
     "input_hashes": {},
     "protected_asset_hashes": {
       ".claude/skills/experiment-registry": "81c6e7996f6f0ccbc43479ebea9dfe6b30965fdd99779ad1b7bd2a074255b5b9",
       "docs/joint_training/plans/active/qwen3_1p7b_code_stage123_plateau_breakthrough.md": "f680d4c7111fd1dd9ae62288f4d695301a7c1b348e5b662f73e274e8d938c887",
       "test_data": "0cfbee3ef14536b9ce4a9769ed4e0461f734af104316830af21b3aa2f3c4bd70"
     },
-    "recipe_gitlink": "6fcccb353a87045a17f9d52b3821f0e20f7f9a9d"
+    "recipe_gitlink": "aa972ba489f75b9faebf42ae91307a542749faa3"
   },
-  "bundle_sha256": "7add3b164d92e038788eb5b5fd30762acdb71c8e67754a4fd508eba5360b0c12",
+  "bundle_sha256": "b050a65cf1f79179c09dd35da780a44bd59342d6795c91e2a91edd42e4ba884c",
   "bundle_type": "experiment_batch_admission",
   "canonical_commands": [
     [

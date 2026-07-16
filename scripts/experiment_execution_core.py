@@ -260,7 +260,14 @@ def _validate_hex(value: Any, length: int, label: str) -> str:
     return value
 
 
-def validate_admission_bundle(bundle: dict[str, Any], bundle_path: Path, repo_root: Path, expected_run_ids: list[str] | None = None) -> dict[str, Any]:
+def validate_admission_bundle(
+    bundle: dict[str, Any],
+    bundle_path: Path,
+    repo_root: Path,
+    expected_run_ids: list[str] | None = None,
+    *,
+    static_after_item_start: bool = False,
+) -> dict[str, Any]:
     if bundle.get("bundle_type") in {"stage123_treatment_reuse_admission", "stage123_stage2_handoff_admission"}:
         admission_hash = bundle.get("admission_sha256")
         if not isinstance(admission_hash, str) or admission_hash != sha256_json(_without_hash(bundle, "admission_sha256")):
@@ -325,7 +332,13 @@ def validate_admission_bundle(bundle: dict[str, Any], bundle_path: Path, repo_ro
         structural = validate_stage123_bundle(bundle, require_accepted=True)
         inputs = bundle.get("inputs", {})
         protected_baseline = Path(inputs.get("protected_baseline", ""))
-        current = validate_current_checkout(bundle, repo_root, protected_baseline, require_accepted=True)
+        current = validate_current_checkout(
+            bundle,
+            repo_root,
+            protected_baseline,
+            require_accepted=True,
+            enforce_result_freshness=not static_after_item_start,
+        )
         if not structural.authorized or not current.authorized:
             decision = structural if not structural.authorized else current
             raise BatchValidationError(f"Stage123 admission rejected: {decision.code}: {decision.message}")
@@ -473,7 +486,12 @@ def validate_admission_bundle(bundle: dict[str, Any], bundle_path: Path, repo_ro
     return {"adapter_type": adapter_type, "commands": commands, "command_sha256": command_hash, "bindings": bindings}
 
 
-def load_batch_manifest(path: Path, repo_root: Path | None = None) -> BatchManifest:
+def load_batch_manifest(
+    path: Path,
+    repo_root: Path | None = None,
+    *,
+    static_after_item_start: set[str] | None = None,
+) -> BatchManifest:
     repo_root = repo_root or Path(__file__).resolve().parents[1]
     try:
         raw = json.loads(path.read_text())
@@ -512,7 +530,13 @@ def load_batch_manifest(path: Path, repo_root: Path | None = None) -> BatchManif
         bundle_hash = file_sha256(resolved_bundle)
         if item.get("admission_bundle_sha256") != bundle_hash:
             raise BatchValidationError(f"admission bundle file hash mismatch for {item_id}")
-        validated = validate_admission_bundle(bundle, resolved_bundle, repo_root, expected)
+        validated = validate_admission_bundle(
+            bundle,
+            resolved_bundle,
+            repo_root,
+            expected,
+            static_after_item_start=item_id in (static_after_item_start or set()),
+        )
         commands = validated["commands"]
         if len(commands) != len(expected):
             raise BatchValidationError(f"phase command/run-id count mismatch for {item_id}")
@@ -700,6 +724,69 @@ class BatchExecutor:
         self.stop_requested = False
         self.continue_requested = False
         self.control_rejection: dict[str, Any] | None = None
+
+    def _admission_record_path(self, item: BatchItemSpec) -> Path:
+        return self.state_root / "admitted-items" / f"{item.item_id}.json"
+
+    def _write_item_admission(self, item: BatchItemSpec) -> dict[str, str]:
+        path = self._admission_record_path(item)
+        record = {
+            "schema_version": 1,
+            "status": "active",
+            "batch_id": self.manifest.batch_id,
+            "batch_manifest_sha256": self.manifest.batch_manifest_sha256,
+            "batch_state_path": str(self.batch_state_path),
+            "item_id": item.item_id,
+            "goal_id": item.goal_id,
+            "plan_sha256": item.plan_sha256,
+            "expected_run_ids": list(item.expected_run_ids),
+            "command_sha256": item.command_sha256,
+            "admission_bundle_path": str(item.admission_bundle_path),
+            "admission_bundle_sha256": item.admission_bundle_sha256,
+            "implementation_tree_sha256": item.implementation_tree_sha256,
+            "admitted_at": self.clock.now(),
+        }
+        record["record_sha256"] = sha256_json(record)
+        atomic_write(path, record)
+        return {"path": str(path), "sha256": record["record_sha256"]}
+
+    def _validate_live_item_admission(self, item: BatchItemSpec, active: dict[str, Any]) -> None:
+        path = Path(active.get("path", ""))
+        expected_sha = active.get("sha256")
+        try:
+            record = json.loads(path.read_text())
+        except (OSError, json.JSONDecodeError) as exc:
+            raise BatchValidationError(f"cannot read active admission record for {item.item_id}") from exc
+        unsigned = {key: value for key, value in record.items() if key != "record_sha256"}
+        if record.get("record_sha256") != sha256_json(unsigned) or record.get("record_sha256") != expected_sha:
+            raise BatchValidationError(f"active admission record hash mismatch for {item.item_id}")
+        expected = {
+            "status": "active",
+            "batch_id": self.manifest.batch_id,
+            "batch_manifest_sha256": self.manifest.batch_manifest_sha256,
+            "batch_state_path": str(self.batch_state_path),
+            "item_id": item.item_id,
+            "plan_sha256": item.plan_sha256,
+            "expected_run_ids": list(item.expected_run_ids),
+            "command_sha256": item.command_sha256,
+            "admission_bundle_sha256": item.admission_bundle_sha256,
+            "implementation_tree_sha256": item.implementation_tree_sha256,
+        }
+        mismatched = [key for key, value in expected.items() if record.get(key) != value]
+        if mismatched:
+            raise BatchValidationError(f"active admission record binding mismatch for {item.item_id}: {mismatched}")
+        if item.adapter_type == "cpu_fixture_v1":
+            return
+        bundle = json.loads(item.admission_bundle_path.read_text())
+        validated = validate_admission_bundle(
+            bundle,
+            item.admission_bundle_path,
+            self.manifest.repo_root,
+            list(item.expected_run_ids),
+            static_after_item_start=True,
+        )
+        if validated["command_sha256"] != item.command_sha256:
+            raise BatchValidationError(f"command binding changed for active item {item.item_id}")
     def _persist(self, state: dict[str, Any], event: str, **fields: Any) -> None:
         self.state_root.mkdir(parents=True, exist_ok=True)
         state["batch_revision"] = self.batch_revision
@@ -930,13 +1017,20 @@ class BatchExecutor:
                 return state
             if any(record.get("item_id") == item.item_id for record in state["items"]):
                 continue
+            active_admission = state.get("current_item_admission")
+            continuing_started_item = state.get("current_item_id") == item.item_id and isinstance(active_admission, dict)
             try:
-                self._validate_item_bindings(item)
+                if continuing_started_item:
+                    self._validate_live_item_admission(item, active_admission)
+                else:
+                    self._validate_item_bindings(item)
+                    active_admission = self._write_item_admission(item)
+                    state["current_item_id"] = item.item_id
+                    state["current_item_admission"] = active_admission
+                    self.batch_revision += 1
+                    self._persist(state, "item_started", item_id=item.item_id, admission_record_sha256=active_admission["sha256"])
             except BatchValidationError as exc:
                 return self._stop_for_shared_failure(state, "admission_binding_changed", str(exc))
-            state["current_item_id"] = item.item_id
-            self.batch_revision += 1
-            self._persist(state, "item_started", item_id=item.item_id)
             item_failed = False
             phase_records: list[dict[str, Any]] = []
             for phase_index, (run_id, command) in enumerate(zip(item.expected_run_ids, item.commands, strict=True)):
@@ -954,7 +1048,16 @@ class BatchExecutor:
                     "STAGE123_BATCH_MANIFEST_SHA256": self.manifest.batch_manifest_sha256,
                     "STAGE123_BATCH_ITEM_ID": item.item_id,
                     "STAGE123_BATCH_ADMISSION_BUNDLE_SHA256": item.admission_bundle_sha256,
+                    "STAGE123_ADMISSION_BUNDLE": str(item.admission_bundle_path),
                 }
+                if item.adapter_type in {"stage123_queue_v1", "cpu_fixture_v1"}:
+                    phase_env.update(
+                        {
+                            "STAGE123_BATCH_COMMAND_SHA256": item.command_sha256,
+                            "STAGE123_BATCH_ADMISSION_RECORD": active_admission["path"],
+                            "STAGE123_BATCH_ADMISSION_RECORD_SHA256": active_admission["sha256"],
+                        }
+                    )
                 if item.adapter_type in {"stage123_treatment_reuse_v1", "stage123_stage2_handoff_v1"}:
                     phase_env["STAGE123_TREATMENT_REUSE_ADMISSION"] = str(item.admission_bundle_path)
                     phase_env["STAGE123_ADMISSION_BUNDLE"] = str(item.admission_bundle_path)
@@ -1040,6 +1143,20 @@ def parse_command(value: str) -> list[str]:
     return parsed
 
 
+def active_item_ids_for_restart(manifest_path: Path, state_root: Path) -> set[str]:
+    try:
+        raw = json.loads(manifest_path.read_text())
+        batch_id = raw["batch_id"]
+        state = json.loads((state_root / f"{batch_id}.json").read_text())
+    except (OSError, KeyError, json.JSONDecodeError):
+        return set()
+    item_id = state.get("current_item_id")
+    active = state.get("current_item_admission")
+    if state.get("status") == "running" and isinstance(item_id, str) and isinstance(active, dict):
+        return {item_id}
+    return set()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("mode", choices=("queue", "phase", "batch-validate", "batch-run"))
@@ -1060,7 +1177,8 @@ def main() -> int:
             print(json.dumps({"ok": False, "failure": failure("batch_recovery_forbidden", "batch mode forbids --resume and --recovery-policy")}, sort_keys=True))
             return 2
         try:
-            manifest = load_batch_manifest(args.manifest, args.repo_root)
+            static_items = active_item_ids_for_restart(args.manifest, args.state_root) if args.mode == "batch-run" else set()
+            manifest = load_batch_manifest(args.manifest, args.repo_root, static_after_item_start=static_items)
             if args.mode == "batch-validate":
                 print(json.dumps({"ok": True, "batch_id": manifest.batch_id, "batch_manifest_sha256": manifest.batch_manifest_sha256, "items": [item.item_id for item in manifest.items]}, sort_keys=True))
                 return 0
