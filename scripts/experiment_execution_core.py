@@ -275,6 +275,13 @@ def validate_admission_bundle(bundle: dict[str, Any], bundle_path: Path, repo_ro
         )
         if treatment_check.returncode != 0:
             raise BatchValidationError(f"treatment admission validation failed: {treatment_check.stderr.strip() or treatment_check.stdout.strip()}")
+        identity = bundle.get("control_plane_identity")
+        if not isinstance(identity, dict):
+            raise BatchValidationError("treatment admission control-plane identity is required")
+        for key, length in (("plan_sha256", 64), ("implementation_tree_sha256", 64), ("evidence_commit", 40), ("recipe_gitlink", 40)):
+            value = _validate_hex(identity.get(key), length, key)
+            if set(value) == {"0"}:
+                raise BatchValidationError(f"treatment admission {key} cannot be all-zero")
         run_ids = tuple(bundle.get("expected_run_ids", ()))
         expected_by_type = {
             "stage123_treatment_reuse_admission": ("frac25-stage2", "frac25-stage3"),
@@ -305,9 +312,9 @@ def validate_admission_bundle(bundle: dict[str, Any], bundle_path: Path, repo_ro
             "commands": commands,
             "command_sha256": sha256_json(commands),
             "bindings": {
-                "implementation_tree_sha256": bundle.get("control_plane_implementation_tree_sha256", "0" * 64),
-                "evidence_commit": bundle.get("control_plane_evidence_commit", "0" * 40),
-                "recipe_gitlink": bundle.get("recipe_gitlink", "0" * 40),
+                "implementation_tree_sha256": identity["implementation_tree_sha256"],
+                "evidence_commit": identity["evidence_commit"],
+                "recipe_gitlink": identity["recipe_gitlink"],
                 "input_hashes": {str(certificate_path): bundle["certificate_sha256"], str(manifest_path): bundle["treatment_manifest_sha256"]},
             },
         }

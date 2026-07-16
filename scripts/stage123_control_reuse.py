@@ -20,6 +20,8 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 STAGE2_ID = "frac25-stage2"
 STAGE3_ID = "frac25-stage3"
+GOAL_PLAN = ROOT / "docs/joint_training/goals/stage123-primary-chain-execution/plan.md"
+IMPLEMENTATION_BOUNDARY = ROOT / "config/experiment_execution/stage123_implementation_boundary_v1.json"
 
 
 def canonical_json(value: object) -> str:
@@ -50,6 +52,24 @@ def workload_artifact_sha256(path: Path) -> str:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module.artifact_sha256(path)
+
+
+def current_control_plane_identity() -> dict[str, str]:
+    probe = subprocess.run(
+        [sys.executable, str(ROOT / "scripts/implementation_tree_identity.py"), "--repo-root", str(ROOT), "--boundary-manifest", str(IMPLEMENTATION_BOUNDARY)],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if probe.returncode != 0:
+        raise ValueError("cannot recompute implementation tree identity")
+    identity = json.loads(probe.stderr)
+    tree = identity.get("implementation_tree_sha256")
+    if not isinstance(tree, str) or len(tree) != 64:
+        raise ValueError("invalid implementation tree identity")
+    commit = subprocess.check_output(["git", "-C", str(ROOT), "rev-parse", "HEAD"], text=True).strip()
+    recipe = subprocess.check_output(["git", "-C", str(ROOT / "recipe"), "rev-parse", "HEAD"], text=True).strip()
+    return {"plan_sha256": digest(GOAL_PLAN), "implementation_tree_sha256": tree, "evidence_commit": commit, "recipe_gitlink": recipe}
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -658,6 +678,9 @@ def authorize_batch_manifest(prepared_path: Path, admission_path: Path, decision
     item = items[0]
     if item.get("admission_bundle_path") != str(admission_path):
         raise ValueError("prepared treatment batch manifest admission path mismatch")
+    identity = load_json(admission_path).get("control_plane_identity")
+    if not isinstance(identity, dict) or any(not isinstance(identity.get(key), str) or set(identity[key]) == {"0"} for key in ("plan_sha256", "implementation_tree_sha256", "evidence_commit", "recipe_gitlink")):
+        raise ValueError("authorized treatment admission lacks bound control-plane identity")
     authorized = dict(prepared)
     authorized.pop("prepared_not_authorized", None)
     authorized["authorization_id"] = decision_id
@@ -665,6 +688,8 @@ def authorize_batch_manifest(prepared_path: Path, admission_path: Path, decision
     authorized["prepared_batch_manifest_sha256"] = prepared_hash
     authorized_item = dict(item)
     authorized_item["admission_bundle_sha256"] = digest(admission_path)
+    authorized_item["plan_sha256"] = identity["plan_sha256"]
+    authorized_item["implementation_tree_sha256"] = identity["implementation_tree_sha256"]
     authorized["items"] = [authorized_item]
     authorized["batch_manifest_sha256"] = hashlib.sha256(canonical_json({key: value for key, value in authorized.items() if key != "batch_manifest_sha256"}).encode()).hexdigest()
     output = prepared_path.with_name("authorized-treatment-batch-manifest.json")
@@ -708,6 +733,7 @@ def authorize_treatment(args: argparse.Namespace) -> int:
         "gpu_inventory": rows,
         "resource_profile_sha256": profile_hash,
     }
+    admission["control_plane_identity"] = current_control_plane_identity()
     admission["admission_sha256"] = hashlib.sha256(canonical_json({key: value for key, value in admission.items() if key != "admission_sha256"}).encode()).hexdigest()
     args.admission.write_text(json.dumps(admission, indent=2, sort_keys=True) + "\n")
     batch_manifest = authorize_batch_manifest(args.batch_manifest, args.admission, args.decision_id)

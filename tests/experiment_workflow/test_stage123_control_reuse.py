@@ -308,6 +308,7 @@ def test_certified_stage2_handoff_prepares_new_stage3_only_identity(tmp_path: Pa
         return subprocess.CompletedProcess(command, 0, sha(paths["profile"]), "")
 
     monkeypatch.setattr(control_reuse.subprocess, "run", fake_run)
+    monkeypatch.setattr(control_reuse, "current_control_plane_identity", lambda: {"plan_sha256": "a" * 64, "implementation_tree_sha256": "b" * 64, "evidence_commit": "c" * 40, "recipe_gitlink": "d" * 40})
     args = SimpleNamespace(admission=admission, batch_manifest=output_root / "stage3-handoff-batch-manifest.json", host_facts=host_facts, decision_id="D-stage3")
     assert control_reuse.authorize_treatment(args) == 0
     authorized = output_root / "authorized-treatment-batch-manifest.json"
@@ -459,6 +460,7 @@ def test_authorize_treatment_accepts_old_host_facts_and_rejects_failed_facts_and
         return subprocess.CompletedProcess(command, 0, sha(paths["profile"]), "")
 
     monkeypatch.setattr(control_reuse.subprocess, "run", fake_matching_run)
+    monkeypatch.setattr(control_reuse, "current_control_plane_identity", lambda: {"plan_sha256": "a" * 64, "implementation_tree_sha256": "b" * 64, "evidence_commit": "c" * 40, "recipe_gitlink": "d" * 40})
     assert control_reuse.authorize_treatment(args) == 0
     result = subprocess.run(
         [sys.executable, str(TOOL), "validate-treatment", "--admission", str(admission), "--run-id", "frac25-stage3"],
@@ -507,6 +509,7 @@ def test_authorized_batch_manifest_rebinds_authorized_admission_without_rewritin
     admission_payload = json.loads(admission.read_text())
     admission_payload["status"] = "authorized"
     admission_payload["authorization"] = {"host_facts_path": str(host_facts), "host_facts_sha256": sha(host_facts)}
+    admission_payload["control_plane_identity"] = {"plan_sha256": "a" * 64, "implementation_tree_sha256": "b" * 64, "evidence_commit": "c" * 40, "recipe_gitlink": "d" * 40}
     admission_payload["admission_sha256"] = hashlib.sha256(json.dumps({key: value for key, value in admission_payload.items() if key != "admission_sha256"}, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     admission.write_text(json.dumps(admission_payload, sort_keys=True))
     prepared = output_root / "treatment-batch-manifest.json"
