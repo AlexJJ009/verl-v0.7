@@ -4,7 +4,7 @@ import importlib.util
 import json
 from pathlib import Path
 import subprocess
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -72,6 +72,27 @@ def host_facts(tmp_path: Path) -> Path:
         "mounts": {"checkpoint_mount": "/data-2/checkpoints"},
     }))
     return path
+
+
+def test_load_host_facts_accepts_old_bound_evidence_and_rejects_invalid_schema(tmp_path: Path):
+    module = load_module()
+    facts_path = host_facts(tmp_path)
+    payload = json.loads(facts_path.read_text())
+    payload["completed_at"] = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat().replace("+00:00", "Z")
+    facts_path.write_text(json.dumps(payload))
+
+    facts, facts_sha256 = module.load_host_facts(facts_path)
+
+    assert facts["ok"] is True
+    assert len(facts_sha256) == 64
+    payload["artifact_type"] = "wrong_schema"
+    facts_path.write_text(json.dumps(payload))
+    try:
+        module.load_host_facts(facts_path)
+    except ValueError as exc:
+        assert "unsupported host facts schema" in str(exc)
+    else:
+        raise AssertionError("invalid host facts schema was accepted")
 
 
 def test_preflight_binds_repo_model_identity_and_reports_pending_stage3(tmp_path, monkeypatch, capsys):

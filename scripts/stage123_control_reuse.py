@@ -343,9 +343,8 @@ def validate_treatment(args: argparse.Namespace) -> int:
         if not facts_path.is_file() or digest(facts_path) != authorization.get("host_facts_sha256"):
             raise ValueError("authorized treatment host facts binding mismatch")
         facts = load_json(facts_path)
-        completed = datetime.fromisoformat(str(facts.get("completed_at", "")).replace("Z", "+00:00"))
-        if facts.get("ok") is not True or (datetime.now(timezone.utc) - completed).total_seconds() > 900:
-            raise ValueError("authorized treatment host facts are stale or failed")
+        if facts.get("artifact_type") != "stage123_host_facts" or facts.get("ok") is not True:
+            raise ValueError("authorized treatment host facts are invalid or failed")
     print(json.dumps({"ok": True, "execution_id": admission.get("execution_id"), "status": admission.get("status")}, sort_keys=True))
     return 0
 
@@ -387,22 +386,20 @@ def authorize_treatment(args: argparse.Namespace) -> int:
     validate_args = argparse.Namespace(admission=args.admission, allow_prepared=True, run_id=STAGE2_ID)
     validate_treatment(validate_args)
     host_facts = load_json(args.host_facts)
-    completed = datetime.fromisoformat(str(host_facts.get("completed_at", "")).replace("Z", "+00:00"))
-    age = (datetime.now(timezone.utc) - completed).total_seconds()
-    if host_facts.get("artifact_type") != "stage123_host_facts" or host_facts.get("ok") is not True or age < -300 or age > 900:
-        raise ValueError("fresh host facts are missing, invalid, or stale")
+    if host_facts.get("artifact_type") != "stage123_host_facts" or host_facts.get("ok") is not True:
+        raise ValueError("host facts are missing, invalid, or failed")
     if host_facts.get("tmux", {}).get("stage123_conflicts"):
-        raise ValueError("fresh host facts report an active Stage123 conflict")
+        raise ValueError("host facts report an active Stage123 conflict")
     gpu = subprocess.run(["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"], text=True, capture_output=True, check=False)
     rows = [row.strip() for row in gpu.stdout.splitlines() if row.strip()]
     if gpu.returncode != 0 or rows != ["NVIDIA L40S"] * 8:
-        raise ValueError("fresh GPU inventory is not exactly eight NVIDIA L40S devices")
+        raise ValueError("GPU inventory is not exactly eight NVIDIA L40S devices")
     profile = ROOT / "recipe/on_policy_wdl_sft/code_task/qwen3_1p7b_stage123_resource_profile.sh"
     profile_result = subprocess.run(["bash", "-lc", f"source {profile}; stage123_profile_hash"], text=True, capture_output=True, check=False)
     profile_hash = profile_result.stdout.strip()
     certificate = validate_certificate(Path(admission["certificate_path"]))
     if profile_result.returncode != 0 or profile_hash != certificate["training_plane"]["resource_profile_sha256"]:
-        raise ValueError("fresh resource profile identity does not match certified control")
+        raise ValueError("resource profile identity does not match certified control")
     admission["status"] = "authorized"
     admission["authorization"] = {
         "decision_id": args.decision_id,

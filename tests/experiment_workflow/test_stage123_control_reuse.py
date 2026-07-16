@@ -217,7 +217,7 @@ def test_prepare_rejects_non_data2_artifact_root(tmp_path: Path):
     assert "treatment artifact root must remain under /data-2" in result.stderr
 
 
-def test_authorize_treatment_rejects_stale_host_facts_and_profile_mismatch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_authorize_treatment_accepts_old_host_facts_and_rejects_failed_facts_and_profile_mismatch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     paths = fixture(tmp_path)
     certificate = tmp_path / "certificate.json"
     assert certify(paths, certificate).returncode == 0
@@ -244,19 +244,18 @@ def test_authorize_treatment_rejects_stale_host_facts_and_profile_mismatch(tmp_p
     assert prepare.returncode == 0, prepare.stderr
     admission = output_root / "treatment-admission.json"
     host_facts = tmp_path / "host-facts.json"
-    stale = {
+    old_facts = {
         "artifact_type": "stage123_host_facts",
         "ok": True,
         "completed_at": (datetime.now(timezone.utc) - timedelta(minutes=16)).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         "tmux": {"stage123_conflicts": []},
     }
-    write_json(host_facts, stale)
+    write_json(host_facts, {**old_facts, "ok": False})
     args = SimpleNamespace(admission=admission, batch_manifest=output_root / "treatment-batch-manifest.json", host_facts=host_facts, decision_id="D-test")
-    with pytest.raises(ValueError, match="fresh host facts"):
+    with pytest.raises(ValueError, match="host facts are missing, invalid, or failed"):
         control_reuse.authorize_treatment(args)
 
-    fresh = {**stale, "completed_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")}
-    write_json(host_facts, fresh)
+    write_json(host_facts, old_facts)
 
     def fake_run(command: list[str], **_: object) -> subprocess.CompletedProcess[str]:
         if command[0] == "nvidia-smi":
@@ -266,6 +265,20 @@ def test_authorize_treatment_rejects_stale_host_facts_and_profile_mismatch(tmp_p
     monkeypatch.setattr(control_reuse.subprocess, "run", fake_run)
     with pytest.raises(ValueError, match="resource profile identity"):
         control_reuse.authorize_treatment(args)
+
+    def fake_matching_run(command: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        if command[0] == "nvidia-smi":
+            return subprocess.CompletedProcess(command, 0, "\n".join(["NVIDIA L40S"] * 8), "")
+        return subprocess.CompletedProcess(command, 0, sha(paths["profile"]), "")
+
+    monkeypatch.setattr(control_reuse.subprocess, "run", fake_matching_run)
+    assert control_reuse.authorize_treatment(args) == 0
+    result = subprocess.run(
+        [sys.executable, str(TOOL), "validate-treatment", "--admission", str(admission), "--run-id", "frac25-stage3"],
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_authorized_batch_manifest_rebinds_authorized_admission_without_rewriting_template(tmp_path: Path):
