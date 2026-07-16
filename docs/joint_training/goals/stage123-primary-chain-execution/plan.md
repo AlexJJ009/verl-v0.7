@@ -1,8 +1,8 @@
 # Stage123 Primary Chain Experiment Execution
 
 - Goal ID: `stage123-primary-chain-execution`
-- Plan version: `17`
-- Plan status: `READY - V16 UNIFIED VALIDATION PROTOCOL RERUN`
+- Plan version: `18`
+- Plan status: `READY - V18 RESOURCE-NEUTRAL CALIBRATION APPLICABILITY`
 - Serial position: `4 of 4`
 - Prerequisite Goal: `stage123-execution-readiness` completed with an immutable
   independently accepted admission bundle
@@ -26,9 +26,14 @@ operationally inconclusive.
   experiment also requires one matched pure-Stage1 control.
 - Execution is operational work, not implementation: a code/config/manifest/profile
   change invalidates admission and returns to Readiness.
-- The accepted bundle includes `implementation_tree_sha256`; a production-tree
-  change returns first to Calibration Qualification, while evidence-only expiry or
-  live-preflight change returns to Readiness.
+- The accepted bundle includes `implementation_tree_sha256`. A production-tree or
+  profile change returns to GPU Calibration Qualification only when a fail-closed
+  capacity-identity comparison detects a model, topology, maximum-length, batch,
+  parallelism, worker, timeout, memory-utilization, or memory-layout change. A
+  decoder-only, audit-only, or fresh output-identity change may reuse the prior
+  accepted zero-step calibration only after a CPU-recomputed applicability report
+  proves the complete capacity field set unchanged; it still requires fresh
+  manifest, implementation, preflight, admission, and independent review bindings.
 - A historical pure-Stage1 step100 aggregate exists in the offline W&B output log,
   but it is not the control for this experiment: it used response length `4096`, the
   retained step100 checkpoint no longer exists, and current Stage123 uses response
@@ -796,3 +801,50 @@ previously validated runtime state and the independent V16 plan review. It makes
 change to the V16 outcome, ACs, experiment matrix, decoder contract, training-plane
 parameters, user authorization, or prerequisite requirements. The V16 fresh-chain
 contract remains the sole operative execution contract.
+
+## Plan v18 Resource-Neutral Calibration Applicability Amendment
+
+This amendment resolves `F-EX-PLAN-12` under the user's explicit authorization on
+July 16, 2026. It corrects an efficiency defect in the prerequisite flow without
+weakening launch admission or the scientific contract.
+
+### Capacity Identity Boundary
+
+GPU requalification is required when any capacity-plane field changes: model or
+checkpoint architecture, phase topology, maximum prompt/response/model/token lengths,
+training or rollout batch sizes, microbatch sizes, tensor/sequence/FSDP parallelism,
+GPU count/type, rollout memory utilization, worker or concurrency counts, evaluator
+resource limits/timeouts, Ray memory controls, attention backend, precision, optimizer
+state behavior, or checkpoint memory layout.
+
+GPU requalification is not required when the changed fields are limited to validation
+decoder semantics, audit/validation implementation, manifest hashes, implementation
+identity, run names, tmux names, or fresh output/scratch paths, provided a CPU-only
+calibration-applicability check:
+
+1. reconstructs the accepted calibration's capacity snapshot from its bound manifest,
+   profile serialization, implementation boundary, and calibration result;
+2. computes the candidate capacity snapshot from the committed candidate;
+3. reports the exact field-level diff and fails unless that diff is empty;
+4. verifies the source calibration decision was `passed`, covered Stage1/Stage2/Stage3,
+   used zero training steps, released owned resources, and remains bound to the same
+   model architecture and workload shapes; and
+5. binds the source calibration hash, old and new capacity hashes, candidate manifest,
+   implementation tree, recipe gitlink, Plan hash, and user authorization into the
+   refreshed admission bundle.
+
+Changing or omitting any capacity field, using an unaccepted calibration, or failing
+to recompute either identity returns to GPU Calibration Qualification. The
+applicability path cannot authorize retry/resume, legacy V13/V14 artifact reuse,
+parameter tuning, or external publication.
+
+### V18 Execution Order
+
+1. Independently review this amendment.
+2. Implement and test the capacity-identity/applicability checker and fresh V16 output
+   identity from `F-EX-IMPL-02`.
+3. Recompute the candidate implementation tree, manifest, decoder audit, protected
+   baseline, host facts, preflight, and calibration applicability entirely on CPU.
+4. Independently review the committed applicability and fresh admission evidence.
+5. Launch exactly one fresh Control -> Stage2 -> extraction -> Stage3 chain in tmux
+   under the already recorded user authorization.
