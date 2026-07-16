@@ -56,6 +56,14 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def authorization_scope(phases: list[str]) -> str:
+    if phases == REQUIRED_PHASES:
+        return "full"
+    if phases == TREATMENT_ONLY_PHASES:
+        return "treatment_only"
+    raise ValueError(f"unsupported calibration phase set: {phases}")
+
+
 def write_json(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n")
@@ -394,6 +402,7 @@ def main() -> int:
     phases = args.phases.split(",")
     if phases not in ALLOWED_PHASE_SETS:
         raise SystemExit("phase_set")
+    scope = authorization_scope(phases)
     if args.training_steps != 0 or args.optimizer_enabled.lower() != "false":
         raise SystemExit("training_disabled")
     if not 1 <= args.repetitions <= 3:
@@ -443,7 +452,7 @@ def main() -> int:
     candidate = {
         "schema_version": 1,
         "result_type": "bounded_calibration_probe",
-        "authorization_scope": "full",
+        "authorization_scope": scope,
         "evidence_class": "infrastructure_calibration",
         "decision": "candidate",
         "manifest_sha256": args.manifest_sha256,
@@ -458,7 +467,7 @@ def main() -> int:
     }
     write_json(run_root / "probe-candidate.json", candidate)
     checked = subprocess.run(
-        [sys.executable, str(ROOT / "scripts/check_code_task_operational_calibration.py"), "--report", str(run_root / "probe-candidate.json"), "--manifest", str(args.manifest)],
+        [sys.executable, str(ROOT / "scripts/check_code_task_operational_calibration.py"), "--report", str(run_root / "probe-candidate.json"), "--manifest", str(args.manifest), "--authorization-scope", scope],
         text=True,
         capture_output=True,
         check=False,

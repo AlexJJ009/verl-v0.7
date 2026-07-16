@@ -76,6 +76,8 @@ def expected_phases(manifest: dict[str, Any], authorization_scope: str) -> list[
         return phases
     if authorization_scope == "stage12_producer":
         return ["stage1", "stage2"]
+    if authorization_scope == "treatment_only":
+        return ["stage2", "stage3"]
     raise ValueError(f"unsupported authorization scope: {authorization_scope}")
 
 

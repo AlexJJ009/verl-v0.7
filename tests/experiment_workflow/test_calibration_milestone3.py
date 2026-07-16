@@ -73,6 +73,7 @@ def test_result_schema_requires_complete_structured_result():
  comparisons=[{**comparison,'metric':metric} for metric in ('validation_elapsed_seconds','phase_elapsed_seconds','peak_rss_gib','gpu_wait_fraction')]
  value={'schema_version':1,'result_type':'calibration_result','decision':'passed','manifest_sha256':'a'*64,'resource_profile_sha256':'b'*64,'implementation_tree_sha256':'c'*64,'evidence_commit':'d'*40,'workload_identity':{'sha256':'e'*64},'policy_id':'stage123-calibration-policy-v1','policy_sha256':m.policy_sha256(policy),'authorization_identity':{'id':'auth'},'started_at':'2026-01-01T00:00:00Z','completed_at':'2026-01-01T00:01:00Z','phase_evidence':[{'phase':'stage1','status':'passed'},{'phase':'stage2','status':'passed'},{'phase':'stage3','status':'passed'}],'prediction_comparison':{'qualified':True,'policy_id':'stage123-calibration-policy-v1','policy_sha256':m.policy_sha256(policy),'comparisons':comparisons},'cleanup':{'resources_released':True},'failures':[]}
  assert m.validate(value,schema)['ok']; value['cleanup']['resources_released']=False; assert m.validate(value,schema)['failures'][0]['code']=='cleanup'
+ value['cleanup']['resources_released']=True; value['phase_evidence']=value['phase_evidence'][1:]; assert m.validate(value,schema)['ok']; value['phase_evidence'].reverse(); assert m.validate(value,schema)['failures'][0]['code']=='phase_evidence'
 
 def test_zero_step_driver_runs_exact_phase_matrix_and_stops_on_failure(tmp_path, monkeypatch):
  m=load('run_calibration_probe_zero_step',ROOT/'scripts/run_calibration_probe_zero_step.py')

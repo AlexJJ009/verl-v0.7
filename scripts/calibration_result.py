@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 REQUIRED=("decision","manifest_sha256","resource_profile_sha256","implementation_tree_sha256","evidence_commit","workload_identity","policy_id","policy_sha256","authorization_identity","started_at","completed_at","phase_evidence","prediction_comparison","cleanup","failures")
+ALLOWED_PHASE_SETS=(["stage1","stage2","stage3"],["stage2","stage3"])
 def _hex(value:Any,length:int)->bool: return isinstance(value,str) and len(value)==length and all(ch in '0123456789abcdef' for ch in value)
 def _time(value:Any):
     if not isinstance(value,str): return None
@@ -25,7 +26,8 @@ def validate(value:dict[str,Any],schema:dict[str,Any])->dict[str,Any]:
         if value.get('policy_id')!=policy.get('policy_id') or value.get('policy_sha256')!=expected_policy_sha: failures.append({'code':'policy_binding','message':'calibration policy binding mismatch','context':{}})
         if not isinstance(value.get('workload_identity'),dict) or not value['workload_identity']: failures.append({'code':'workload_identity','message':'workload identity is incomplete','context':{}})
         phases=value.get('phase_evidence')
-        if not isinstance(phases,list) or [item.get('phase') for item in phases if isinstance(item,dict)]!=policy['required_phases'] or any(item.get('status')!='passed' for item in phases if isinstance(item,dict)): failures.append({'code':'phase_evidence','message':'phase evidence is incomplete or blocked','context':{}})
+        phase_names=[item.get('phase') for item in phases if isinstance(item,dict)] if isinstance(phases,list) else []
+        if phase_names not in ALLOWED_PHASE_SETS or any(item.get('status')!='passed' for item in phases if isinstance(item,dict)): failures.append({'code':'phase_evidence','message':'phase evidence is incomplete or blocked','context':{}})
         prediction=value.get('prediction_comparison'); cleanup=value.get('cleanup')
         comparisons=prediction.get('comparisons') if isinstance(prediction,dict) else None
         metrics={item.get('metric') for item in comparisons if isinstance(item,dict)} if isinstance(comparisons,list) else set()

@@ -55,6 +55,15 @@ def test_valid_candidate_passes_with_structured_empty_failures():
     assert result == {"ok": True, "decision": "passed", "failures": [], "diagnostics": {}}
 
 
+def test_treatment_only_candidate_requires_exact_stage2_then_stage3():
+    checker = module(); data = manifest(); candidate = report(data)
+    candidate["authorization_scope"] = "treatment_only"
+    candidate["phases"] = candidate["phases"][1:]
+    assert checker.check(candidate, data, authorization_scope="treatment_only")["ok"]
+    candidate["phases"].reverse()
+    assert "phase_order" in failure_codes(checker.check(candidate, data, authorization_scope="treatment_only"))
+
+
 @pytest.mark.parametrize(
     ("mutation", "code"),
     [
@@ -87,6 +96,7 @@ def test_repetition_failure_codes_cover_timeout_exit_metrics_and_cleanup():
 
 def test_repetition_failure_context_uses_one_based_evidence_identity():
     checker = module(); data = manifest(); candidate = report(data)
+    selected_phase = candidate["phases"][1]["phase"]
     candidate["phases"][1]["repetitions"] = [
         {**repetition("passed"), "repetition": 1},
         {**repetition("passed"), "repetition": 2},
@@ -94,7 +104,7 @@ def test_repetition_failure_context_uses_one_based_evidence_identity():
     ]
     result = checker.check(candidate, data)
     failures = [item for item in result["failures"] if item["code"] in {"repetition_timeout", "repetition_status"}]
-    assert failures and all(item["context"]["phase"] == "stage3" for item in failures)
+    assert failures and all(item["context"]["phase"] == selected_phase for item in failures)
     assert all(item["context"]["repetition"] == 3 for item in failures)
 
 
