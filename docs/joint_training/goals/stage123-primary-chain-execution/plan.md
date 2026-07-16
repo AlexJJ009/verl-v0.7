@@ -1,8 +1,8 @@
 # Stage123 Primary Chain Experiment Execution
 
 - Goal ID: `stage123-primary-chain-execution`
-- Plan version: `16`
-- Plan status: `DRAFT - V16 UNIFIED VALIDATION PROTOCOL RERUN`
+- Plan version: `17`
+- Plan status: `READY - V16 UNIFIED VALIDATION PROTOCOL RERUN`
 - Serial position: `4 of 4`
 - Prerequisite Goal: `stage123-execution-readiness` completed with an immutable
   independently accepted admission bundle
@@ -788,3 +788,11 @@ path-level retention decision.
 6. Launch exactly one fresh Control -> Stage2 -> extraction -> Stage3 chain only
    after its explicit GPU admission is recorded; no reuse, retry, resume, parameter
    tuning, external publication, or external service is allowed.
+
+## Plan v17 Status Reconciliation Amendment
+
+This amendment resolves `F-EX-PLAN-11`. It aligns the visible Plan status with the
+previously validated runtime state and the independent V16 plan review. It makes no
+change to the V16 outcome, ACs, experiment matrix, decoder contract, training-plane
+parameters, user authorization, or prerequisite requirements. The V16 fresh-chain
+contract remains the sole operative execution contract.
