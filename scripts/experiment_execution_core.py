@@ -23,7 +23,7 @@ if str(SCRIPTS_DIR) not in sys.path:
 TERMINAL_STATES = {"succeeded", "failed", "deadline_exceeded", "cleanup_failed"}
 BATCH_TERMINAL_STATES = {"completed", "completed_with_failures", "shared_failure", "stopped"}
 CONTROL_ACTIONS = {"pause_after_current", "stop_now", "continue_remaining"}
-ACCEPTED_ADAPTER_TYPES = {"stage123_queue_v1", "cpu_fixture_v1"}
+ACCEPTED_ADAPTER_TYPES = {"stage123_queue_v1", "stage123_treatment_reuse_v1", "cpu_fixture_v1"}
 
 
 @dataclass(frozen=True)
@@ -260,7 +260,53 @@ def _validate_hex(value: Any, length: int, label: str) -> str:
     return value
 
 
-def validate_admission_bundle(bundle: dict[str, Any], bundle_path: Path, repo_root: Path) -> dict[str, Any]:
+def validate_admission_bundle(bundle: dict[str, Any], bundle_path: Path, repo_root: Path, expected_run_ids: list[str] | None = None) -> dict[str, Any]:
+    if bundle.get("bundle_type") == "stage123_treatment_reuse_admission":
+        admission_hash = bundle.get("admission_sha256")
+        if not isinstance(admission_hash, str) or admission_hash != sha256_json(_without_hash(bundle, "admission_sha256")):
+            raise BatchValidationError("treatment admission file hash mismatch")
+        if bundle.get("status") != "authorized":
+            raise BatchValidationError("treatment admission is prepared but not authorized")
+        treatment_check = subprocess.run(
+            [sys.executable, str(repo_root / "scripts/stage123_control_reuse.py"), "validate-treatment", "--admission", str(bundle_path), "--run-id", "frac25-stage2"],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if treatment_check.returncode != 0:
+            raise BatchValidationError(f"treatment admission validation failed: {treatment_check.stderr.strip() or treatment_check.stdout.strip()}")
+        run_ids = tuple(bundle.get("expected_run_ids", ()))
+        if run_ids != ("frac25-stage2", "frac25-stage3") or tuple(expected_run_ids or run_ids) != run_ids:
+            raise BatchValidationError("treatment admission run ids must be exactly Stage2 then Stage3")
+        certificate_path = Path(str(bundle.get("certificate_path", "")))
+        if not certificate_path.is_file() or file_sha256(certificate_path) != bundle.get("certificate_sha256"):
+            raise BatchValidationError("treatment control certificate binding mismatch")
+        manifest_path = Path(str(bundle.get("treatment_manifest_path", "")))
+        if not manifest_path.is_file() or file_sha256(manifest_path) != bundle.get("treatment_manifest_sha256"):
+            raise BatchValidationError("treatment manifest binding mismatch")
+        commands = [
+            [
+                "/data-1/verl07/run_train.sh",
+                "python",
+                "/workspace/verl/scripts/stage123_phase_adapter.py",
+                "--manifest",
+                str(manifest_path),
+                "--run-id",
+                run_id,
+            ]
+            for run_id in run_ids
+        ]
+        return {
+            "adapter_type": "stage123_treatment_reuse_v1",
+            "commands": commands,
+            "command_sha256": sha256_json(commands),
+            "bindings": {
+                "implementation_tree_sha256": bundle.get("control_plane_implementation_tree_sha256", "0" * 64),
+                "evidence_commit": bundle.get("control_plane_evidence_commit", "0" * 40),
+                "recipe_gitlink": bundle.get("recipe_gitlink", "0" * 40),
+                "input_hashes": {str(certificate_path): bundle["certificate_sha256"], str(manifest_path): bundle["treatment_manifest_sha256"]},
+            },
+        }
     if bundle.get("bundle_type") == "stage123_admission_bundle":
         from execution_results import validate_admission_bundle as validate_stage123_bundle
         from execution_results import validate_current_checkout
@@ -272,7 +318,7 @@ def validate_admission_bundle(bundle: dict[str, Any], bundle_path: Path, repo_ro
         if not structural.authorized or not current.authorized:
             decision = structural if not structural.authorized else current
             raise BatchValidationError(f"Stage123 admission rejected: {decision.code}: {decision.message}")
-        commands = [
+        all_commands = [
             [
                 "/data-1/verl07/run_train.sh",
                 "python",
@@ -284,6 +330,11 @@ def validate_admission_bundle(bundle: dict[str, Any], bundle_path: Path, repo_ro
             ]
             for run_id in ("frac25-stage1-control", "frac25-stage2", "frac25-stage3")
         ]
+        all_run_ids = ("frac25-stage1-control", "frac25-stage2", "frac25-stage3")
+        selected_run_ids = tuple(expected_run_ids or all_run_ids)
+        if selected_run_ids not in (all_run_ids, ("frac25-stage2", "frac25-stage3")):
+            raise BatchValidationError("unsupported Stage123 run subset")
+        commands = [command for run_id, command in zip(all_run_ids, all_commands, strict=True) if run_id in selected_run_ids]
         bindings = bundle["bindings"]
         input_hashes = {
             path: file_sha256(Path(path))
@@ -450,7 +501,7 @@ def load_batch_manifest(path: Path, repo_root: Path | None = None) -> BatchManif
         bundle_hash = file_sha256(resolved_bundle)
         if item.get("admission_bundle_sha256") != bundle_hash:
             raise BatchValidationError(f"admission bundle file hash mismatch for {item_id}")
-        validated = validate_admission_bundle(bundle, resolved_bundle, repo_root)
+        validated = validate_admission_bundle(bundle, resolved_bundle, repo_root, expected)
         commands = validated["commands"]
         if len(commands) != len(expected):
             raise BatchValidationError(f"phase command/run-id count mismatch for {item_id}")
@@ -638,7 +689,6 @@ class BatchExecutor:
         self.stop_requested = False
         self.continue_requested = False
         self.control_rejection: dict[str, Any] | None = None
-
     def _persist(self, state: dict[str, Any], event: str, **fields: Any) -> None:
         self.state_root.mkdir(parents=True, exist_ok=True)
         state["batch_revision"] = self.batch_revision
@@ -886,13 +936,24 @@ class BatchExecutor:
                 state["current_run_id"] = run_id
                 self.batch_revision += 1
                 self._persist(state, "phase_started", item_id=item.item_id, run_id=run_id, phase_index=phase_index)
+                phase_env = {
+                    **item.env,
+                    "STAGE123_BATCH_EXECUTION": "1",
+                    "STAGE123_BATCH_ID": self.manifest.batch_id,
+                    "STAGE123_BATCH_MANIFEST_SHA256": self.manifest.batch_manifest_sha256,
+                    "STAGE123_BATCH_ITEM_ID": item.item_id,
+                    "STAGE123_BATCH_ADMISSION_BUNDLE_SHA256": item.admission_bundle_sha256,
+                }
+                if item.adapter_type == "stage123_treatment_reuse_v1":
+                    phase_env["STAGE123_TREATMENT_REUSE_ADMISSION"] = str(item.admission_bundle_path)
+                    phase_env["STAGE123_ADMISSION_BUNDLE"] = str(item.admission_bundle_path)
                 spec = RunSpec(
                     run_id=run_id,
                     command=list(command),
                     timeout_seconds=item.timeout_seconds,
                     poll_seconds=item.poll_seconds,
                     cleanup_grace_seconds=item.cleanup_grace_seconds,
-                    env=item.env,
+                    env=phase_env,
                     max_attempts=1,
                     resumable_failure_codes=(),
                 )

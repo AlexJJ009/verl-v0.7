@@ -1,0 +1,31 @@
+{
+  "adapter_type": "stage123_queue_v1",
+  "bindings": {
+    "calibration_completed_at": "2026-07-15T06:16:57.005781Z",
+    "calibration_result_sha256": "24647c4c5031ab199e40a2338b18dec02788c355600bed96192bb22faf43f880",
+    "implementation_tree_sha256": "0958211eec8ee0169261b1dba24bc33d0a930249e76f741a9599d7378e8072fc",
+    "manifest_sha256": "323bcc6084c1b01653bdf3cb5b299cab51c76864c8ca24878a9e5b002cb76278",
+    "preflight_completed_at": "2026-07-15T08:54:23Z",
+    "preflight_result_sha256": "a2c4148ca84d45ad299961dfaca4c5756837907a9e0b4642b01f39d21f47348e",
+    "protected_baseline_sha256": "c739413ba6c4014f246f53bbaa5d86a4647b41cef640d580dbff1703864c7207",
+    "readiness_evidence_commit": "9c736bc029f4da16e5932a16b3f8bdf49dba57f1",
+    "recipe_gitlink": "6fcccb353a87045a17f9d52b3821f0e20f7f9a9d",
+    "resource_profile_sha256": "d9b6a36dd9fcc4307f7b502e5511989e60c1a257f57c9ac70574acaf12eee2b5"
+  },
+  "bundle_path": "/data-1/tmp/verl_agent_scratch/experiment_workflow/stage123/fresh-admission-candidate.json",
+  "bundle_sha256": "acb8b2b2631378531bf772e11fa27b853b19692808ddf5eef3496e6278559f80",
+  "bundle_type": "stage123_admission_bundle",
+  "inputs": {
+    "calibration_result": "/workspace/verl/docs/joint_training/goals/stage123-execution-readiness/calibration_result.json",
+    "manifest": "/workspace/verl/recipe/on_policy_wdl_sft/experiment_manifest/stage123.yaml",
+    "preflight_result": "/workspace/verl/docs/joint_training/goals/stage123-execution-readiness/preflight_result.json",
+    "protected_baseline": "/workspace/verl/docs/joint_training/goals/stage123-execution-readiness/protected-assets-baseline.jsonl",
+    "resource_profile": "/workspace/verl/recipe/on_policy_wdl_sft/code_task/qwen3_1p7b_stage123_resource_profile.sh"
+  },
+  "run_ids": [
+    "frac25-stage1-control",
+    "frac25-stage2",
+    "frac25-stage3"
+  ],
+  "schema_version": 1
+}

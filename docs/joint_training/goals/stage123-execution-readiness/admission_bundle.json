@@ -11,109 +11,63 @@
       "AC-07": "PASS",
       "AC-08": "PASS"
     },
-    "acceptance_report_sha256": "cdc0766a541150d42f89e4c63a0f8b6e7c3931195d17802f8576d29747343148",
-    "audit": {
-      "freshness_current_checkout": "PASS admission validator authorized current checkout and protected baseline before acceptance",
-      "no_deleted_skipped_loosened_trivial_tests": "PASS diff audit found no skip/xfail deletion or trivialization; full suite passed",
-      "no_formal_training_checkpoints_publication": "PASS zero optimizer steps, empty formal_checkpoint_files, no Stage123 tmux, no compute apps",
-      "no_real_external_services": "PASS readiness checks used local validators/fakes; no W&B/WxPusher/HF/GitHub/registry publication evidence",
-      "protected_assets": "PASS protected baseline compare matched",
-      "run_set": "PASS frac25-stage2, frac25-stage3 only"
-    },
-    "bundle_path": "docs/joint_training/goals/stage123-execution-readiness/admission_bundle.json",
-    "bundle_sha256": "97e8745829795232078533df19e069769c15972adcd43dacdab65cc44911233e",
-    "calibration_result_sha256": "80d09f5aad98d3d834162663cd6532a8da5f27a9b903421b364d14d4f18e340d",
-    "candidate_commit": "2020531b470ec932d7b00afd13080e1318fc8429",
-    "command_evidence": [
-      {
-        "command": "goal-plan-runtime validate-plan docs/joint_training/goals/stage123-execution-readiness",
-        "result": "PASS"
-      },
-      {
-        "command": "goal-plan-runtime validate-runtime docs/joint_training/goals/stage123-execution-readiness",
-        "result": "PASS goal_status=ACTIVE current_milestone=Milestone 6 pending_user_decisions=[]"
-      },
-      {
-        "command": "REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python -m pytest -q tests/experiment_workflow tests/joint_training/regression/test_validation_generation_logging.py",
-        "result": "PASS 194 passed, 8 warnings in 468.28s"
-      },
-      {
-        "command": "REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/render_calibration_result.py validate --input docs/joint_training/goals/stage123-execution-readiness/calibration_result.json --schema config/experiment_execution/calibration_result_schema_v1.json",
-        "result": "PASS ok=true sha256=80d09f5aad98d3d834162663cd6532a8da5f27a9b903421b364d14d4f18e340d"
-      },
-      {
-        "command": "REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/execution_results.py admission validate --bundle docs/joint_training/goals/stage123-execution-readiness/admission_bundle.json --protected-baseline docs/joint_training/goals/stage123-execution-readiness/protected-assets-baseline.jsonl --repo-root /data-1/code/verl",
-        "result": "PASS authorized current checkout matches admission bundle"
-      },
-      {
-        "command": "REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python docs/joint_training/goals/stage123-execution-readiness/tools/protected_asset_fingerprint.py compare --repo-root /data-1/code/verl --baseline docs/joint_training/goals/stage123-execution-readiness/protected-assets-baseline.jsonl",
-        "result": "PASS ok=true sha256=c739413ba6c4014f246f53bbaa5d86a4647b41cef640d580dbff1703864c7207"
-      },
-      {
-        "command": "REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/implementation_tree_identity.py --repo-root /data-1/code/verl --boundary-manifest config/experiment_execution/stage123_implementation_boundary_v1.json --format json",
-        "result": "PASS implementation_tree_sha256=91b8e419933b13d521faaf6eedf6f04cccdfdeccfad4d808759896f61c0fbf7e"
-      },
-      {
-        "command": "git status --short",
-        "result": "PASS only expected runtime/findings modifications and protected/untracked goal artifacts observed before acceptance writes"
-      },
-      {
-        "command": "tmux list-sessions",
-        "result": "PASS no Stage123 training session; sessions: docker-export, harness"
-      },
-      {
-        "command": "nvidia-smi --query-compute-apps=pid,used_memory --format=csv,noheader",
-        "result": "PASS empty output"
-      }
-    ],
+    "acceptance_report_sha256": "ec869a36876307551dac30393fd23e8d1feee8998fdc01fd2f2c5d399ef4f7d7",
+    "bundle_sha256": "24adb2638b5f50ad7f22af625f73fa13ae8b1ac5859d2ea52de9046a003f31f6",
+    "calibration_result_sha256": "24647c4c5031ab199e40a2338b18dec02788c355600bed96192bb22faf43f880",
+    "candidate_commit": "9c736bc029f4da16e5932a16b3f8bdf49dba57f1",
+    "candidate_file_sha256": "d440ba62af7fdd63996cfbe13b0dfdaf0257a2c9908d68a0cff1b89f274471b2",
     "decision": "accepted",
     "goal_id": "stage123-execution-readiness",
-    "implementation_tree_sha256": "91b8e419933b13d521faaf6eedf6f04cccdfdeccfad4d808759896f61c0fbf7e",
+    "host_facts_sha256": "abff5cc4fe0fc7366dfafab6383a51019699ebd32f3eb2708a3fb58268b39c15",
+    "implementation_tree_sha256": "0958211eec8ee0169261b1dba24bc33d0a930249e76f741a9599d7378e8072fc",
     "input_hashes": {
-      "calibration_result_sha256": "80d09f5aad98d3d834162663cd6532a8da5f27a9b903421b364d14d4f18e340d",
-      "candidate_bundle_sha256": "97e8745829795232078533df19e069769c15972adcd43dacdab65cc44911233e",
-      "command_log_sha256": "f213317188e40fab767d787616498942d016a4fa7c835c24552f43ab8ab92f5a",
-      "implementation_tree_sha256": "91b8e419933b13d521faaf6eedf6f04cccdfdeccfad4d808759896f61c0fbf7e",
-      "manifest_sha256": "e665049cc67a40c32f0b104058bfe4e20c2529dc22328a485622bed78d3c8f0c",
-      "preflight_result_sha256": "23dac2c85db2cae8d7121a5b74cd63641db847e71d3fac48e41213dd415b3598",
-      "protected_baseline_sha256": "c739413ba6c4014f246f53bbaa5d86a4647b41cef640d580dbff1703864c7207",
+      "calibration_result_sha256": "24647c4c5031ab199e40a2338b18dec02788c355600bed96192bb22faf43f880",
+      "manifest_sha256": "323bcc6084c1b01653bdf3cb5b299cab51c76864c8ca24878a9e5b002cb76278",
+      "preflight_result_sha256": "91dfd1bcb9dfcb0650b3933cd662d9b9ef3a91768eec2b5d0173f51e7a1e78d9",
       "resource_profile_sha256": "d9b6a36dd9fcc4307f7b502e5511989e60c1a257f57c9ac70574acaf12eee2b5"
     },
-    "manifest_sha256": "e665049cc67a40c32f0b104058bfe4e20c2529dc22328a485622bed78d3c8f0c",
+    "manifest_sha256": "323bcc6084c1b01653bdf3cb5b299cab51c76864c8ca24878a9e5b002cb76278",
     "plan_id": "stage123-execution-readiness",
-    "plan_sha256": "fc079ef6634aaf8e40f8aa99f81e38755f3e96a611815690ca8ac4eba1750c67",
-    "plan_version": 8,
-    "preflight_result_sha256": "23dac2c85db2cae8d7121a5b74cd63641db847e71d3fac48e41213dd415b3598",
+    "plan_sha256": "29fd07ea9cbf5a13bae70d0907c4f25652fd8efe90e11dfd911c299ec669f43c",
+    "plan_version": 9,
+    "preflight_result_sha256": "91dfd1bcb9dfcb0650b3933cd662d9b9ef3a91768eec2b5d0173f51e7a1e78d9",
     "protected_baseline_sha256": "c739413ba6c4014f246f53bbaa5d86a4647b41cef640d580dbff1703864c7207",
-    "readiness_evidence_commit": "2020531b470ec932d7b00afd13080e1318fc8429",
+    "readiness_evidence_commit": "9c736bc029f4da16e5932a16b3f8bdf49dba57f1",
+    "recipe_gitlink": "6fcccb353a87045a17f9d52b3821f0e20f7f9a9d",
     "resource_profile_sha256": "d9b6a36dd9fcc4307f7b502e5511989e60c1a257f57c9ac70574acaf12eee2b5",
     "result_type": "acceptance_report",
+    "review_type": "evidence_refresh_convergence_acceptance",
     "reviewer": {
-      "identity": "independent final-acceptance Reviewer",
+      "identity": "independent GPT-5.5 medium convergence reviewer",
       "model": "GPT-5.5",
       "reasoning_effort": "medium"
     },
+    "reviewer_preflight_path": "/data-1/tmp/verl_agent_scratch/experiment_workflow/stage123/readiness-refresh-20260715T100158Z/convergence-reviewer-preflight.json",
     "run_ids": [
+      "frac25-stage1-control",
       "frac25-stage2",
       "frac25-stage3"
     ],
-    "schema_version": 1
+    "schema_version": 1,
+    "summary": "Independent convergence reviewer PASS: canonical bundle_path binding repairs acceptance construction; fresh no-training preflight passed; all frozen production/scientific bindings remain unchanged; no GPU workload or training occurred."
   },
   "acceptance_report_path": "/workspace/verl/docs/joint_training/goals/stage123-execution-readiness/acceptance_report.json",
-  "acceptance_report_sha256": "81d5d12756d3134a70c5dd154ae17e0ad0d6876847845a49ce7ba4856436febc",
+  "acceptance_report_sha256": "9a90ac760923f25dae46b7afc944ae41a1196ce5158e9e2b6a5868642fad93ac",
+  "adapter_type": "stage123_queue_v1",
   "bindings": {
-    "calibration_completed_at": "2026-07-14T13:15:32.765105Z",
-    "calibration_result_sha256": "80d09f5aad98d3d834162663cd6532a8da5f27a9b903421b364d14d4f18e340d",
-    "implementation_tree_sha256": "91b8e419933b13d521faaf6eedf6f04cccdfdeccfad4d808759896f61c0fbf7e",
-    "manifest_sha256": "e665049cc67a40c32f0b104058bfe4e20c2529dc22328a485622bed78d3c8f0c",
-    "preflight_completed_at": "2026-07-14T13:19:05Z",
-    "preflight_result_sha256": "23dac2c85db2cae8d7121a5b74cd63641db847e71d3fac48e41213dd415b3598",
+    "calibration_completed_at": "2026-07-15T06:16:57.005781Z",
+    "calibration_result_sha256": "24647c4c5031ab199e40a2338b18dec02788c355600bed96192bb22faf43f880",
+    "implementation_tree_sha256": "0958211eec8ee0169261b1dba24bc33d0a930249e76f741a9599d7378e8072fc",
+    "manifest_sha256": "323bcc6084c1b01653bdf3cb5b299cab51c76864c8ca24878a9e5b002cb76278",
+    "preflight_completed_at": "2026-07-15T10:01:21Z",
+    "preflight_result_sha256": "91dfd1bcb9dfcb0650b3933cd662d9b9ef3a91768eec2b5d0173f51e7a1e78d9",
     "protected_baseline_sha256": "c739413ba6c4014f246f53bbaa5d86a4647b41cef640d580dbff1703864c7207",
-    "readiness_evidence_commit": "2020531b470ec932d7b00afd13080e1318fc8429",
+    "readiness_evidence_commit": "9c736bc029f4da16e5932a16b3f8bdf49dba57f1",
+    "recipe_gitlink": "6fcccb353a87045a17f9d52b3821f0e20f7f9a9d",
     "resource_profile_sha256": "d9b6a36dd9fcc4307f7b502e5511989e60c1a257f57c9ac70574acaf12eee2b5"
   },
-  "bundle_path": "docs/joint_training/goals/stage123-execution-readiness/admission_bundle.json",
-  "bundle_sha256": "97e8745829795232078533df19e069769c15972adcd43dacdab65cc44911233e",
+  "bundle_path": "/workspace/verl/docs/joint_training/goals/stage123-execution-readiness/admission_bundle.json",
+  "bundle_sha256": "24adb2638b5f50ad7f22af625f73fa13ae8b1ac5859d2ea52de9046a003f31f6",
   "bundle_type": "stage123_admission_bundle",
   "inputs": {
     "calibration_result": "/workspace/verl/docs/joint_training/goals/stage123-execution-readiness/calibration_result.json",
@@ -123,6 +77,7 @@
     "resource_profile": "/workspace/verl/recipe/on_policy_wdl_sft/code_task/qwen3_1p7b_stage123_resource_profile.sh"
   },
   "run_ids": [
+    "frac25-stage1-control",
     "frac25-stage2",
     "frac25-stage3"
   ],

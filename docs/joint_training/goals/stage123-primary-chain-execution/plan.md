@@ -1,8 +1,8 @@
 # Stage123 Primary Chain Experiment Execution
 
 - Goal ID: `stage123-primary-chain-execution`
-- Plan version: `5`
-- Plan status: `DRAFT - BLOCKED ON PREREQUISITE GOALS`
+- Plan version: `13`
+- Plan status: `DRAFT - V13 CERTIFIED CONTROL-REUSE AMENDMENT`
 - Serial position: `4 of 4`
 - Prerequisite Goal: `stage123-execution-readiness` completed with an immutable
   independently accepted admission bundle
@@ -35,6 +35,12 @@ declares the experiment operationally inconclusive.
 - A legacy Stage2 attempt with suffix `1783777744` reached only step0 validation and
   was deliberately stopped. Its logs and empty checkpoint root are diagnostic
   evidence only and must never be resumed, merged, or counted as an experimental arm.
+- The first formal control completed all 60 steps on July 15, 2026, but the
+  subsequent Stage2 wrapper rejected the same accepted bundle because the
+  3600-second preflight freshness window elapsed during the 77-minute control.
+  This is an operational contradiction, not a scientific result. This amendment
+  preserves fresh admission at atomic-item start while preventing an already
+  admitted running item from invalidating itself between phases.
 
 ## Required Prerequisite Outcomes
 
@@ -80,6 +86,12 @@ the queue/monitor would require an AI agent to make a deterministic phase transi
   validates its manifest/admission and delegates lifecycle to
   `experiment_execution_core.py`. Experiment-specific phase launchers remain thin
   commands; they do not create a second persisted-state authority.
+- Qualification is valid by training-plane identity, not a wall-clock TTL. A batch
+  validates each immutable item completely before it starts a phase child. Direct
+  phase invocation performs the same complete admission. Batch environment values,
+  persisted state, hashes, and receipts are consistency inputs only: they are not a
+  hostile same-root authorization boundary. The local operator running the batch is
+  trusted for reliability purposes; a binding mismatch still fails the launch.
 - Operator pause/resume/stop is implemented as a subcommand of the same execution
   core or a thin CLI that calls its shared control API. A human can stop the active
   run at any time; resume means continuing the remaining batch after human review,
@@ -268,11 +280,13 @@ may start against the predecessor two-run bundle.
 - Given the accepted immutable bundle and explicit user launch authorization,
 - When pre-launch validation runs,
 - Then every binding matches, protected assets remain untouched, no conflicting run
-  exists, and only the exact primary launch command can start Ray.
+  exists, and only the exact primary launch command can start Ray. Full admission is
+  required before `item_started`; later phases use only the live single-use capability
+  plus a fast static-binding and host-health check.
 - Verification command:
   `REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/execution_results.py admission validate --bundle docs/joint_training/goals/stage123-execution-readiness/admission_bundle.json --require-accepted --repo-root /data-1/code/verl`
 - Additional verification command:
-  `REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/implementation_tree_identity.py --repo-root /data-1/code/verl --boundary-manifest config/experiment_execution/stage123_implementation_boundary_v1.json --format json --compare docs/joint_training/goals/calibration-qualification/implementation-tree.jsonl`
+  `REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python scripts/implementation_tree_identity.py --repo-root /data-1/code/verl --boundary-manifest config/experiment_execution/stage123_implementation_boundary_v1.json --format json --compare docs/joint_training/goals/stage123-execution-readiness/implementation-tree.jsonl`
 - Expected evidence: pre-launch canonical tree comparison, admission validation
   report, and immutable bundle hash.
 
@@ -339,6 +353,11 @@ may start against the predecessor two-run bundle.
   phases are skipped, owned resources are cleaned, and the next pre-authorized item
   starts unless a frozen batch-stop invariant applies; no parameter change, retry,
   checkpoint resume, test weakening, or benchmark downscope occurs.
+- Wall-clock age after `item_started` is not a phase failure. A changed training-plane
+  identity, bundle mismatch, certified-control mismatch, treatment-admission mismatch,
+  binding mismatch, or failed required host-health check fails closed before the
+  affected training wrapper is invoked. A child process that only performs admission
+  or pre-wrapper filesystem checks is not training work and must be reported as such.
 - Verification command:
   `REPO_HOST=/data-1/code/verl /data-1/verl07/run_train.sh python -m pytest -q tests/experiment_workflow/test_failure_classifier.py tests/experiment_workflow/test_validation_deadline_cleanup.py tests/experiment_workflow/test_stage123_end_to_end.py`
 - Expected evidence: terminal failure record, cleanup, skipped-phase records,
@@ -431,6 +450,17 @@ control change; Stage3 cannot start before model2 provenance passes.
   `global_step_40/actor` shards and `data.pt`, but no optimizer shards. Plan v2
   therefore freezes optimizer reinitialization for both control and chain rather
   than claiming exact optimizer-state continuation.
+- AC-01/07 recovery probe: the July 15, 2026 control required 77 minutes, so an
+  already admitted atomic item must not fail solely because a phase begins after an
+  arbitrary wall-clock freshness interval. The preserved `frac25-stage2` evidence
+  records `child_id=1766588` and `pending -> running -> failed`; the queue log proves
+  that this child stopped in `stage123_phase_adapter.py` at the pre-wrapper existing-
+  checkpoint guard, before `subprocess.run()` could invoke the Stage2 wrapper. This
+  is a `child-started, pre-training-work` failure, not a pre-child failure. The
+  recovery certificate must bind that immutable evidence, prove the absence of new
+  Stage2 provenance/metrics/extraction/checkpoint artifacts, and preserve the legacy
+  checkpoint as excluded diagnostic evidence. Control-plane changes use CPU tests;
+  only a changed frozen training-plane identity requires renewed GPU qualification.
 - AC-09 historical-baseline probe: the prior Stage1 step100 output log SHA256 is
   `7702c4c25464403e8db6b04d24fe726fa626d440d3d88b89ddaba777fd1df7fd`
   and records HumanEval+ `0.5`, MBPP+ `0.48677248677248675`, LiveCodeBench
@@ -516,3 +546,56 @@ control change; Stage3 cannot start before model2 provenance passes.
 
 - P60, FRAC50, broader sweeps, additional seeds, mechanism generalization, and paper
   claims require separate Plans and fresh readiness acceptance.
+
+## Plan v13 Certified Control-Reuse Amendment
+
+This amendment supersedes the v12 recovery paragraph and every earlier reference to a
+Unix-socket/nonce or hostile same-root authorization claim.
+
+### Frozen failure boundary
+
+The preserved July 15 Stage2 state is immutable evidence that a child started:
+`child_id=1766588`, `pending -> running -> failed`, and return code `1`. It must never
+be described as a pre-child failure. Control reuse is eligible only for the narrower,
+recomputable **child-started, pre-training-work** boundary. The certificate must prove
+all of the following from preserved files and bound source hashes:
+
+1. the old batch is terminal `completed_with_failures`, the control phase succeeded,
+   and the old Stage2 phase failed exactly once with the preserved child state;
+2. the preserved queue log contains the old Stage2 adapter exception from the
+   existing-checkpoint guard; and the bound adapter source orders that guard before
+   wrapper invocation;
+3. no new Stage2 checkpoint, metrics, validation output, provenance, extraction, Ray
+   workload, optimizer step, or GPU training workload was produced by that failed
+   child. The pre-existing legacy Stage2 checkpoint is recorded by path and hash as
+   excluded diagnostic evidence, never treated as output of the failed child; and
+4. any absent or contradictory proof rejects reuse. Old batch state, control evidence,
+   Stage2 failure evidence, and the legacy diagnostic checkpoint remain preserved.
+
+### Certified control and treatment-only preparation
+
+A certified control is a completed Stage1 control whose certificate verifies and binds:
+its provenance hash, checkpoint-tree hash, metrics hash, final validation hash,
+manifest hash, train-data hash, resource-profile hash, evaluator/validation identity,
+and frozen training-plane identity. The certificate stores the original accepted
+admission-bundle and acceptance-report hashes and the exact old failure-evidence hashes.
+
+The recovery is not a retry and does not consume the control final weights as Stage2
+input. A new treatment-only execution is prepared from the original admitted P40 source
+with Stage2 then extraction then Stage3. It has a unique execution identity, treatment
+manifest with unique operational run prefixes, treatment-only admission file, batch
+manifest, state root, monitor path, and provenance root. Each of these binds the
+certificate SHA256 and the original scientific manifest. The old root is read-only
+evidence and cannot be resumed, overwritten, or adopted as the new root.
+
+The prepared treatment admission is not launch authorization. It validates all CPU
+recomputable evidence and marks itself `prepared_not_authorized`; a later explicit
+training authorization must supply the fresh host/admission evidence required for an
+actual GPU launch. Direct phase invocation validates this full treatment admission;
+batch execution validates the same file before child start. Environment variables and
+state files carry paths only and are not represented as a security primitive.
+
+The final decision JSON and report must contain `control_reuse` with the certificate
+SHA256, old control identity, old failure boundary, and a plain-language statement that
+the completed matched Stage1 control was reused as baseline evidence while treatment
+Stage2 -> extraction -> Stage3 executed under a new identity.

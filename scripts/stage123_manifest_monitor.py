@@ -149,8 +149,6 @@ def main() -> int:
         states, events = monitor_once(manifest, args.state_root, args.ledger, args.policy, args.sender, cursor)
         if args.once or all_terminal(states):
             return 0
-        if not states and not events:
-            return 0
         time.sleep(args.poll_seconds)
 
 

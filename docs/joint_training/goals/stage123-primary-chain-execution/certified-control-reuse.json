@@ -1,0 +1,46 @@
+{
+  "control": {
+    "checkpoint": "/data-1/checkpoints/CODE-S1-CONTROL-QWEN3-1P7B-STAGE123-FRAC25_P40_S220_S340-BETA01-V1_1784111389",
+    "checkpoint_tree_sha256": "6c7f5bac90021236bd42e1f2575f5586f98322606964187289ed2b30356fe1c3",
+    "final_step": 60,
+    "metrics": "/data-2/model_weights/code_task/qwen3_1p7b_stage123/frac25_p40_s220_s340/runtime/frac25-stage1-control/logs/metrics/OnPolicyWDLSFT-CodeTask/CODE-S1-CONTROL-QWEN3-1P7B-STAGE123-FRAC25_P40_S220_S340-BETA01-V1_1784111389.jsonl",
+    "metrics_sha256": "9c58034a8a77ebae139b2588bab4256beaf302d23ac83922f48f625e5343c74b",
+    "provenance_path": "/data-2/model_weights/code_task/qwen3_1p7b_stage123/frac25_p40_s220_s340/frac25-stage1-control.provenance.json",
+    "provenance_sha256": "77a334e884c208552026e8c8cf11fb9b38fe5def6b4c621407d321aaa3d7da34",
+    "validation": "/data-2/model_weights/code_task/qwen3_1p7b_stage123/frac25_p40_s220_s340/runtime/frac25-stage1-control/logs/validation/60.jsonl",
+    "validation_sha256": "17f8f7b464954abcdf498e7920bf3a7a033ee68cd384fdc77b79b04007920916"
+  },
+  "disclosure": "The completed matched Stage1 control is reused only as baseline evidence; treatment Stage2 -> extraction -> Stage3 receives a new execution identity and does not use the control final weights as Stage2 input.",
+  "eligible": true,
+  "failure_boundary": "child-started_pre-training-work",
+  "failures": [],
+  "old_failure": {
+    "adapter_path": "scripts/stage123_phase_adapter.py",
+    "adapter_sha256": "f11365a2e2f22cd7e6633b33c43102035ac03f5f8f69b06eb60003f3090d988a",
+    "batch_state_path": "/data-1/tmp/verl_agent_scratch/experiment_workflow/stage123/primary-final-20260715T102742Z/state/stage123-primary-chain-frac25-p40-v1.json",
+    "batch_state_sha256": "1cce75e06de614cf5ea5dd097ebb7e1e6d826b3127ae17ec619d92a0164a7680",
+    "legacy_checkpoint": "/data-1/checkpoints/CODE-S2-QWEN3-1P7B-STAGE123-FRAC25_P40_S220_S340-BETA01-LAMBDA08-V1_1783777744",
+    "legacy_checkpoint_tree_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "queue_log_path": "/data-1/tmp/verl_agent_scratch/experiment_workflow/stage123/primary-final-20260715T102742Z/queue.log",
+    "queue_log_sha256": "262b5ca0dfacdb3bf4080459bc0bf628c216dc9bd2f3674a196268290bdaba45",
+    "stage2_state_path": "/data-1/tmp/verl_agent_scratch/experiment_workflow/stage123/primary-final-20260715T102742Z/state/frac25-stage2.json",
+    "stage2_state_sha256": "4a9ec5a87a05a9a20cfce665f201fbb21d3cddcc160b143069f744e04814abc2"
+  },
+  "original_admission": {
+    "acceptance_report_path": "/workspace/verl/docs/joint_training/goals/stage123-execution-readiness/acceptance_report.json",
+    "acceptance_report_sha256": "9a90ac760923f25dae46b7afc944ae41a1196ce5158e9e2b6a5868642fad93ac",
+    "path": "docs/joint_training/goals/stage123-execution-readiness/admission_bundle.json",
+    "sha256": "a98a30902793adf705e12e8a2b1d8abe31ed855aba51f6ba86ae5244d6dacbbe"
+  },
+  "result_type": "stage123_certified_control_reuse",
+  "schema_version": 1,
+  "training_plane": {
+    "evaluator_preflight_sha256": "91dfd1bcb9dfcb0650b3933cd662d9b9ef3a91768eec2b5d0173f51e7a1e78d9",
+    "manifest_file_sha256": "75f3883c34e0e7a09a064f349443b86e318823c012b9e3717691f0fc11c376c3",
+    "manifest_sha256": "323bcc6084c1b01653bdf3cb5b299cab51c76864c8ca24878a9e5b002cb76278",
+    "resource_profile_file_sha256": "87825d59a5f11f9f733c309e847268527c9cc5ad96b4f6b8d049c36e361e843f",
+    "resource_profile_sha256": "d9b6a36dd9fcc4307f7b502e5511989e60c1a257f57c9ac70574acaf12eee2b5",
+    "train_file_sha256": "a73593277c2997b579e64fa786a93a504a086465b20e7965bfd7724eabbf65f4",
+    "training_plane_identity_sha256": "b03f40b32b492d3e2ff84e878c41734da8e379824a6ffa9ddf47f3309a7838f8"
+  }
+}

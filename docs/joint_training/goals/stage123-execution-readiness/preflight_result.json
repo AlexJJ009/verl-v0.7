@@ -1,14 +1,15 @@
 {
   "calibration_authorization_identity": {
-    "decision_id": "RD-GPU-REQUAL-01",
-    "plan_version": 8,
-    "run_id": "stage123_readiness_requalification_RD-GPU-REQUAL-01"
+    "decision_id": "RD-MATCHED-CONTROL-REQUAL-01",
+    "plan_sha256": "29fd07ea9cbf5a13bae70d0907c4f25652fd8efe90e11dfd911c299ec669f43c",
+    "plan_version": 9,
+    "run_id": "stage123_matched_control_requalification_RD-MATCHED-CONTROL-REQUAL-01"
   },
-  "calibration_evidence_commit": "f65c59e6f3fe13db1ab250026e0f53ce6fe869ec",
+  "calibration_evidence_commit": "8a5402e5a31c7810c7c0c77b4d8dcd1aa6129f56",
   "checks": [
     {
       "detail": {
-        "sha256": "15ee4e0d99f31da0f4aab514f3eda59dc7a62697f498ab2c8aced2154136e405"
+        "sha256": "abff5cc4fe0fc7366dfafab6383a51019699ebd32f3eb2708a3fb58268b39c15"
       },
       "name": "host_facts",
       "ok": true
@@ -62,7 +63,23 @@
     },
     {
       "detail": {
-        "manifest_sha256": "e665049cc67a40c32f0b104058bfe4e20c2529dc22328a485622bed78d3c8f0c",
+        "expected": [
+          "frac25-stage1-control",
+          "frac25-stage2",
+          "frac25-stage3"
+        ],
+        "run_ids": [
+          "frac25-stage1-control",
+          "frac25-stage2",
+          "frac25-stage3"
+        ]
+      },
+      "name": "run_identity",
+      "ok": true
+    },
+    {
+      "detail": {
+        "manifest_sha256": "323bcc6084c1b01653bdf3cb5b299cab51c76864c8ca24878a9e5b002cb76278",
         "normalized_matches_repo": true,
         "phases": {
           "stage1": {
@@ -126,27 +143,357 @@
     {
       "detail": [
         {
+          "expected_sha256": "a73593277c2997b579e64fa786a93a504a086465b20e7965bfd7724eabbf65f4",
+          "manifest": "/data-1/dataset/code/verl_rl/kodcode_stage2_after_s1_seed20260604_qwen3_1p7b_coldstart_frac25_beta01_p40_handoff_s2steps60.manifest.json",
+          "manifest_data": {
+            "command": "/workspace/verl/recipe/on_policy_wdl_sft/code_task/create_code_stage2_nonoverlap_shard.py --source /data-1/dataset/code/verl_rl/kodcode_light_rl_10k_train_rl_format.parquet --output /data-1/dataset/code/verl_rl/kodcode_stage2_after_s1_seed20260604_qwen3_1p7b_coldstart_frac25_beta01_p40_handoff_s2steps60.parquet --model-path /data-1/.cache/huggingface/hub/models--Qwen--Qwen3-1.7B/snapshots/70d244cc86ccca08cf5af4e1e306ecf908b1ad5e --seed 20260604 --stage1-steps 40 --stage1-train-batch-size 64 --stage2-steps 60 --stage2-train-batch-size 64",
+            "created_at": "2026-07-09T03:59:24+0000",
+            "eligible_row_count": 9991,
+            "filter_settings": {
+              "filter_overlong_prompts": true,
+              "filter_overlong_prompts_workers": 1,
+              "max_prompt_length": 1024,
+              "prompt_key": "prompt",
+              "truncation": "left"
+            },
+            "output_path": "/data-1/dataset/code/verl_rl/kodcode_stage2_after_s1_seed20260604_qwen3_1p7b_coldstart_frac25_beta01_p40_handoff_s2steps60.parquet",
+            "output_sha256": "a73593277c2997b579e64fa786a93a504a086465b20e7965bfd7724eabbf65f4",
+            "prompt_template_version": "code-think-answer-python-v1",
+            "raw_source_row_count": 10000,
+            "repo_commit": "c0965fb82ce1cbad81276add4e303a846e74d233",
+            "sampler": {
+              "implementation": "torchdata.stateful_dataloader.sampler.RandomSampler",
+              "length": 3840,
+              "offset": 2560,
+              "order": "torch.randperm(eligible_count, generator=torch.Generator().manual_seed(seed))",
+              "seed": 20260604
+            },
+            "selected_extra_info_uid_first10": [
+              "2dfa6c3f7a43db6ea5d3c707",
+              "5cacd3461284ff21e3a62793",
+              "30266b030af48640071afe42",
+              "ae5acd225084bd2431a489ac",
+              "a4f83f9f720bc410ebedaf6f",
+              "0aae545e6b533cc6df05c6fc",
+              "128f2e910e00c01065734eb7",
+              "b41655b71313a31247681746",
+              "95dd7e01784adc9975539b84",
+              "428039eb58a45d29cc7a53d5"
+            ],
+            "selected_extra_info_uid_last10": [
+              "44de5c519669627ff4245709",
+              "70a81e4d2c82ac7d211dcf8d",
+              "b8de9afd30463550e25cb4be",
+              "c5b1568cb92ff26f43b54f72",
+              "2e6a9276d490cc56a1a3273e",
+              "d6995dc38f64bef0e382b108",
+              "e43c1ffc14c29b6f9a5d08ef",
+              "df7e0d28dcc2e5f0bfcbbb72",
+              "4d4bac32d150410616598c2d",
+              "7b7f2bcd6cf77ded6514e63f"
+            ],
+            "selected_positions_first10": [
+              1326,
+              3499,
+              7099,
+              8809,
+              7424,
+              9071,
+              7247,
+              5847,
+              2313,
+              6911
+            ],
+            "selected_positions_last10": [
+              3907,
+              8766,
+              4903,
+              8217,
+              2578,
+              4605,
+              8980,
+              1695,
+              6563,
+              3217
+            ],
+            "selected_row_count": 3840,
+            "source_path": "/data-1/dataset/code/verl_rl/kodcode_light_rl_10k_train_rl_format.parquet",
+            "source_sha256": "a0b5326a5e2f0ea2efee1dab5149ef35ac31f5f2c26fa45410c51324eb805201",
+            "stage1": {
+              "consumed_rows": 2560,
+              "handoff_step": 40,
+              "seed": 20260604,
+              "train_batch_size": 64
+            },
+            "stage2": {
+              "rows_requested": 3840,
+              "steps": 60,
+              "train_batch_size": 64
+            }
+          },
+          "manifest_sha256": "a73593277c2997b579e64fa786a93a504a086465b20e7965bfd7724eabbf65f4",
+          "ok": true,
+          "path": "/data-1/dataset/code/verl_rl/kodcode_stage2_after_s1_seed20260604_qwen3_1p7b_coldstart_frac25_beta01_p40_handoff_s2steps60.parquet",
+          "run_id": "frac25-stage1-control",
+          "sampler_length": 3840,
+          "sampler_offset": 2560,
+          "sampler_order": "torch.randperm(eligible_count, generator=torch.Generator().manual_seed(seed))",
+          "sampler_seed": 20260604,
+          "selected_row_count": 3840,
+          "sha256": "a73593277c2997b579e64fa786a93a504a086465b20e7965bfd7724eabbf65f4",
+          "source_path": "/data-1/dataset/code/verl_rl/kodcode_light_rl_10k_train_rl_format.parquet",
+          "source_sha256": "a0b5326a5e2f0ea2efee1dab5149ef35ac31f5f2c26fa45410c51324eb805201"
+        },
+        {
+          "expected_sha256": "160be1866e6c1dc439dcfbd594b54324f000f1f48db1f6a0fc88cf227c628dab",
           "manifest": "/data-1/dataset/code/verl_rl/kodcode_stage2_after_s1_seed20260604_qwen3_1p7b_coldstart_frac25_beta01_p40_handoff_s2steps20.manifest.json",
+          "manifest_data": {
+            "command": "recipe/on_policy_wdl_sft/code_task/create_code_stage2_nonoverlap_shard.py --source /data-1/dataset/code/verl_rl/kodcode_light_rl_10k_train_rl_format.parquet --output /data-1/dataset/code/verl_rl/kodcode_stage2_after_s1_seed20260604_qwen3_1p7b_coldstart_frac25_beta01_p40_handoff_s2steps20.parquet --model-path /data-1/.cache/huggingface/hub/models--Qwen--Qwen3-1.7B/snapshots/70d244cc86ccca08cf5af4e1e306ecf908b1ad5e --seed 20260604 --stage1-steps 40 --stage1-train-batch-size 64 --stage2-steps 20 --stage2-train-batch-size 64 --max-prompt-length 1024",
+            "created_at": "2026-07-11T09:34:03+0000",
+            "eligible_row_count": 9991,
+            "filter_settings": {
+              "filter_overlong_prompts": true,
+              "filter_overlong_prompts_workers": 1,
+              "max_prompt_length": 1024,
+              "prompt_key": "prompt",
+              "truncation": "left"
+            },
+            "output_path": "/data-1/dataset/code/verl_rl/kodcode_stage2_after_s1_seed20260604_qwen3_1p7b_coldstart_frac25_beta01_p40_handoff_s2steps20.parquet",
+            "output_sha256": "160be1866e6c1dc439dcfbd594b54324f000f1f48db1f6a0fc88cf227c628dab",
+            "prompt_template_version": "code-think-answer-python-v1",
+            "raw_source_row_count": 10000,
+            "repo_commit": "6a86aa27591178f9acf774fe107b1219e099af99",
+            "sampler": {
+              "implementation": "torchdata.stateful_dataloader.sampler.RandomSampler",
+              "length": 1280,
+              "offset": 2560,
+              "order": "torch.randperm(eligible_count, generator=torch.Generator().manual_seed(seed))",
+              "seed": 20260604
+            },
+            "selected_extra_info_uid_first10": [
+              "2dfa6c3f7a43db6ea5d3c707",
+              "5cacd3461284ff21e3a62793",
+              "30266b030af48640071afe42",
+              "ae5acd225084bd2431a489ac",
+              "a4f83f9f720bc410ebedaf6f",
+              "0aae545e6b533cc6df05c6fc",
+              "128f2e910e00c01065734eb7",
+              "b41655b71313a31247681746",
+              "95dd7e01784adc9975539b84",
+              "428039eb58a45d29cc7a53d5"
+            ],
+            "selected_extra_info_uid_last10": [
+              "5ca9fe3a6f817e1930c96d79",
+              "d687ed1c3352f5e5e44b8d86",
+              "214fdec681ea765b69c23725",
+              "0039ba67ed883ca4d9c4c843",
+              "ac95220831eac28f1fa9ea3d",
+              "6d320e0f67fdb7181f99068b",
+              "323a853fadf8ac903e18b69f",
+              "124acab4f8a7a14f7cb9a0cc",
+              "59ed99fed28fb831cc7ac367",
+              "7360de9e08121ddc72ef2dea"
+            ],
+            "selected_positions_first10": [
+              1326,
+              3499,
+              7099,
+              8809,
+              7424,
+              9071,
+              7247,
+              5847,
+              2313,
+              6911
+            ],
+            "selected_positions_last10": [
+              2488,
+              8621,
+              5729,
+              9027,
+              9063,
+              6425,
+              9028,
+              5569,
+              4631,
+              4152
+            ],
+            "selected_row_count": 1280,
+            "source_path": "/data-1/dataset/code/verl_rl/kodcode_light_rl_10k_train_rl_format.parquet",
+            "source_sha256": "a0b5326a5e2f0ea2efee1dab5149ef35ac31f5f2c26fa45410c51324eb805201",
+            "stage1": {
+              "consumed_rows": 2560,
+              "handoff_step": 40,
+              "seed": 20260604,
+              "train_batch_size": 64
+            },
+            "stage2": {
+              "rows_requested": 1280,
+              "steps": 20,
+              "train_batch_size": 64
+            }
+          },
           "manifest_sha256": "160be1866e6c1dc439dcfbd594b54324f000f1f48db1f6a0fc88cf227c628dab",
           "ok": true,
           "path": "/data-1/dataset/code/verl_rl/kodcode_stage2_after_s1_seed20260604_qwen3_1p7b_coldstart_frac25_beta01_p40_handoff_s2steps20.parquet",
+          "run_id": "frac25-stage2",
           "sampler_length": 1280,
           "sampler_offset": 2560,
+          "sampler_order": "torch.randperm(eligible_count, generator=torch.Generator().manual_seed(seed))",
+          "sampler_seed": 20260604,
           "selected_row_count": 1280,
-          "sha256": "160be1866e6c1dc439dcfbd594b54324f000f1f48db1f6a0fc88cf227c628dab"
+          "sha256": "160be1866e6c1dc439dcfbd594b54324f000f1f48db1f6a0fc88cf227c628dab",
+          "source_path": "/data-1/dataset/code/verl_rl/kodcode_light_rl_10k_train_rl_format.parquet",
+          "source_sha256": "a0b5326a5e2f0ea2efee1dab5149ef35ac31f5f2c26fa45410c51324eb805201"
         },
         {
+          "expected_sha256": "deb0c223f643e749862c0ca848b1d57a7117b45658c996caab4ad5087039ea15",
           "manifest": "/data-1/dataset/code/verl_rl/kodcode_stage3_after_s2_seed20260604_qwen3_1p7b_coldstart_frac25_beta01_p40_s2steps20_s3steps40.manifest.json",
+          "manifest_data": {
+            "command": "recipe/on_policy_wdl_sft/code_task/create_code_stage2_nonoverlap_shard.py --source /data-1/dataset/code/verl_rl/kodcode_light_rl_10k_train_rl_format.parquet --output /data-1/dataset/code/verl_rl/kodcode_stage3_after_s2_seed20260604_qwen3_1p7b_coldstart_frac25_beta01_p40_s2steps20_s3steps40.parquet --model-path /data-1/.cache/huggingface/hub/models--Qwen--Qwen3-1.7B/snapshots/70d244cc86ccca08cf5af4e1e306ecf908b1ad5e --seed 20260604 --stage1-steps 60 --stage1-train-batch-size 64 --stage2-steps 40 --stage2-train-batch-size 64 --max-prompt-length 1024",
+            "created_at": "2026-07-11T12:55:53+0000",
+            "eligible_row_count": 9991,
+            "filter_settings": {
+              "filter_overlong_prompts": true,
+              "filter_overlong_prompts_workers": 1,
+              "max_prompt_length": 1024,
+              "prompt_key": "prompt",
+              "truncation": "left"
+            },
+            "output_path": "/data-1/dataset/code/verl_rl/kodcode_stage3_after_s2_seed20260604_qwen3_1p7b_coldstart_frac25_beta01_p40_s2steps20_s3steps40.parquet",
+            "output_sha256": "deb0c223f643e749862c0ca848b1d57a7117b45658c996caab4ad5087039ea15",
+            "prompt_template_version": "code-think-answer-python-v1",
+            "raw_source_row_count": 10000,
+            "repo_commit": "6a86aa27591178f9acf774fe107b1219e099af99",
+            "sampler": {
+              "implementation": "torchdata.stateful_dataloader.sampler.RandomSampler",
+              "length": 2560,
+              "offset": 3840,
+              "order": "torch.randperm(eligible_count, generator=torch.Generator().manual_seed(seed))",
+              "seed": 20260604
+            },
+            "selected_extra_info_uid_first10": [
+              "b4102ec6d3aef3879ebf7c38",
+              "12f342cf5eac0e71e9ec661d",
+              "b622fc17316d5c9e0e2d3897",
+              "e1868129b5022e203e47c12c",
+              "aac74d1b18bc9dabdb2d2e98",
+              "af1a6277b0bdbe2d67d3fcee",
+              "dd35437d75217e37db602860",
+              "9161ceef63d6b385e1ac6a06",
+              "a4ca09639bfcdf7ef8ad9d8d",
+              "91522e6400033f0daf24819b"
+            ],
+            "selected_extra_info_uid_last10": [
+              "44de5c519669627ff4245709",
+              "70a81e4d2c82ac7d211dcf8d",
+              "b8de9afd30463550e25cb4be",
+              "c5b1568cb92ff26f43b54f72",
+              "2e6a9276d490cc56a1a3273e",
+              "d6995dc38f64bef0e382b108",
+              "e43c1ffc14c29b6f9a5d08ef",
+              "df7e0d28dcc2e5f0bfcbbb72",
+              "4d4bac32d150410616598c2d",
+              "7b7f2bcd6cf77ded6514e63f"
+            ],
+            "selected_positions_first10": [
+              8902,
+              1095,
+              4106,
+              3448,
+              885,
+              1010,
+              6671,
+              171,
+              5491,
+              9104
+            ],
+            "selected_positions_last10": [
+              3907,
+              8766,
+              4903,
+              8217,
+              2578,
+              4605,
+              8980,
+              1695,
+              6563,
+              3217
+            ],
+            "selected_row_count": 2560,
+            "source_path": "/data-1/dataset/code/verl_rl/kodcode_light_rl_10k_train_rl_format.parquet",
+            "source_sha256": "a0b5326a5e2f0ea2efee1dab5149ef35ac31f5f2c26fa45410c51324eb805201",
+            "stage1": {
+              "consumed_rows": 3840,
+              "handoff_step": 60,
+              "seed": 20260604,
+              "train_batch_size": 64
+            },
+            "stage2": {
+              "rows_requested": 2560,
+              "steps": 40,
+              "train_batch_size": 64
+            }
+          },
           "manifest_sha256": "deb0c223f643e749862c0ca848b1d57a7117b45658c996caab4ad5087039ea15",
           "ok": true,
           "path": "/data-1/dataset/code/verl_rl/kodcode_stage3_after_s2_seed20260604_qwen3_1p7b_coldstart_frac25_beta01_p40_s2steps20_s3steps40.parquet",
+          "run_id": "frac25-stage3",
           "sampler_length": 2560,
           "sampler_offset": 3840,
+          "sampler_order": "torch.randperm(eligible_count, generator=torch.Generator().manual_seed(seed))",
+          "sampler_seed": 20260604,
           "selected_row_count": 2560,
-          "sha256": "deb0c223f643e749862c0ca848b1d57a7117b45658c996caab4ad5087039ea15"
+          "sha256": "deb0c223f643e749862c0ca848b1d57a7117b45658c996caab4ad5087039ea15",
+          "source_path": "/data-1/dataset/code/verl_rl/kodcode_light_rl_10k_train_rl_format.parquet",
+          "source_sha256": "a0b5326a5e2f0ea2efee1dab5149ef35ac31f5f2c26fa45410c51324eb805201"
         }
       ],
       "name": "dataset_shards",
+      "ok": true
+    },
+    {
+      "detail": {
+        "checks": {
+          "control_length_is_union": true,
+          "control_rows_match_length": true,
+          "control_starts_at_stage2": true,
+          "same_sampler_order": true,
+          "same_sampler_seed": true,
+          "same_source_path": true,
+          "same_source_sha256": true,
+          "stage3_follows_stage2": true
+        },
+        "control": {
+          "length": 3840,
+          "offset": 2560
+        },
+        "stage2": {
+          "length": 1280,
+          "offset": 2560
+        },
+        "stage3": {
+          "length": 2560,
+          "offset": 3840
+        }
+      },
+      "name": "matched_control_union",
+      "ok": true
+    },
+    {
+      "detail": {
+        "actor_path_exists": true,
+        "source": {
+          "actor_path": "/data-2/checkpoints/ONPOLICY-SFT-Qwen3-1P7B-COLDSTART-FRAC25-CODE-KODCODE-CTX8K-S1-BETA01-V1_1783425947/global_step_40/actor",
+          "beta": 0.1,
+          "fraction": "frac25",
+          "handoff_step": 40,
+          "model_path": "/data-2/model_weights/code_task/qwen3_1p7b_stage123/frac25_p40_s220_s340/beta01/stage1_model2",
+          "run_prefix": "ONPOLICY-SFT-Qwen3-1P7B-COLDSTART-FRAC25-CODE-KODCODE-CTX8K-S1-BETA01-V1",
+          "type": "stage1_actor_checkpoint"
+        }
+      },
+      "name": "matched_control_source",
       "ok": true
     },
     {
@@ -195,8 +542,8 @@
     },
     {
       "detail": {
-        "detail": "{\"implementation_tree_sha256\": \"91b8e419933b13d521faaf6eedf6f04cccdfdeccfad4d808759896f61c0fbf7e\"}",
-        "sha256": "91b8e419933b13d521faaf6eedf6f04cccdfdeccfad4d808759896f61c0fbf7e"
+        "detail": "provided",
+        "sha256": "0958211eec8ee0169261b1dba24bc33d0a930249e76f741a9599d7378e8072fc"
       },
       "name": "implementation_tree",
       "ok": true
@@ -211,28 +558,29 @@
     },
     {
       "detail": {
-        "calibration_manifest_sha256": "e665049cc67a40c32f0b104058bfe4e20c2529dc22328a485622bed78d3c8f0c",
-        "manifest_sha256": "e665049cc67a40c32f0b104058bfe4e20c2529dc22328a485622bed78d3c8f0c"
+        "calibration_manifest_sha256": "323bcc6084c1b01653bdf3cb5b299cab51c76864c8ca24878a9e5b002cb76278",
+        "manifest_sha256": "323bcc6084c1b01653bdf3cb5b299cab51c76864c8ca24878a9e5b002cb76278"
       },
       "name": "calibration_binding",
       "ok": true
     }
   ],
-  "completed_at": "2026-07-14T13:19:05Z",
+  "completed_at": "2026-07-15T10:01:21Z",
   "decision": "passed",
   "docker_image_id": "sha256:c9d525a1f4b33267bd00be60fe00693338253537cac78151e4c55a6d3a7e5708",
   "failures": [],
   "gate": "qwen3_1p7b_stage123_preflight",
-  "host_facts_sha256": "15ee4e0d99f31da0f4aab514f3eda59dc7a62697f498ab2c8aced2154136e405",
-  "implementation_tree_sha256": "91b8e419933b13d521faaf6eedf6f04cccdfdeccfad4d808759896f61c0fbf7e",
-  "manifest_sha256": "e665049cc67a40c32f0b104058bfe4e20c2529dc22328a485622bed78d3c8f0c",
+  "host_facts_sha256": "abff5cc4fe0fc7366dfafab6383a51019699ebd32f3eb2708a3fb58268b39c15",
+  "implementation_tree_sha256": "0958211eec8ee0169261b1dba24bc33d0a930249e76f741a9599d7378e8072fc",
+  "manifest_sha256": "323bcc6084c1b01653bdf3cb5b299cab51c76864c8ca24878a9e5b002cb76278",
   "ok": true,
   "resource_profile_sha256": "d9b6a36dd9fcc4307f7b502e5511989e60c1a257f57c9ac70574acaf12eee2b5",
   "result_type": "preflight_result",
   "run_ids": [
+    "frac25-stage1-control",
     "frac25-stage2",
     "frac25-stage3"
   ],
   "schema_version": 1,
-  "started_at": "2026-07-14T13:18:46Z"
+  "started_at": "2026-07-15T10:01:03Z"
 }

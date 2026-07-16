@@ -1,0 +1,27 @@
+{
+  "authorization_id": "user-authorized-stage123-primary-chain-2026-07-15",
+  "batch_id": "stage123-primary-chain-frac25-p40-v1",
+  "batch_manifest_sha256": "a8c5bcc73ea48426c0e9ec61cecee9cde5a51a1241096b3a7a8ddabb4ac92418",
+  "created_at": "2026-07-15T07:00:00Z",
+  "failure_policy_id": "batch-fallback-v1",
+  "items": [
+    {
+      "adapter_type": "stage123_queue_v1",
+      "admission_bundle_path": "docs/joint_training/goals/stage123-execution-readiness/admission_bundle.json",
+      "admission_bundle_sha256": "a98a30902793adf705e12e8a2b1d8abe31ed855aba51f6ba86ae5244d6dacbbe",
+      "command_sha256": "5d22e664fc4666133c67b946c74d3cf91d13938ef6eb26daeccb9604423197a2",
+      "expected_run_ids": [
+        "frac25-stage1-control",
+        "frac25-stage2",
+        "frac25-stage3"
+      ],
+      "goal_id": "stage123-primary-chain-execution",
+      "implementation_tree_sha256": "0958211eec8ee0169261b1dba24bc33d0a930249e76f741a9599d7378e8072fc",
+      "item_id": "stage123-primary",
+      "plan_sha256": "76fec40d79ae399a6660a913b97c9f658ecee4b9a28346a05bf303b778b1e6ad",
+      "timeout_seconds": 86400
+    }
+  ],
+  "operator_control_path": "/data-1/tmp/verl_agent_scratch/experiment_workflow/stage123-primary/operator-controls.jsonl",
+  "schema_version": 1
+}
