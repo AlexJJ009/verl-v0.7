@@ -56,6 +56,25 @@ def canonicalize(data: dict) -> dict:
     return result
 
 
+def is_certified_stage2_handoff_source(source: object) -> bool:
+    if not isinstance(source, dict) or source.get("type") != "stage2_model2":
+        return False
+    certificate_path = source.get("handoff_certificate_path")
+    certificate_sha256 = source.get("handoff_certificate_sha256")
+    model2_path = source.get("model2_path")
+    provenance_file = source.get("provenance_file")
+    return (
+        isinstance(certificate_path, str)
+        and bool(certificate_path)
+        and isinstance(certificate_sha256, str)
+        and len(certificate_sha256) == 64
+        and isinstance(model2_path, str)
+        and bool(model2_path)
+        and isinstance(provenance_file, str)
+        and bool(provenance_file)
+    )
+
+
 def validate_policy_v1(result: dict) -> None:
     legacy_freshness_fields = (
         ("preflight", "receipt_max_age_seconds", "result_max_age_seconds"),
@@ -78,8 +97,9 @@ def validate_policy_v1(result: dict) -> None:
     runs_by_phase: dict[str, list[dict]] = {}
     for item in result["runs"]:
         runs_by_phase.setdefault(item["phase"], []).append(item)
-        source_run_id = item.get("source", {}).get("run_id")
-        if source_run_id is not None and source_run_id not in runs_by_id:
+        source = item.get("source", {})
+        source_run_id = source.get("run_id")
+        if source_run_id is not None and source_run_id not in runs_by_id and not is_certified_stage2_handoff_source(source):
             _policy_error("missing_source_run", f"missing source run for {item['id']}", run_id=item["id"], source_run_id=source_run_id)
         if not item["artifact_dir"].startswith("/data-2/"):
             _policy_error("artifact_mount", f"artifact_dir must use /data-2: {item['id']}", run_id=item["id"], artifact_dir=item["artifact_dir"])
@@ -104,7 +124,11 @@ def validate_policy_v1(result: dict) -> None:
                     _policy_error("pending_provenance_path", f"{phase}: pending provenance path mismatch", phase=phase, producer=producer)
                 if source["path"] != producer["output_path"]:
                     _policy_error("pending_output_path", f"{phase}: pending output path mismatch", phase=phase, source_path=source["path"], output_path=producer["output_path"])
-            elif any(item.get("source", {}).get("run_id") for item in runs_by_phase.get(phase, [])):
+            elif any(
+                item.get("source", {}).get("run_id")
+                and not is_certified_stage2_handoff_source(item.get("source", {}))
+                for item in runs_by_phase.get(phase, [])
+            ):
                 producer = source.get("producer")
                 run = runs_by_id.get(producer["run_id"]) if producer else None
                 provenance = source.get("provenance")

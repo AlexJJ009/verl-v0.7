@@ -1,0 +1,440 @@
+{
+  "authorization_identity": {
+    "decision_id": "D-EX-V14-STAGE3-HANDOFF-REQUAL-01",
+    "plan_sha256": "169d6d3f2d416436e56b3ce9db4731b12aea6726b1fe79115773afde0af59c9c",
+    "plan_version": 14,
+    "run_id": "stage123-v14-stage3-handoff-requalification-20260716T0655Z"
+  },
+  "cleanup": {
+    "execution_state": {
+      "kill_sent": false,
+      "resources_released": true,
+      "term_sent": false
+    },
+    "resources_released": true
+  },
+  "completed_at": "2026-07-16T07:12:04.273101Z",
+  "decision": "passed",
+  "evidence_commit": "7b31f23b8c1bd019fd661f5d3a339ec65ddc7262",
+  "failures": [],
+  "implementation_tree_sha256": "8af166f4ed62c6f28eb06727352ae9d6ff961daf4b94487f1be85fe8d29af4f1",
+  "manifest_sha256": "95343477f7bea4f4d5f5612488182e6d32a24ce3669cb19d88cfc655fac5ecc5",
+  "phase_evidence": [
+    {
+      "phase": "stage2",
+      "repetitions": [
+        {
+          "cleanup": {
+            "child_process_released": true,
+            "owned_ray_processes": [],
+            "owned_ray_root": "/data-1/tmp/verl_agent_scratch/r/21",
+            "reaped_descendant_count": 29,
+            "resources_released": true
+          },
+          "elapsed_seconds": 236.49358820915222,
+          "formal_checkpoint_files": [],
+          "generation_count": 64,
+          "metrics": {
+            "timing_s/testing": 28.39228264056146,
+            "val-core/HumanEval+/acc/pass@1": 0.375,
+            "val-core/LiveCodeBench/acc/pass@1": 0.09375,
+            "val-core/MBPP+/acc/pass@1": 0.4375,
+            "validation_elapsed_seconds": 28.39228264056146
+          },
+          "metrics_files": [
+            "/data-1/tmp/verl_agent_scratch/experiment_workflow/stage123/v14-stage3-handoff-requalification-20260716T0655Z/probe-20260716T065534Z/runs/stage2/rep1/output/logs/metrics/OnPolicyWDLSFT-CodeTask/CALIBRATION-STAGE2-QWEN3-1P7B-CTX8K_1784184954.jsonl"
+          ],
+          "optimizer_enabled": false,
+          "phase": "stage2",
+          "repetition": 1,
+          "resources": {
+            "gpu_idle_sample_count": 182,
+            "gpu_idle_threshold_pct": 2,
+            "gpu_sample_count": 210,
+            "gpu_wait_fraction": 0.8666666666666667,
+            "memory_source": "calibration_container_cgroup_v2",
+            "peak_rss_gib": 144.77162551879883,
+            "sample_interval_seconds": 1.0,
+            "schema_version": 1
+          },
+          "returncode": 0,
+          "schema_version": 1,
+          "score_complete": true,
+          "stage3_proxy_kind": null,
+          "status": "passed",
+          "timed_out": false,
+          "training_steps": 0,
+          "truncated_count": 0,
+          "validation_generation_files": [
+            "/data-1/tmp/verl_agent_scratch/experiment_workflow/stage123/v14-stage3-handoff-requalification-20260716T0655Z/probe-20260716T065534Z/runs/stage2/rep1/output/logs/validation/CALIBRATION-STAGE2-QWEN3-1P7B-CTX8K_1784184954/0.jsonl"
+          ]
+        },
+        {
+          "cleanup": {
+            "child_process_released": true,
+            "owned_ray_processes": [],
+            "owned_ray_root": "/data-1/tmp/verl_agent_scratch/r/22",
+            "reaped_descendant_count": 182,
+            "resources_released": true
+          },
+          "elapsed_seconds": 167.49782299995422,
+          "formal_checkpoint_files": [],
+          "generation_count": 64,
+          "metrics": {
+            "timing_s/testing": 26.022358203306794,
+            "val-core/HumanEval+/acc/pass@1": 0.3125,
+            "val-core/LiveCodeBench/acc/pass@1": 0.09375,
+            "val-core/MBPP+/acc/pass@1": 0.3125,
+            "validation_elapsed_seconds": 26.022358203306794
+          },
+          "metrics_files": [
+            "/data-1/tmp/verl_agent_scratch/experiment_workflow/stage123/v14-stage3-handoff-requalification-20260716T0655Z/probe-20260716T065534Z/runs/stage2/rep2/output/logs/metrics/OnPolicyWDLSFT-CodeTask/CALIBRATION-STAGE2-QWEN3-1P7B-CTX8K_1784185185.jsonl"
+          ],
+          "optimizer_enabled": false,
+          "phase": "stage2",
+          "repetition": 2,
+          "resources": {
+            "gpu_idle_sample_count": 119,
+            "gpu_idle_threshold_pct": 2,
+            "gpu_sample_count": 146,
+            "gpu_wait_fraction": 0.815068493150685,
+            "memory_source": "calibration_container_cgroup_v2",
+            "peak_rss_gib": 152.72632598876953,
+            "sample_interval_seconds": 1.0,
+            "schema_version": 1
+          },
+          "returncode": 0,
+          "schema_version": 1,
+          "score_complete": true,
+          "stage3_proxy_kind": null,
+          "status": "passed",
+          "timed_out": false,
+          "training_steps": 0,
+          "truncated_count": 0,
+          "validation_generation_files": [
+            "/data-1/tmp/verl_agent_scratch/experiment_workflow/stage123/v14-stage3-handoff-requalification-20260716T0655Z/probe-20260716T065534Z/runs/stage2/rep2/output/logs/validation/CALIBRATION-STAGE2-QWEN3-1P7B-CTX8K_1784185185/0.jsonl"
+          ]
+        },
+        {
+          "cleanup": {
+            "child_process_released": true,
+            "owned_ray_processes": [],
+            "owned_ray_root": "/data-1/tmp/verl_agent_scratch/r/23",
+            "reaped_descendant_count": 182,
+            "resources_released": true
+          },
+          "elapsed_seconds": 168.60651993751526,
+          "formal_checkpoint_files": [],
+          "generation_count": 64,
+          "metrics": {
+            "timing_s/testing": 27.08842691965401,
+            "val-core/HumanEval+/acc/pass@1": 0.375,
+            "val-core/LiveCodeBench/acc/pass@1": 0.125,
+            "val-core/MBPP+/acc/pass@1": 0.625,
+            "validation_elapsed_seconds": 27.08842691965401
+          },
+          "metrics_files": [
+            "/data-1/tmp/verl_agent_scratch/experiment_workflow/stage123/v14-stage3-handoff-requalification-20260716T0655Z/probe-20260716T065534Z/runs/stage2/rep3/output/logs/metrics/OnPolicyWDLSFT-CodeTask/CALIBRATION-STAGE2-QWEN3-1P7B-CTX8K_1784185353.jsonl"
+          ],
+          "optimizer_enabled": false,
+          "phase": "stage2",
+          "repetition": 3,
+          "resources": {
+            "gpu_idle_sample_count": 121,
+            "gpu_idle_threshold_pct": 2,
+            "gpu_sample_count": 148,
+            "gpu_wait_fraction": 0.8175675675675675,
+            "memory_source": "calibration_container_cgroup_v2",
+            "peak_rss_gib": 160.53459930419922,
+            "sample_interval_seconds": 1.0,
+            "schema_version": 1
+          },
+          "returncode": 0,
+          "schema_version": 1,
+          "score_complete": true,
+          "stage3_proxy_kind": null,
+          "status": "passed",
+          "timed_out": false,
+          "training_steps": 0,
+          "truncated_count": 0,
+          "validation_generation_files": [
+            "/data-1/tmp/verl_agent_scratch/experiment_workflow/stage123/v14-stage3-handoff-requalification-20260716T0655Z/probe-20260716T065534Z/runs/stage2/rep3/output/logs/validation/CALIBRATION-STAGE2-QWEN3-1P7B-CTX8K_1784185353/0.jsonl"
+          ]
+        }
+      ],
+      "status": "passed"
+    },
+    {
+      "phase": "stage3",
+      "repetitions": [
+        {
+          "cleanup": {
+            "child_process_released": true,
+            "owned_ray_processes": [],
+            "owned_ray_root": "/data-1/tmp/verl_agent_scratch/r/31",
+            "reaped_descendant_count": 182,
+            "resources_released": true
+          },
+          "elapsed_seconds": 140.5203993320465,
+          "formal_checkpoint_files": [],
+          "generation_count": 64,
+          "metrics": {
+            "timing_s/testing": 23.744230892509222,
+            "val-core/HumanEval+/acc/pass@1": 0.1875,
+            "val-core/LiveCodeBench/acc/pass@1": 0.09375,
+            "val-core/MBPP+/acc/pass@1": 0.5,
+            "validation_elapsed_seconds": 23.744230892509222
+          },
+          "metrics_files": [
+            "/data-1/tmp/verl_agent_scratch/experiment_workflow/stage123/v14-stage3-handoff-requalification-20260716T0655Z/probe-20260716T065534Z/runs/stage3/rep1/output/logs/metrics/OnPolicyWDLSFT-CodeTask/CALIBRATION-STAGE3-QWEN3-1P7B-CTX8K_1784185517.jsonl"
+          ],
+          "optimizer_enabled": false,
+          "phase": "stage3",
+          "repetition": 1,
+          "resources": {
+            "gpu_idle_sample_count": 105,
+            "gpu_idle_threshold_pct": 2,
+            "gpu_sample_count": 123,
+            "gpu_wait_fraction": 0.8536585365853658,
+            "memory_source": "calibration_container_cgroup_v2",
+            "peak_rss_gib": 160.53459930419922,
+            "sample_interval_seconds": 1.0,
+            "schema_version": 1
+          },
+          "returncode": 0,
+          "schema_version": 1,
+          "score_complete": true,
+          "stage3_proxy_kind": "materialized_manifest_source",
+          "status": "passed",
+          "timed_out": false,
+          "training_steps": 0,
+          "truncated_count": 0,
+          "validation_generation_files": [
+            "/data-1/tmp/verl_agent_scratch/experiment_workflow/stage123/v14-stage3-handoff-requalification-20260716T0655Z/probe-20260716T065534Z/runs/stage3/rep1/output/logs/validation/CALIBRATION-STAGE3-QWEN3-1P7B-CTX8K_1784185517/0.jsonl"
+          ]
+        },
+        {
+          "cleanup": {
+            "child_process_released": true,
+            "owned_ray_processes": [],
+            "owned_ray_root": "/data-1/tmp/verl_agent_scratch/r/32",
+            "reaped_descendant_count": 181,
+            "resources_released": true
+          },
+          "elapsed_seconds": 127.8878858089447,
+          "formal_checkpoint_files": [],
+          "generation_count": 64,
+          "metrics": {
+            "timing_s/testing": 19.662007780745625,
+            "val-core/HumanEval+/acc/pass@1": 0.5,
+            "val-core/LiveCodeBench/acc/pass@1": 0.09375,
+            "val-core/MBPP+/acc/pass@1": 0.4375,
+            "validation_elapsed_seconds": 19.662007780745625
+          },
+          "metrics_files": [
+            "/data-1/tmp/verl_agent_scratch/experiment_workflow/stage123/v14-stage3-handoff-requalification-20260716T0655Z/probe-20260716T065534Z/runs/stage3/rep2/output/logs/metrics/OnPolicyWDLSFT-CodeTask/CALIBRATION-STAGE3-QWEN3-1P7B-CTX8K_1784185658.jsonl"
+          ],
+          "optimizer_enabled": false,
+          "phase": "stage3",
+          "repetition": 2,
+          "resources": {
+            "gpu_idle_sample_count": 95,
+            "gpu_idle_threshold_pct": 2,
+            "gpu_sample_count": 112,
+            "gpu_wait_fraction": 0.8482142857142857,
+            "memory_source": "calibration_container_cgroup_v2",
+            "peak_rss_gib": 160.53459930419922,
+            "sample_interval_seconds": 1.0,
+            "schema_version": 1
+          },
+          "returncode": 0,
+          "schema_version": 1,
+          "score_complete": true,
+          "stage3_proxy_kind": "materialized_manifest_source",
+          "status": "passed",
+          "timed_out": false,
+          "training_steps": 0,
+          "truncated_count": 0,
+          "validation_generation_files": [
+            "/data-1/tmp/verl_agent_scratch/experiment_workflow/stage123/v14-stage3-handoff-requalification-20260716T0655Z/probe-20260716T065534Z/runs/stage3/rep2/output/logs/validation/CALIBRATION-STAGE3-QWEN3-1P7B-CTX8K_1784185658/0.jsonl"
+          ]
+        },
+        {
+          "cleanup": {
+            "child_process_released": true,
+            "owned_ray_processes": [],
+            "owned_ray_root": "/data-1/tmp/verl_agent_scratch/r/33",
+            "reaped_descendant_count": 181,
+            "resources_released": true
+          },
+          "elapsed_seconds": 131.69673371315002,
+          "formal_checkpoint_files": [],
+          "generation_count": 64,
+          "metrics": {
+            "timing_s/testing": 21.037566842511296,
+            "val-core/HumanEval+/acc/pass@1": 0.375,
+            "val-core/LiveCodeBench/acc/pass@1": 0.125,
+            "val-core/MBPP+/acc/pass@1": 0.375,
+            "validation_elapsed_seconds": 21.037566842511296
+          },
+          "metrics_files": [
+            "/data-1/tmp/verl_agent_scratch/experiment_workflow/stage123/v14-stage3-handoff-requalification-20260716T0655Z/probe-20260716T065534Z/runs/stage3/rep3/output/logs/metrics/OnPolicyWDLSFT-CodeTask/CALIBRATION-STAGE3-QWEN3-1P7B-CTX8K_1784185786.jsonl"
+          ],
+          "optimizer_enabled": false,
+          "phase": "stage3",
+          "repetition": 3,
+          "resources": {
+            "gpu_idle_sample_count": 92,
+            "gpu_idle_threshold_pct": 2,
+            "gpu_sample_count": 115,
+            "gpu_wait_fraction": 0.8,
+            "memory_source": "calibration_container_cgroup_v2",
+            "peak_rss_gib": 160.53459930419922,
+            "sample_interval_seconds": 1.0,
+            "schema_version": 1
+          },
+          "returncode": 0,
+          "schema_version": 1,
+          "score_complete": true,
+          "stage3_proxy_kind": "materialized_manifest_source",
+          "status": "passed",
+          "timed_out": false,
+          "training_steps": 0,
+          "truncated_count": 0,
+          "validation_generation_files": [
+            "/data-1/tmp/verl_agent_scratch/experiment_workflow/stage123/v14-stage3-handoff-requalification-20260716T0655Z/probe-20260716T065534Z/runs/stage3/rep3/output/logs/validation/CALIBRATION-STAGE3-QWEN3-1P7B-CTX8K_1784185786/0.jsonl"
+          ]
+        }
+      ],
+      "status": "passed"
+    }
+  ],
+  "policy_id": "stage123-calibration-policy-v1",
+  "policy_sha256": "c8f4df7240a9b4d2fef0ad6adb183b2562604375f5adba7dc396e406252850a1",
+  "prediction_comparison": {
+    "comparisons": [
+      {
+        "decision": {
+          "code": "qualified",
+          "context": {
+            "history_count": 6,
+            "ratio": 0.26848691285107423
+          },
+          "message": "prediction is supported by current probe evidence",
+          "qualified": true
+        },
+        "history": [
+          49.98861486464739,
+          49.942676505073905,
+          105.7492238227278,
+          78.60736407525837,
+          76.01937819831073,
+          83.76534734107554
+        ],
+        "history_count": 6,
+        "metric": "validation_elapsed_seconds",
+        "observed_maximum": 28.39228264056146,
+        "predicted_bound": 105.7492238227278
+      },
+      {
+        "decision": {
+          "code": "qualified",
+          "context": {
+            "history_count": 6,
+            "ratio": 0.7962747077749233
+          },
+          "message": "prediction is supported by current probe evidence",
+          "qualified": true
+        },
+        "history": [
+          241.0,
+          239.0,
+          297.0,
+          236.0,
+          233.0,
+          240.0
+        ],
+        "history_count": 6,
+        "metric": "phase_elapsed_seconds",
+        "observed_maximum": 236.49358820915222,
+        "predicted_bound": 297.0
+      },
+      {
+        "decision": {
+          "code": "qualified",
+          "context": {
+            "history_count": 6,
+            "ratio": 1.1556932261944648
+          },
+          "message": "prediction is supported by current probe evidence",
+          "qualified": true
+        },
+        "history": [
+          130.7530059814453,
+          126.16583251953125,
+          138.90762329101562,
+          67.3317642211914,
+          71.49878311157227,
+          67.37337493896484
+        ],
+        "history_count": 6,
+        "metric": "peak_rss_gib",
+        "observed_maximum": 160.53459930419922,
+        "predicted_bound": 138.90762329101562
+      },
+      {
+        "decision": {
+          "code": "qualified",
+          "context": {
+            "history_count": 6,
+            "ratio": 0.9323232323232323
+          },
+          "message": "prediction is supported by current probe evidence",
+          "qualified": true
+        },
+        "history": [
+          0.8853211009174312,
+          0.8940092165898618,
+          0.9070631970260223,
+          0.9295774647887324,
+          0.9289099526066351,
+          0.8894009216589862
+        ],
+        "history_count": 6,
+        "metric": "gpu_wait_fraction",
+        "observed_maximum": 0.8666666666666667,
+        "predicted_bound": 0.9295774647887324
+      }
+    ],
+    "historical_evidence_role": "accepted_predecessor_history_only_not_current_authority",
+    "policy_id": "stage123-calibration-policy-v1",
+    "policy_sha256": "c8f4df7240a9b4d2fef0ad6adb183b2562604375f5adba7dc396e406252850a1",
+    "predecessor_result_path": "/workspace/verl/docs/joint_training/goals/calibration-qualification/calibration_result.json",
+    "predecessor_result_sha256": "8bdf646803916e231d7ce684edfa7302a706824e3afc008887c009374986218d",
+    "qualified": true
+  },
+  "probe_pointer": {
+    "authorization_decision_id": "D-EX-V14-STAGE3-HANDOFF-REQUAL-01",
+    "generated_at_utc": "2026-07-16T07:12:04.273101Z",
+    "report": "/data-1/tmp/verl_agent_scratch/experiment_workflow/stage123/v14-stage3-handoff-requalification-20260716T0655Z/probe-20260716T065534Z/probe-report.json",
+    "report_completed_at_utc": "2026-07-16T07:12:04.273101Z",
+    "report_sha256": "12361ff738dd784883ce623331a0c8b8f54d1baab62b3cec082fbbc615e6e130",
+    "report_started_at_utc": "2026-07-16T06:55:35.260466Z",
+    "run_id": "stage123-v14-stage3-handoff-requalification-20260716T0655Z",
+    "run_root": "/data-1/tmp/verl_agent_scratch/experiment_workflow/stage123/v14-stage3-handoff-requalification-20260716T0655Z/probe-20260716T065534Z",
+    "schema_version": 2,
+    "status": "passed"
+  },
+  "resource_profile_sha256": "d9b6a36dd9fcc4307f7b502e5511989e60c1a257f57c9ac70574acaf12eee2b5",
+  "result_type": "calibration_result",
+  "schema_version": 1,
+  "started_at": "2026-07-16T06:55:35.260466Z",
+  "workload_identity": {
+    "producer_report_sha256": "12361ff738dd784883ce623331a0c8b8f54d1baab62b3cec082fbbc615e6e130",
+    "run_ids": [
+      "frac25-stage1-control",
+      "frac25-stage2",
+      "frac25-stage3"
+    ]
+  }
+}

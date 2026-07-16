@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import hashlib
 import json
 from pathlib import Path
@@ -281,6 +282,22 @@ def test_certified_stage2_handoff_prepares_new_stage3_only_identity(tmp_path: Pa
     stage3 = next(run for run in manifest["runs"] if run["id"] == "frac25-stage3")
     assert stage3["source"]["model2_path"] == str(paths["extracted"])
     assert stage3["source"]["provenance_file"] == str(paths["stage2_provenance"])
+    workload_source = manifest["calibration_workloads"]["stage3"]["model_sources"][0]
+    assert workload_source["state"] == "materialized"
+    assert workload_source["path"] == str(paths["extracted"])
+    descriptor_spec = importlib.util.spec_from_file_location("calibration_workload_descriptor", ROOT / "recipe/on_policy_wdl_sft/code_task/calibration_workload_descriptor.py")
+    assert descriptor_spec and descriptor_spec.loader
+    descriptor_module = importlib.util.module_from_spec(descriptor_spec)
+    descriptor_spec.loader.exec_module(descriptor_module)
+    assert workload_source["artifact_sha256"] == descriptor_module.artifact_sha256(paths["extracted"])
+    assert "calibration_proxy" not in manifest["calibration_workloads"]["stage3"]
+    manifest_spec = importlib.util.spec_from_file_location("experiment_manifest", ROOT / "scripts/experiment_manifest.py")
+    assert manifest_spec and manifest_spec.loader
+    manifest_module = importlib.util.module_from_spec(manifest_spec)
+    manifest_spec.loader.exec_module(manifest_module)
+    assert manifest_module.is_certified_stage2_handoff_source(stage3["source"])
+    del stage3["source"]["handoff_certificate_sha256"]
+    assert not manifest_module.is_certified_stage2_handoff_source(stage3["source"])
 
     host_facts = tmp_path / "host-facts.json"
     write_json(host_facts, {"artifact_type": "stage123_host_facts", "ok": True, "tmux": {"stage123_conflicts": []}})

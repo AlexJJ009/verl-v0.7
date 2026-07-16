@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 from datetime import datetime, timezone
 import hashlib
+import importlib.util
 import json
 from pathlib import Path
 import shutil
@@ -39,6 +40,16 @@ def tree_digest(path: Path, *, allow_empty: bool = False) -> str:
     if not rows and not allow_empty:
         raise ValueError(f"checkpoint directory is empty: {path}")
     return hashlib.sha256(canonical_json(rows).encode()).hexdigest()
+
+
+def workload_artifact_sha256(path: Path) -> str:
+    descriptor_path = ROOT / "recipe/on_policy_wdl_sft/code_task/calibration_workload_descriptor.py"
+    spec = importlib.util.spec_from_file_location("stage123_calibration_workload_descriptor", descriptor_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("cannot load calibration workload descriptor")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.artifact_sha256(path)
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -503,6 +514,7 @@ def prepare_stage3_handoff(args: argparse.Namespace) -> int:
     source = dict(stage3.get("source", {}))
     source.update(
         {
+            "type": "stage2_model2",
             "run_id": STAGE2_ID,
             "model2_path": certificate["stage2"]["extracted_model2"],
             "provenance_file": certificate["stage2"]["provenance_path"],
@@ -511,6 +523,26 @@ def prepare_stage3_handoff(args: argparse.Namespace) -> int:
         }
     )
     stage3["source"] = source
+    stage3_workload = manifest.get("calibration_workloads", {}).get("stage3")
+    if not isinstance(stage3_workload, dict) or not isinstance(stage3_workload.get("model_sources"), list):
+        raise ValueError("Stage3 handoff source manifest lacks Stage3 calibration workload")
+    stage3_workload["model_sources"] = [
+        {
+            "role": item["role"],
+            "state": "materialized",
+            "path": certificate["stage2"]["extracted_model2"],
+            "artifact_sha256": workload_artifact_sha256(Path(certificate["stage2"]["extracted_model2"])),
+            "hash_algorithm": "sorted_relative_path_content_sha256_v1",
+            "provenance": {
+                "path": certificate["stage2"]["provenance_path"],
+                "sha256": certificate["stage2"]["provenance_sha256"],
+                "schema_version": 1,
+                "kind": "stage2_model2_source",
+            },
+        }
+        for item in stage3_workload["model_sources"]
+    ]
+    stage3_workload.pop("calibration_proxy", None)
     manifest["runs"] = [stage3]
     manifest_path.write_text(yaml.safe_dump(manifest, sort_keys=False))
     admission = {
