@@ -55,6 +55,7 @@ def run_environment(run: dict) -> dict[str, str]:
         "SUBMODEL_KL_MODEL2_COEF": str(kl["model2_coef"]),
         "SUBMODEL_KL_MODEL2_REF_PATH": kl.get("model2_ref_path", source["model2_path"]),
         "JOINT_VALIDATION_VIEWS": "[model1,model2]",
+        "STAGE123_EXPECTED_VAL_N": "3",
         "VAL_N": "3",
         "VAL_TEMPERATURE": "0.2",
         "VAL_TOP_P": "0.95",

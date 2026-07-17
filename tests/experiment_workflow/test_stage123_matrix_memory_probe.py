@@ -27,6 +27,7 @@ def test_run_environment_distinguishes_no_kl_and_model2_kl():
     assert no_kl["SUBMODEL_KL_MODEL2_ENABLED"] == "false"
     assert model2_kl["SUBMODEL_KL_MODEL2_ENABLED"] == "true"
     assert model2_kl["SUBMODEL_KL_MODEL2_REF_PATH"] == "/models/ref"
+    assert model2_kl["STAGE123_EXPECTED_VAL_N"] == "3"
 
 
 def test_summary_requires_auditable_gpu_headroom():
