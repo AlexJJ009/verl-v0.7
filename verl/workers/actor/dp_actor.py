@@ -594,6 +594,11 @@ class DataParallelPPOActor(BasePPOActor):
         temperature = data.meta_info["temperature"]  # temperature must be in the data.meta_info to avoid silent error
         use_dynamic_bsz = data.meta_info["use_dynamic_bsz"]
         pad_token_id = data.meta_info.get("pad_token_id", 0)
+        requested_submodel_log_probs = data.meta_info.get("return_submodel_log_probs", [])
+        if requested_submodel_log_probs is True:
+            requested_submodel_log_probs = [0, 1]
+        elif requested_submodel_log_probs is False:
+            requested_submodel_log_probs = []
         has_multi_modal_inputs = "multi_modal_inputs" in data.non_tensor_batch.keys()
 
         select_keys = ["responses", "input_ids", "attention_mask", "position_ids"]
@@ -621,16 +626,17 @@ class DataParallelPPOActor(BasePPOActor):
         sum_pi_squared_lst = []
         submodel_log_probs_lst: dict[str, list[torch.Tensor]] = {}
         enabled_submodel_kl_indices = self._enabled_submodel_kl_indices()
+        returned_submodel_indices = sorted(set(enabled_submodel_kl_indices) | set(requested_submodel_log_probs))
         for micro_batch in micro_batches:
             micro_batch = micro_batch.to(get_device_id())
             model_inputs = {**micro_batch.batch, **micro_batch.non_tensor_batch, "pad_token_id": pad_token_id}
-            model_inputs["return_submodel_log_probs"] = bool(enabled_submodel_kl_indices)
+            model_inputs["return_submodel_log_probs"] = bool(returned_submodel_indices)
             with torch.no_grad():
                 outputs = self._forward_micro_batch(
                     model_inputs, temperature=temperature, calculate_entropy=calculate_entropy
                 )
             log_probs_lst.append(outputs["log_probs"])
-            for sub_idx in enabled_submodel_kl_indices:
+            for sub_idx in returned_submodel_indices:
                 key = self._submodel_logprob_key(sub_idx)
                 if key in outputs:
                     submodel_log_probs_lst.setdefault(key, []).append(outputs[key])

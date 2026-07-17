@@ -31,9 +31,11 @@ This tests:
 import pytest
 import torch
 
+from verl import DataProto
 from verl.trainer.ppo.rollout_corr_helper import (
     SUPPORTED_ROLLOUT_RS_OPTIONS,
     compute_offpolicy_metrics,
+    compute_rollout_correction_and_add_to_batch,
     compute_rollout_correction_and_rejection_mask,
 )
 
@@ -122,6 +124,26 @@ def test_basic_rollout_correction():
     print("   ✓ Disabled IS passed")
 
     print("\n✓ All tests passed!")
+
+
+def test_joint_model_rollout_metrics_split_implementation_and_behavior_gaps():
+    rollout_log_probs = torch.tensor([[-1.0, -1.5]])
+    model2_log_probs = torch.tensor([[-1.0, -1.5]])
+    fused_log_probs = torch.tensor([[-1.2, -1.8]])
+    batch = DataProto.from_dict(
+        tensors={
+            "old_log_probs": fused_log_probs,
+            "model2_log_probs": model2_log_probs,
+            "rollout_log_probs": rollout_log_probs,
+            "response_mask": torch.ones_like(rollout_log_probs),
+        }
+    )
+
+    _, metrics = compute_rollout_correction_and_add_to_batch(batch, {})
+
+    assert metrics["rollout_impl_corr/model2_vllm_vs_model2_fsdp/kl"] == pytest.approx(0.0)
+    assert metrics["behavior_gap/model2_vs_fused/kl"] == pytest.approx(0.25)
+    assert metrics["rollout_corr/kl"] == pytest.approx(0.25)
 
 
 @pytest.mark.parametrize(

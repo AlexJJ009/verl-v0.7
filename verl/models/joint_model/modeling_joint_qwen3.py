@@ -70,7 +70,8 @@ class QwenJointForCausalLM(PreTrainedModel, GenerationMixin):
         eval_only = eval_only or getattr(self, '_eval_only_mode', False)
 
         if eval_only:
-            return self.sub_models[1](
+            submodel_index = getattr(self, '_eval_submodel_index', 1)
+            return self.sub_models[submodel_index](
                 input_ids=input_ids,
                 attention_mask=attention_mask,
                 position_ids=position_ids,

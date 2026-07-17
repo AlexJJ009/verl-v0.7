@@ -94,6 +94,14 @@ class TestJointSubmodelLogprobPlumbing(unittest.TestCase):
         assert set(outputs.keys()) == {"log_probs"}
         assert outputs["log_probs"].shape == (2, 2)
 
+    def test_diagnostic_request_returns_model2_without_enabling_kl(self):
+        data = self._data()
+        data.meta_info["return_submodel_log_probs"] = [1]
+        outputs = self._actor().compute_log_prob(data, calculate_entropy=False)
+
+        assert set(outputs.keys()) == {"log_probs", "model2_log_probs"}
+        assert outputs["model2_log_probs"].shape == (2, 2)
+
     def test_enabled_submodel_kl_returns_fused_and_submodel_log_probs(self):
         submodel_kl = SubmodelKLPairConfig(
             enabled=True,

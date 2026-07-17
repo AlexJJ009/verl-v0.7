@@ -754,13 +754,17 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
         # For async mode, we can't call run_until_complete here, so we will switch to trainer mode in AgentLoopManager.
         # Note: sync mode is deprecated and rejected in RolloutConfig.__post_init__
 
-    async def rollout_mode(self, eval_only=False):
+    async def rollout_mode(self, eval_only=False, weight_view=None):
         """Context switch hybridengine to rollout mode.
 
         Args:
-            eval_only: If True and model is a joint model, only sync model2 weights
-                       (for evaluation). Otherwise sync full joint model weights.
+            eval_only: Backward-compatible alias for ``weight_view="model2"``.
+            weight_view: ``joint``, ``model1``, or ``model2``.
         """
+        if weight_view is None:
+            weight_view = "model2" if eval_only else "joint"
+        if weight_view not in {"joint", "model1", "model2"}:
+            raise ValueError(f"Unsupported rollout weight view: {weight_view}")
         aggressive_empty_cache(force_sync=True)
 
         log_gpu_memory_usage("Before load_fsdp_model_to_gpu", logger=logger)
@@ -775,7 +779,8 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
             # Set eval_only mode for joint model (checked in forward())
             unwrapped = getattr(self.actor_module_fsdp, "_fsdp_wrapped_module", self.actor_module_fsdp)
             if hasattr(unwrapped, "fusion_lambda"):
-                unwrapped._eval_only_mode = eval_only
+                unwrapped._eval_only_mode = weight_view != "joint"
+                unwrapped._eval_submodel_index = 0 if weight_view == "model1" else 1
             return
 
         peft_config = None
@@ -797,8 +802,8 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
         )
 
         # Joint training: extract model2 weights for eval-only mode
-        print(f"[WDL-SFT VERIFY] rollout_mode(eval_only={eval_only}) called", flush=True)
-        if eval_only:
+        print(f"[WDL-SFT VERIFY] rollout_mode(weight_view={weight_view}) called", flush=True)
+        if weight_view != "joint":
             from verl.models.joint_model.weight_utils import (
                 extract_sub_model_weights,
                 is_joint_model_state_dict,
@@ -807,9 +812,13 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
             is_joint = is_joint_model_state_dict(params)
             print(f"[WDL-SFT VERIFY] eval_only=True path: is_joint_state_dict={is_joint}", flush=True)
             if is_joint:
-                print("[WDL-SFT VERIFY] extracting model2-only weights (sub_model_index=1)", flush=True)
-                logger.info("Joint training eval mode: extracting model2 weights only")
-                params = extract_sub_model_weights(params, sub_model_index=1)
+                sub_model_index = 0 if weight_view == "model1" else 1
+                print(
+                    f"[WDL-SFT VERIFY] extracting {weight_view}-only weights (sub_model_index={sub_model_index})",
+                    flush=True,
+                )
+                logger.info("Joint training eval mode: extracting %s weights only", weight_view)
+                params = extract_sub_model_weights(params, sub_model_index=sub_model_index)
             else:
                 print("[WDL-SFT VERIFY] WARNING: state_dict not recognized as joint — eval_only had no effect", flush=True)
 
@@ -1280,6 +1289,9 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
                 outputs = self.actor.compute_log_prob(data=data, calculate_entropy=calculate_entropy)
             if not is_lora:
                 tensors = {"old_log_probs": outputs["log_probs"]}
+                for key in ("model1_log_probs", "model2_log_probs"):
+                    if key in outputs:
+                        tensors[key] = outputs[key]
             else:
                 tensors = _ref_logprob_tensors_from_actor_outputs(outputs)
             if calculate_entropy:
@@ -1903,6 +1915,6 @@ class CriticWorker(Worker, DistProfilerExtension):
 # ================================= Async related workers =================================
 class AsyncActorRolloutRefWorker(ActorRolloutRefWorker):
     @register(dispatch_mode=Dispatch.ONE_TO_ALL, blocking=False)
-    async def update_weights(self, eval_only=False):
-        await self.rollout_mode(eval_only=eval_only)
+    async def update_weights(self, eval_only=False, weight_view=None):
+        await self.rollout_mode(eval_only=eval_only, weight_view=weight_view)
         return True

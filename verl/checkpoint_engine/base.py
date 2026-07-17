@@ -376,16 +376,20 @@ class CheckpointEngineManager:
         await asyncio.gather(*[r.sleep() for r in self.replicas])
 
     @auto_await
-    async def update_weights(self, eval_only=False):
+    async def update_weights(self, eval_only=False, weight_view=None):
         """Update weights from trainer to rollout replicas.
 
         Args:
-            eval_only: If True, only sync model2 weights for joint training evaluation.
+            eval_only: Backward-compatible alias for ``weight_view="model2"``.
+            weight_view: ``joint``, ``model1``, or ``model2``.
         """
+
+        if weight_view is None:
+            weight_view = "model2" if eval_only else "joint"
 
         # 0. update weights for sync training with colocated trainer and rollout
         if self.backend == "naive":
-            ray.get(self.trainer.update_weights(eval_only=eval_only))
+            ray.get(self.trainer.update_weights(eval_only=eval_only, weight_view=weight_view))
             return
 
         # 1. abort and save all unfinished requests for partial rollout
@@ -402,7 +406,7 @@ class CheckpointEngineManager:
         self.build_process_group(rollout)
 
         # 4. update weights of all workers
-        ray.get(trainer.update_weights(eval_only=eval_only) + rollout.update_weights())
+        ray.get(trainer.update_weights(eval_only=eval_only, weight_view=weight_view) + rollout.update_weights())
 
         # 5. finalize all workers
         ray.get(

@@ -114,16 +114,17 @@ class TestCodeTaskRewardAndMetrics(unittest.TestCase):
         self.assertEqual(leak["score"], -1.0)
         self.assertEqual(leak["acc"], 0.0)
 
-    def test_code_core_acc_uses_pass_at_k_not_mean_at_k(self):
+    def test_code_core_acc_exposes_distinct_mean_pass_and_std_at_k(self):
         result = process_validation_metrics(
-            ["HumanEval+", "HumanEval+", "math"],
-            ["p1", "p1", "m1"],
-            {"acc": [1.0, 0.0, 0.5]},
+            ["HumanEval+", "HumanEval+", "HumanEval+", "math"],
+            ["p1", "p1", "p1", "m1"],
+            {"acc": [1.0, 0.0, 0.0, 0.5]},
             seed=1,
         )
 
-        self.assertIn("pass@2", result["HumanEval+"]["acc"])
-        self.assertNotIn("mean@2", result["HumanEval+"]["acc"])
+        self.assertAlmostEqual(result["HumanEval+"]["acc"]["mean@3"], 1.0 / 3.0)
+        self.assertEqual(result["HumanEval+"]["acc"]["pass@3"], 1.0)
+        self.assertAlmostEqual(result["HumanEval+"]["acc"]["std@3"], 2**0.5 / 3.0)
         self.assertIn("mean@1", result["math"]["acc"])
 
     def test_official_json_restore_preserves_evalplus_tuple_inputs(self):

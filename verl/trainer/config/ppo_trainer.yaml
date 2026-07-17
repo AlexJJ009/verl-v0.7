@@ -141,6 +141,9 @@ trainer:
   # Directory for logging validation data; no dump if null
   validation_data_dir: null
 
+  # Joint-model validation views. A single model2 view preserves legacy metric names.
+  joint_validation_views: [model2]
+
   # Number of nodes used in the training
   nnodes: 1
 

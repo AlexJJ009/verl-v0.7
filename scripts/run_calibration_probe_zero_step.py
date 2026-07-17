@@ -218,15 +218,25 @@ def phase_environment(rendered: dict[str, Any], phase: str, repetition: int, out
 
 def sample_resources(process: subprocess.Popen[str], output: Path, interval: float = 1.0) -> None:
     samples = idle = peak = 0
+    peak_gpu_memory_mib: dict[int, int] = {}
+    gpu_total_memory_mib: dict[int, int] = {}
     while process.poll() is None:
         try:
-            values = subprocess.check_output(
-                ["nvidia-smi", "--query-gpu=utilization.gpu", "--format=csv,noheader,nounits"], text=True
+            rows = subprocess.check_output(
+                [
+                    "nvidia-smi",
+                    "--query-gpu=index,utilization.gpu,memory.used,memory.total",
+                    "--format=csv,noheader,nounits",
+                ],
+                text=True,
             ).splitlines()
-            values = [int(value.strip()) for value in values]
-            if len(values) == 8:
+            parsed = [tuple(int(value.strip()) for value in row.split(",")) for row in rows]
+            if len(parsed) == 8:
                 samples += 1
-                idle += int(all(value <= 2 for value in values))
+                idle += int(all(utilization <= 2 for _, utilization, _, _ in parsed))
+                for index, _, used_mib, total_mib in parsed:
+                    peak_gpu_memory_mib[index] = max(peak_gpu_memory_mib.get(index, 0), used_mib)
+                    gpu_total_memory_mib[index] = total_mib
         except (OSError, subprocess.SubprocessError, ValueError):
             pass
         for candidate in (Path("/sys/fs/cgroup/memory.current"), Path("/sys/fs/cgroup/memory.peak")):
@@ -235,6 +245,17 @@ def sample_resources(process: subprocess.Popen[str], output: Path, interval: flo
             except (OSError, ValueError):
                 pass
         time.sleep(interval)
+    per_gpu = [
+        {
+            "index": index,
+            "peak_memory_used_mib": peak_gpu_memory_mib[index],
+            "total_memory_mib": gpu_total_memory_mib.get(index),
+            "peak_memory_fraction": peak_gpu_memory_mib[index] / gpu_total_memory_mib[index]
+            if gpu_total_memory_mib.get(index)
+            else None,
+        }
+        for index in sorted(peak_gpu_memory_mib)
+    ]
     write_json(output, {
         "schema_version": 1,
         "sample_interval_seconds": interval,
@@ -244,6 +265,13 @@ def sample_resources(process: subprocess.Popen[str], output: Path, interval: flo
         "gpu_wait_fraction": idle / samples if samples else None,
         "peak_rss_gib": peak / (1024 ** 3) if peak else None,
         "memory_source": "calibration_container_cgroup_v2",
+        "gpu_memory_source": "nvidia_smi_device_memory_used",
+        "per_gpu_memory": per_gpu,
+        "peak_gpu_memory_used_mib": max(peak_gpu_memory_mib.values(), default=None),
+        "peak_gpu_memory_fraction": max(
+            (item["peak_memory_fraction"] for item in per_gpu if item["peak_memory_fraction"] is not None),
+            default=None,
+        ),
     })
 
 
@@ -315,12 +343,24 @@ def owned_cleanup(ray_root: Path, process: subprocess.Popen[str]) -> dict[str, A
     }
 
 
-def run_repetition(rendered: dict[str, Any], phase: str, repetition: int, root: Path, splits: dict[str, Path], timeout: int) -> dict[str, Any]:
-    rep_root = root / "runs" / phase / f"rep{repetition}"
+def run_repetition(
+    rendered: dict[str, Any],
+    phase: str,
+    repetition: int,
+    root: Path,
+    splits: dict[str, Path],
+    timeout: int,
+    *,
+    environment_overrides: dict[str, str] | None = None,
+    repetition_label: str | None = None,
+) -> dict[str, Any]:
+    rep_root = root / "runs" / (repetition_label or phase) / f"rep{repetition}"
     output = rep_root / "output"
     log_path = rep_root / "host.log"
     resources_path = rep_root / "resources.json"
     env_delta = phase_environment(rendered, phase, repetition, output, splits)
+    if environment_overrides:
+        env_delta.update(environment_overrides)
     write_json(rep_root / "launch.json", {"phase": phase, "repetition": repetition, "environment": env_delta})
     start = time.time()
     with log_path.open("w") as log:

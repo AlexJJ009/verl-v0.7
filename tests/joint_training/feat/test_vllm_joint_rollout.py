@@ -27,8 +27,8 @@ class _FakeTrainer:
         self.update_calls = []
         self.execute_calls = []
 
-    def update_weights(self, eval_only=False):
-        self.update_calls.append(eval_only)
+    def update_weights(self, eval_only=False, weight_view=None):
+        self.update_calls.append((eval_only, weight_view))
         return ["trainer-update"]
 
     def execute_checkpoint_engine(self, *args, **kwargs):
@@ -70,10 +70,23 @@ def test_checkpoint_manager_propagates_eval_only_for_server_rollouts(monkeypatch
 
     manager.update_weights(eval_only=True)
 
-    assert trainer.update_calls == [True]
+    assert trainer.update_calls == [(True, "model2")]
     assert rollout_group.update_calls == 1
     assert replicas[0].abort_calls == 1
     assert replicas[0].resume_calls == 1
+
+
+def test_checkpoint_manager_propagates_explicit_model1_view(monkeypatch):
+    from verl.checkpoint_engine.base import CheckpointEngineManager
+    import verl.checkpoint_engine.base as checkpoint_base
+
+    trainer = _FakeTrainer()
+    monkeypatch.setattr(checkpoint_base.ray, "get", lambda value: value)
+    manager = CheckpointEngineManager(backend="naive", trainer=trainer, replicas=[])
+
+    manager.update_weights(weight_view="model1")
+
+    assert trainer.update_calls == [(False, "model1")]
 
 
 def test_joint_vllm_model_registry_registration_is_idempotent():

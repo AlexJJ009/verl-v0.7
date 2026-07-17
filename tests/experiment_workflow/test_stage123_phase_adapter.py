@@ -10,6 +10,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[2]
 ADAPTER = ROOT / "scripts/stage123_phase_adapter.py"
 MANIFEST = ROOT / "recipe/on_policy_wdl_sft/experiment_manifest/stage123.yaml"
+SPLIT_MANIFEST = ROOT / "recipe/on_policy_wdl_sft/experiment_manifest/stage123_model2_kl_split_stage3.yaml"
 
 
 def module():
@@ -24,6 +25,16 @@ def module():
 def dry_run(run_id: str) -> dict:
     result = subprocess.run(
         [sys.executable, str(ADAPTER), "--manifest", str(MANIFEST), "--run-id", run_id, "--dry-run"],
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    return json.loads(result.stdout)
+
+
+def split_dry_run(run_id: str) -> dict:
+    result = subprocess.run(
+        [sys.executable, str(ADAPTER), "--manifest", str(SPLIT_MANIFEST), "--run-id", run_id, "--dry-run"],
         check=True,
         text=True,
         capture_output=True,
@@ -59,3 +70,24 @@ def test_provenance_write_is_atomic_and_retry_forbidden(tmp_path: Path) -> None:
         assert "retry/resume is forbidden" in str(exc)
     else:
         raise AssertionError("existing provenance did not fail closed")
+
+
+def test_split_matrix_has_two_kl_arms_and_two_stage3_submodel_branches() -> None:
+    no_kl = split_dry_run("frac25-stage2-nokl")["environment"]
+    model2_kl = split_dry_run("frac25-stage2-m2kl")["environment"]
+    no_kl_model1 = split_dry_run("frac25-stage3-nokl-model1")["environment"]
+    no_kl_model2 = split_dry_run("frac25-stage3-nokl-model2")["environment"]
+
+    assert no_kl["VAL_N"] == "3"
+    assert no_kl["JOINT_VALIDATION_VIEWS"] == "[model1,model2]"
+    assert no_kl["BEST_CKPT_METRIC_KEY"] == "val-core/model2/HumanEval+/acc/mean@3"
+    assert no_kl["SUBMODEL_KL_ENABLED"] == "false"
+    assert model2_kl["SUBMODEL_KL_ENABLED"] == "true"
+    assert model2_kl["SUBMODEL_KL_MODEL1_ENABLED"] == "false"
+    assert model2_kl["SUBMODEL_KL_MODEL2_ENABLED"] == "true"
+    assert model2_kl["SUBMODEL_KL_MODEL2_COEF"] == "0.01"
+    assert no_kl_model1["STAGE2_SUBMODEL"] == "model1"
+    assert no_kl_model1["STAGE2_MODEL_PATH"].endswith("/stage2_final_model1")
+    assert no_kl_model2["STAGE2_SUBMODEL"] == "model2"
+    assert no_kl_model2["STAGE2_MODEL_PATH"].endswith("/stage2_final_model2")
+    assert no_kl_model1["BEST_CKPT_METRIC_KEY"] == "val-core/HumanEval+/acc/mean@3"

@@ -987,6 +987,24 @@ def compute_rollout_correction_and_add_to_batch(
         rollout_rs_threshold=rollout_rs_threshold,
     )
 
+    if "model2_log_probs" in batch.batch:
+        implementation_metrics = compute_offpolicy_metrics(
+            old_log_prob=batch.batch["model2_log_probs"],
+            rollout_log_prob=batch.batch["rollout_log_probs"],
+            response_mask=batch.batch["response_mask"],
+        )
+        rollout_corr_metrics.update(
+            {f"rollout_impl_corr/model2_vllm_vs_model2_fsdp/{key}": value for key, value in implementation_metrics.items()}
+        )
+        fused_behavior_metrics = compute_offpolicy_metrics(
+            old_log_prob=batch.batch["old_log_probs"],
+            rollout_log_prob=batch.batch["rollout_log_probs"],
+            response_mask=batch.batch["response_mask"],
+        )
+        rollout_corr_metrics.update(
+            {f"behavior_gap/model2_vs_fused/{key}": value for key, value in fused_behavior_metrics.items()}
+        )
+
     # ALWAYS update response_mask with rejection applied
     batch.batch["response_mask"] = modified_response_mask
 

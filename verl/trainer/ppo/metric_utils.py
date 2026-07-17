@@ -616,8 +616,9 @@ def process_validation_metrics(
                 # compute mean and std
                 n_resps = len(var_vals)
                 is_code_core_acc = data_source in code_data_sources and var_name == "acc"
-                metric_key = f"pass@{n_resps}" if is_code_core_acc else f"mean@{n_resps}"
-                metric = {metric_key: float(np_mean(var_vals))}
+                metric = {f"mean@{n_resps}": float(np_mean(var_vals))}
+                if is_code_core_acc:
+                    metric[f"pass@{n_resps}"] = float(np.max(var_vals))
 
                 if n_resps > 1:
                     metric[f"std@{n_resps}"] = float(np_std(var_vals))
@@ -639,7 +640,7 @@ def process_validation_metrics(
                         )
                         metric[f"best@{n}/mean"] = bon_mean
                         metric[f"best@{n}/std"] = bon_std
-                        if is_code_core_acc:
+                        if is_code_core_acc and n != n_resps:
                             metric[f"pass@{n}"] = bon_mean
                         metric[f"worst@{n}/mean"] = won_mean
                         metric[f"worst@{n}/std"] = won_std

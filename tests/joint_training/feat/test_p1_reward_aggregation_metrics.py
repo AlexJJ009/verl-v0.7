@@ -13,6 +13,7 @@ Run:
 
 import pytest
 import numpy as np
+from types import SimpleNamespace
 
 
 def _make_trainer_for_val_metrics():
@@ -193,3 +194,44 @@ class TestNonJointTraining:
         result = trainer._val_metrics_update(data_sources, uids, extra, [])
         joint_keys = [k for k in result if k.startswith("jointTraining/")]
         assert len(joint_keys) == 0, f"Non-joint should have no jointTraining/ keys: {joint_keys}"
+
+
+class TestJointValidationViews:
+
+    def test_metric_view_namespaces_core_aux_and_joint_metrics(self):
+        trainer = _make_trainer_for_val_metrics()
+        result = trainer._val_metrics_update(
+            np.array(["HumanEval+"] * 3),
+            ["task-1"] * 3,
+            _make_reward_extra_infos_dict(
+                preds=["ok", "bad", "bad"],
+                rewards=[1.0, -1.0, -1.0],
+                accs=[1.0, 0.0, 0.0],
+            ),
+            [],
+            metric_view="model1",
+        )
+
+        assert result["val-core/model1/HumanEval+/acc/mean@3"] == pytest.approx(1.0 / 3.0)
+        assert result["val-core/model1/HumanEval+/acc/pass@3"] == 1.0
+        assert result["val-aux/model1/HumanEval+/acc/std@3"] == pytest.approx(2**0.5 / 3.0)
+        assert "jointTraining/model1/answer_extraction_failure_rate" in result
+
+    def test_configured_views_run_model1_then_model2_with_namespaces(self):
+        trainer = _make_trainer_for_val_metrics()
+        trainer.config = SimpleNamespace(trainer={"joint_validation_views": ["model1", "model2"]})
+        calls = []
+
+        def validate(*, weight_view=None, metric_view=None):
+            calls.append((weight_view, metric_view))
+            return {f"val-core/{metric_view}/HumanEval+/acc/mean@3": 0.5}
+
+        trainer._validate = validate
+
+        metrics = trainer._validate_configured_views()
+
+        assert calls == [("model1", "model1"), ("model2", "model2")]
+        assert set(metrics) == {
+            "val-core/model1/HumanEval+/acc/mean@3",
+            "val-core/model2/HumanEval+/acc/mean@3",
+        }

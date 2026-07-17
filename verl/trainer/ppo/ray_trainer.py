@@ -893,13 +893,38 @@ class RayPPOTrainer:
         batch_reward = self.reward_loop_manager.compute_rm_score(batch)
         return batch_reward
 
-    def _validate(self, merged: bool = False):
-        # Joint training: switch to model2-only weights for evaluation
+    def _validate_configured_views(self) -> dict[str, float]:
+        if not getattr(self, "_is_joint_training", False):
+            return self._validate()
+
+        views = list(self.config.trainer.get("joint_validation_views", ["model2"]))
+        if not views:
+            views = ["model2"]
+        unsupported = sorted(set(views) - {"model1", "model2"})
+        if unsupported:
+            raise ValueError(f"Unsupported joint validation views: {unsupported}")
+
+        metrics: dict[str, float] = {}
+        expose_view_namespace = len(views) > 1
+        for view in views:
+            view_metrics = self._validate(
+                weight_view=view,
+                metric_view=view if expose_view_namespace else None,
+            )
+            overlap = metrics.keys() & view_metrics.keys()
+            if overlap:
+                raise RuntimeError(f"Joint validation metric collision: {sorted(overlap)[:5]}")
+            metrics.update(view_metrics)
+        return metrics
+
+    def _validate(self, merged: bool = False, weight_view: str | None = None, metric_view: str | None = None):
+        # Joint training: switch to the requested standalone submodel for evaluation.
         is_joint = getattr(self, "_is_joint_training", False)
         print(f"[WDL-SFT VERIFY] _validate() entered, _is_joint_training={is_joint}", flush=True)
         if is_joint:
-            print("[WDL-SFT VERIFY] validation rollout source: model2-only", flush=True)
-            self._update_rollout_weights(reason="validation")
+            weight_view = weight_view or "model2"
+            print(f"[WDL-SFT VERIFY] validation weight view: {weight_view}", flush=True)
+            self._update_rollout_weights(reason="validation", weight_view=weight_view)
 
         data_source_lst = []
         reward_extra_infos_dict: dict[str, list] = defaultdict(list)
@@ -1062,6 +1087,8 @@ class RayPPOTrainer:
         # dump generations
         val_data_dir = self.config.trainer.get("validation_data_dir", None)
         if val_data_dir:
+            if metric_view:
+                val_data_dir = os.path.join(val_data_dir, metric_view)
             self._dump_generations(
                 inputs=sample_inputs,
                 outputs=sample_outputs,
@@ -1088,7 +1115,12 @@ class RayPPOTrainer:
                 "reward_extra_infos_dict": reward_extra_infos_dict,
             }
         data_sources = np.concatenate(data_source_lst, axis=0)
-        result = self._val_metrics_update(data_sources, sample_uids, reward_extra_infos_dict, sample_turns)
+        if metric_view:
+            result = self._val_metrics_update(
+                data_sources, sample_uids, reward_extra_infos_dict, sample_turns, metric_view=metric_view
+            )
+        else:
+            result = self._val_metrics_update(data_sources, sample_uids, reward_extra_infos_dict, sample_turns)
 
         # Joint training: restore full joint model weights after eval
         if is_joint:
@@ -1099,12 +1131,19 @@ class RayPPOTrainer:
     def _rollout_eval_only(self) -> bool:
         return bool(self._is_joint_training and self._joint_training_rollout_source == "model2")
 
-    def _update_rollout_weights(self, reason: str = "train"):
-        eval_only = self._rollout_eval_only()
-        if eval_only:
+    def _update_rollout_weights(self, reason: str = "train", weight_view: str | None = None):
+        if weight_view is None:
+            weight_view = "model2" if self._rollout_eval_only() else "joint"
+        if weight_view == "model2":
             print(
                 "[WDL-SFT VERIFY] rollout source: model2-only; "
                 f"reason={reason}; actor_training_model=joint; sync_eval_only=True",
+                flush=True,
+            )
+        elif weight_view == "model1":
+            print(
+                "[WDL-SFT VERIFY] rollout source: model1-only; "
+                f"reason={reason}; actor_training_model=joint",
                 flush=True,
             )
         elif self._is_joint_training:
@@ -1113,9 +1152,9 @@ class RayPPOTrainer:
                 f"reason={reason}; actor_training_model=joint; sync_eval_only=False",
                 flush=True,
             )
-        self.checkpoint_manager.update_weights(eval_only=eval_only)
+        self.checkpoint_manager.update_weights(weight_view=weight_view)
 
-    def _val_metrics_update(self, data_sources, sample_uids, reward_extra_infos_dict, sample_turns):
+    def _val_metrics_update(self, data_sources, sample_uids, reward_extra_infos_dict, sample_turns, metric_view=None):
         data_src2var2metric2val = process_validation_metrics(data_sources, sample_uids, reward_extra_infos_dict)
         metric_dict = {}
         for data_source, var2metric2val in data_src2var2metric2val.items():
@@ -1131,20 +1170,26 @@ class RayPPOTrainer:
                         metric_sec = "val-core"
                     else:
                         metric_sec = "val-aux"
-                    pfx = f"{metric_sec}/{data_source}/{var_name}/{metric_name}"
+                    view_path = f"/{metric_view}" if metric_view else ""
+                    pfx = f"{metric_sec}{view_path}/{data_source}/{var_name}/{metric_name}"
                     metric_dict[pfx] = metric_val
 
         if len(sample_turns) > 0:
             sample_turns = np.concatenate(sample_turns)
-            metric_dict["val-aux/num_turns/min"] = sample_turns.min()
-            metric_dict["val-aux/num_turns/max"] = sample_turns.max()
-            metric_dict["val-aux/num_turns/mean"] = sample_turns.mean()
+            turns_prefix = f"val-aux/{metric_view}/num_turns" if metric_view else "val-aux/num_turns"
+            metric_dict[f"{turns_prefix}/min"] = sample_turns.min()
+            metric_dict[f"{turns_prefix}/max"] = sample_turns.max()
+            metric_dict[f"{turns_prefix}/mean"] = sample_turns.mean()
 
         # Joint-training-specific reward metadata aggregation
         if getattr(self, "_is_joint_training", False):
-            metric_dict.update(
-                self._compute_joint_validation_metrics(reward_extra_infos_dict)
-            )
+            joint_metrics = self._compute_joint_validation_metrics(reward_extra_infos_dict)
+            if metric_view:
+                joint_metrics = {
+                    key.replace("jointTraining/", f"jointTraining/{metric_view}/", 1): value
+                    for key, value in joint_metrics.items()
+                }
+            metric_dict.update(joint_metrics)
 
         return metric_dict
 
@@ -1868,6 +1913,13 @@ class RayPPOTrainer:
     def _compute_old_log_prob(self, batch: DataProto):
         actor_config = self.config.actor_rollout_ref.actor
         calculate_entropy = actor_config.calculate_entropy or actor_config.entropy_coeff != 0.0
+        return_submodel_log_probs = []
+        if getattr(self, "_is_joint_training", False) and getattr(
+            self, "_joint_training_rollout_source", None
+        ) == "model2":
+            return_submodel_log_probs = [1]
+            if hasattr(batch, "meta_info"):
+                batch.meta_info["return_submodel_log_probs"] = return_submodel_log_probs
         if self.use_legacy_worker_impl == "disable":
             # TODO: remove step 1, 2, 4 after we make the whole training tensordict and padding free
             # step 1: convert dataproto to tensordict.
@@ -1875,7 +1927,13 @@ class RayPPOTrainer:
             # step 2: convert from padding to nopadding
             batch_td = left_right_2_no_padding(batch_td)
             # step 3: add meta info
-            tu.assign_non_tensor(batch_td, calculate_entropy=calculate_entropy, compute_loss=False)
+            old_log_prob_metadata = {
+                "calculate_entropy": calculate_entropy,
+                "compute_loss": False,
+            }
+            if return_submodel_log_probs:
+                old_log_prob_metadata["return_submodel_log_probs"] = return_submodel_log_probs
+            tu.assign_non_tensor(batch_td, **old_log_prob_metadata)
             output = self.actor_rollout_wg.compute_log_prob(batch_td)
             # gather output
             log_probs = tu.get(output, "log_probs")
@@ -1884,6 +1942,12 @@ class RayPPOTrainer:
             log_probs = no_padding_2_padding(log_probs, batch_td)
             # step 5: rebuild a tensordict and convert to dataproto
             tensor_dict = {"old_log_probs": log_probs.float()}
+            try:
+                model2_log_probs = tu.get(output, "model2_log_probs")
+            except Exception:
+                model2_log_probs = None
+            if model2_log_probs is not None:
+                tensor_dict["model2_log_probs"] = no_padding_2_padding(model2_log_probs, batch_td).float()
             if calculate_entropy:
                 entropy = tu.get(output, "entropys")
                 entropy = no_padding_2_padding(entropy, batch_td)
@@ -2002,7 +2066,7 @@ class RayPPOTrainer:
         if self.config.trainer.get("val_before_train", True):
             initial_validation_timing: dict[str, float] = {}
             with marked_timer("testing", initial_validation_timing):
-                val_metrics = self._validate()
+                val_metrics = self._validate_configured_views()
             assert val_metrics, f"{val_metrics=}"
             val_metrics["timing_s/testing"] = initial_validation_timing["testing"]
             getattr(self, "validation_observer", _NULL_VALIDATION_OBSERVER).record(
@@ -2315,7 +2379,7 @@ class RayPPOTrainer:
                     is_last_step or self.global_steps % self.config.trainer.test_freq == 0
                 ):
                     with marked_timer("testing", timing_raw, color="green"):
-                        val_metrics: dict = self._validate()
+                        val_metrics: dict = self._validate_configured_views()
                         if is_last_step:
                             last_val_metrics = val_metrics
                         did_validate = True
