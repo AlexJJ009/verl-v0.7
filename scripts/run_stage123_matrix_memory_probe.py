@@ -18,6 +18,7 @@ from scripts.run_calibration_probe_zero_step import run_repetition, sha256, spli
 
 
 DEFAULT_RUN_IDS = ("frac25-stage2-nokl", "frac25-stage2-m2kl")
+EXPECTED_STAGE2_GENERATIONS = 64 * 3 * 2
 
 
 def render_matrix(path: Path) -> dict:
@@ -88,6 +89,28 @@ def summarize(run: dict, repetitions: list[dict], minimum_headroom_mib: int) -> 
     }
 
 
+def qualify_matrix_repetition(result: dict) -> dict:
+    views = {
+        view
+        for path in result.get("validation_generation_files", [])
+        for view in ("model1", "model2")
+        if f"/{view}/" in path
+    }
+    passed = (
+        result.get("returncode") == 0
+        and result.get("timed_out") is False
+        and result.get("generation_count", 0) >= EXPECTED_STAGE2_GENERATIONS
+        and views == {"model1", "model2"}
+        and not result.get("formal_checkpoint_files")
+        and result.get("cleanup", {}).get("resources_released") is True
+        and (result.get("resources") or {}).get("peak_gpu_memory_used_mib") is not None
+    )
+    result = dict(result)
+    result["matrix_score_complete"] = passed
+    result["status"] = "passed" if passed else "failed"
+    return result
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--manifest", type=Path, required=True)
@@ -95,6 +118,7 @@ def main() -> int:
     parser.add_argument("--repetitions", type=int, default=1)
     parser.add_argument("--scratch-root", type=Path, required=True)
     parser.add_argument("--minimum-headroom-mib", type=int, default=4096)
+    parser.add_argument("--reuse-repetition", action="append", default=[])
     args = parser.parse_args()
     if not 1 <= args.repetitions <= 3:
         raise SystemExit("repetitions must be 1..3")
@@ -116,19 +140,22 @@ def main() -> int:
     splits = split_workload(run_root)
     deadline = int(base["calibration_policy"]["validation_deadline_seconds"])
     reports = []
+    reused = {}
+    for value in args.reuse_repetition:
+        run_id, separator, path = value.partition("=")
+        if not separator:
+            raise SystemExit("reuse repetition must use RUN_ID=PATH")
+        reused[run_id] = Path(path)
     for run in runs:
         repetitions = []
-        for repetition in range(1, args.repetitions + 1):
-            result = run_repetition(
-                base,
-                "stage2",
-                repetition,
-                run_root,
-                splits,
-                deadline,
-                environment_overrides=run_environment(run),
-                repetition_label=run["id"],
-            )
+        if run["id"] in reused:
+            result = json.loads(reused[run["id"]].read_text())
+            repetitions.append(qualify_matrix_repetition(result))
+        for repetition in range(1, args.repetitions + 1 if not repetitions else 1):
+            result = qualify_matrix_repetition(run_repetition(
+                base, "stage2", repetition, run_root, splits, deadline,
+                environment_overrides=run_environment(run), repetition_label=run["id"],
+            ))
             repetitions.append(result)
             if result["status"] != "passed":
                 break

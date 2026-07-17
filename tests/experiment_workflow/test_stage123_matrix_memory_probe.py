@@ -36,3 +36,19 @@ def test_summary_requires_auditable_gpu_headroom():
     repetition = {"status": "passed", "resources": {"peak_gpu_memory_used_mib": 43000, "per_gpu_memory": [{"index": 0, "total_memory_mib": 46068}]}}
     assert module.summarize(run, [repetition], 4096)["status"] == "failed"
     assert module.summarize(run, [repetition], 2048)["status"] == "passed"
+
+
+def test_matrix_qualification_accepts_namespaced_n3_evidence():
+    module = load_module("stage123_matrix_memory_probe_qualification", ROOT / "scripts/run_stage123_matrix_memory_probe.py")
+    result = {
+        "returncode": 0,
+        "timed_out": False,
+        "generation_count": 384,
+        "validation_generation_files": ["/validation/model1/0.jsonl", "/validation/model2/0.jsonl"],
+        "formal_checkpoint_files": [],
+        "cleanup": {"resources_released": True},
+        "resources": {"peak_gpu_memory_used_mib": 23867},
+    }
+    qualified = module.qualify_matrix_repetition(result)
+    assert qualified["status"] == "passed"
+    assert qualified["matrix_score_complete"] is True
