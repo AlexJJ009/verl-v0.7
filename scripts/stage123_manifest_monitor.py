@@ -20,6 +20,8 @@ BATCH_STATES = BATCH_TERMINAL_STATES | {"pending", "running", "paused_after_curr
 def persisted_states(state_root: Path) -> dict[str, dict]:
     result = {}
     for path in state_root.glob("*.json"):
+        if path.name == "rendered_manifest.json":
+            continue
         try:
             value = json.loads(path.read_text())
         except (OSError, json.JSONDecodeError) as exc:

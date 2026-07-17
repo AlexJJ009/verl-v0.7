@@ -79,6 +79,17 @@ def test_malformed_batch_event_fails_closed(tmp_path: Path) -> None:
         raise AssertionError("malformed batch event was accepted")
 
 
+def test_rendered_manifest_is_not_treated_as_execution_state(tmp_path: Path) -> None:
+    monitor = load_monitor()
+    state_root = tmp_path / "state"
+    state_root.mkdir()
+    (state_root / "rendered_manifest.json").write_text(json.dumps({"schema_version": 1, "runs": []}))
+    (state_root / "run-a.json").write_text(json.dumps({"schema_version": 1, "run_id": "run-a", "status": "running"}))
+    assert monitor.persisted_states(state_root) == {
+        "run-a": {"schema_version": 1, "run_id": "run-a", "status": "running"}
+    }
+
+
 def test_monitor_source_has_no_transition_or_runtime_inference_authority() -> None:
     source = MONITOR.read_text()
     for forbidden in ("tmux", "latest_checkpoint", "latest_checkpointed_iteration", "wandb", "registry", "transition(state", "terminate("):
