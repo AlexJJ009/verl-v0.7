@@ -1,15 +1,15 @@
 {
   "calibration_authorization_identity": {
-    "decision_id": "RD-MATCHED-CONTROL-REQUAL-01",
-    "plan_sha256": "29fd07ea9cbf5a13bae70d0907c4f25652fd8efe90e11dfd911c299ec669f43c",
-    "plan_version": 9,
-    "run_id": "stage123_matched_control_requalification_RD-MATCHED-CONTROL-REQUAL-01"
+    "decision_id": "D-EX-V18-F-EX-LAUNCH-07-APPLICABILITY-02",
+    "mode": "resource_neutral_calibration_applicability",
+    "plan_sha256": "471c12f95e1969948105626d25ddb90659bc2e8242d8309fe9576a9145850852",
+    "plan_version": 18
   },
-  "calibration_evidence_commit": "8a5402e5a31c7810c7c0c77b4d8dcd1aa6129f56",
+  "calibration_evidence_commit": "1f8ccf9f93902b30857cac063f4859be3a7b5e21",
   "checks": [
     {
       "detail": {
-        "sha256": "abff5cc4fe0fc7366dfafab6383a51019699ebd32f3eb2708a3fb58268b39c15"
+        "sha256": "86f778707462c19ca19b2f6ad7724626c9c049025fa5016ca197d0cc6a2ed37e"
       },
       "name": "host_facts",
       "ok": true
@@ -56,7 +56,7 @@
     },
     {
       "detail": {
-        "sha256": "d9b6a36dd9fcc4307f7b502e5511989e60c1a257f57c9ac70574acaf12eee2b5"
+        "sha256": "d687caf1146c9b32a2f51dcf71e876cf5f987fe62b4db69f1043caaff52ddbe8"
       },
       "name": "resource_profile_command",
       "ok": true
@@ -79,7 +79,7 @@
     },
     {
       "detail": {
-        "manifest_sha256": "323bcc6084c1b01653bdf3cb5b299cab51c76864c8ca24878a9e5b002cb76278",
+        "manifest_sha256": "1d2c5d55da7d758784b7383a574449cecc9bd67281a2b17752150dcb542d14fc",
         "normalized_matches_repo": true,
         "phases": {
           "stage1": {
@@ -123,11 +123,11 @@
             "materialized": false,
             "model_sources": [
               {
-                "path": "/data-2/model_weights/code_task/qwen3_1p7b_stage123/frac25_p40_s220_s340/stage2_final_model2",
+                "path": "/data-2/model_weights/code_task/qwen3_1p7b_stage123_v16/frac25_p40_s220_s340_v16/stage2_final_model2",
                 "producer": {
                   "final_step": 20,
-                  "output_path": "/data-2/model_weights/code_task/qwen3_1p7b_stage123/frac25_p40_s220_s340/stage2_final_model2",
-                  "provenance_path": "/data-2/model_weights/code_task/qwen3_1p7b_stage123/frac25_p40_s220_s340/frac25-stage3.provenance.json",
+                  "output_path": "/data-2/model_weights/code_task/qwen3_1p7b_stage123_v16/frac25_p40_s220_s340_v16/stage2_final_model2",
+                  "provenance_path": "/data-2/model_weights/code_task/qwen3_1p7b_stage123_v16/frac25_p40_s220_s340_v16/frac25-stage3.provenance.json",
                   "run_id": "frac25-stage2"
                 },
                 "role": "rollout",
@@ -543,38 +543,38 @@
     {
       "detail": {
         "detail": "provided",
-        "sha256": "0958211eec8ee0169261b1dba24bc33d0a930249e76f741a9599d7378e8072fc"
+        "sha256": "bbb960c9867b9132fe943497dd8bf70ad2ab5557c34c338564eaad35835255ee"
       },
       "name": "implementation_tree",
       "ok": true
     },
     {
       "detail": {
-        "actual": "d9b6a36dd9fcc4307f7b502e5511989e60c1a257f57c9ac70574acaf12eee2b5",
-        "expected": "d9b6a36dd9fcc4307f7b502e5511989e60c1a257f57c9ac70574acaf12eee2b5"
+        "actual": "d687caf1146c9b32a2f51dcf71e876cf5f987fe62b4db69f1043caaff52ddbe8",
+        "expected": "d687caf1146c9b32a2f51dcf71e876cf5f987fe62b4db69f1043caaff52ddbe8"
       },
       "name": "resource_profile_binding",
       "ok": true
     },
     {
       "detail": {
-        "calibration_manifest_sha256": "323bcc6084c1b01653bdf3cb5b299cab51c76864c8ca24878a9e5b002cb76278",
-        "manifest_sha256": "323bcc6084c1b01653bdf3cb5b299cab51c76864c8ca24878a9e5b002cb76278"
+        "calibration_manifest_sha256": "1d2c5d55da7d758784b7383a574449cecc9bd67281a2b17752150dcb542d14fc",
+        "manifest_sha256": "1d2c5d55da7d758784b7383a574449cecc9bd67281a2b17752150dcb542d14fc"
       },
       "name": "calibration_binding",
       "ok": true
     }
   ],
-  "completed_at": "2026-07-15T10:01:21Z",
+  "completed_at": "2026-07-16T17:06:33Z",
   "decision": "passed",
   "docker_image_id": "sha256:c9d525a1f4b33267bd00be60fe00693338253537cac78151e4c55a6d3a7e5708",
   "failures": [],
   "gate": "qwen3_1p7b_stage123_preflight",
-  "host_facts_sha256": "abff5cc4fe0fc7366dfafab6383a51019699ebd32f3eb2708a3fb58268b39c15",
-  "implementation_tree_sha256": "0958211eec8ee0169261b1dba24bc33d0a930249e76f741a9599d7378e8072fc",
-  "manifest_sha256": "323bcc6084c1b01653bdf3cb5b299cab51c76864c8ca24878a9e5b002cb76278",
+  "host_facts_sha256": "86f778707462c19ca19b2f6ad7724626c9c049025fa5016ca197d0cc6a2ed37e",
+  "implementation_tree_sha256": "bbb960c9867b9132fe943497dd8bf70ad2ab5557c34c338564eaad35835255ee",
+  "manifest_sha256": "1d2c5d55da7d758784b7383a574449cecc9bd67281a2b17752150dcb542d14fc",
   "ok": true,
-  "resource_profile_sha256": "d9b6a36dd9fcc4307f7b502e5511989e60c1a257f57c9ac70574acaf12eee2b5",
+  "resource_profile_sha256": "d687caf1146c9b32a2f51dcf71e876cf5f987fe62b4db69f1043caaff52ddbe8",
   "result_type": "preflight_result",
   "run_ids": [
     "frac25-stage1-control",
@@ -582,5 +582,5 @@
     "frac25-stage3"
   ],
   "schema_version": 1,
-  "started_at": "2026-07-15T10:01:03Z"
+  "started_at": "2026-07-16T17:06:14Z"
 }

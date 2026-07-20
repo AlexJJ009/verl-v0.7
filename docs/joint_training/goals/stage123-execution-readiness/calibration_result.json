@@ -1,20 +1,20 @@
 {
   "authorization_identity": {
-    "decision_id": "D-EX-V18-CALIBRATION-APPLICABILITY-02",
+    "decision_id": "D-EX-V18-F-EX-LAUNCH-07-APPLICABILITY-02",
     "mode": "resource_neutral_calibration_applicability",
     "plan_sha256": "471c12f95e1969948105626d25ddb90659bc2e8242d8309fe9576a9145850852",
     "plan_version": 18
   },
   "calibration_applicability": {
-    "authorization_decision_id": "D-EX-V18-CALIBRATION-APPLICABILITY-02",
+    "authorization_decision_id": "D-EX-V18-F-EX-LAUNCH-07-APPLICABILITY-02",
     "candidate_capacity_sha256": "7cab911b63caba6c001e29e1b0a7cb7d7bacf04b0e23a642e7638ed0cd91e2f5",
     "candidate_manifest_sha256": "1d2c5d55da7d758784b7383a574449cecc9bd67281a2b17752150dcb542d14fc",
     "candidate_resource_profile_sha256": "d687caf1146c9b32a2f51dcf71e876cf5f987fe62b4db69f1043caaff52ddbe8",
     "capacity_differences": [],
-    "completed_at": "2026-07-16T12:24:24.158666Z",
+    "completed_at": "2026-07-16T17:04:00.058112Z",
     "decision": "applicable",
-    "evidence_commit": "7d2a0190c71e00872dafeebbf08e735cda5d0c31",
-    "implementation_tree_sha256": "7b0c9449ac66a0842007fc30169e833c19b37c11cb5f56761a4d878cc2d80bff",
+    "evidence_commit": "1f8ccf9f93902b30857cac063f4859be3a7b5e21",
+    "implementation_tree_sha256": "bbb960c9867b9132fe943497dd8bf70ad2ab5557c34c338564eaad35835255ee",
     "plan_sha256": "471c12f95e1969948105626d25ddb90659bc2e8242d8309fe9576a9145850852",
     "result_type": "stage123_calibration_applicability",
     "schema_version": 1,
@@ -31,11 +31,11 @@
     },
     "resources_released": true
   },
-  "completed_at": "2026-07-16T12:24:24.158666Z",
+  "completed_at": "2026-07-16T17:04:00.058112Z",
   "decision": "passed",
-  "evidence_commit": "7d2a0190c71e00872dafeebbf08e735cda5d0c31",
+  "evidence_commit": "1f8ccf9f93902b30857cac063f4859be3a7b5e21",
   "failures": [],
-  "implementation_tree_sha256": "7b0c9449ac66a0842007fc30169e833c19b37c11cb5f56761a4d878cc2d80bff",
+  "implementation_tree_sha256": "bbb960c9867b9132fe943497dd8bf70ad2ab5557c34c338564eaad35835255ee",
   "manifest_sha256": "1d2c5d55da7d758784b7383a574449cecc9bd67281a2b17752150dcb542d14fc",
   "phase_evidence": [
     {
@@ -590,9 +590,9 @@
   "resource_profile_sha256": "d687caf1146c9b32a2f51dcf71e876cf5f987fe62b4db69f1043caaff52ddbe8",
   "result_type": "calibration_result",
   "schema_version": 1,
-  "started_at": "2026-07-16T12:24:24.158666Z",
+  "started_at": "2026-07-16T17:04:00.058112Z",
   "workload_identity": {
-    "calibration_applicability_sha256": "4a54c6f586b06455fca0320f2ee1b0603f832dc328f32672bec82b3ff7387cb8",
+    "calibration_applicability_sha256": "3b18bdab0a8b0511e63de1c755544983334d1ac50fbb47775d8f019aa53419e5",
     "run_ids": [
       "frac25-stage1-control",
       "frac25-stage2",

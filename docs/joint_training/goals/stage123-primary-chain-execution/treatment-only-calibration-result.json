@@ -1,0 +1,445 @@
+{
+  "authorization_identity": {
+    "decision_id": "D-EX-V13-TREATMENT-ONLY-REQUAL-02",
+    "plan_sha256": "7ca2bef5fe8f24a3a35bfe0ce67617322e043dbd63510bfcfa0c2ce4e14ff184",
+    "plan_version": 13,
+    "run_id": "stage123-treatment-requalification-20260716T0207Z"
+  },
+  "cleanup": {
+    "execution_state": {
+      "kill_sent": false,
+      "resources_released": true,
+      "term_sent": false
+    },
+    "resources_released": true
+  },
+  "completed_at": "2026-07-16T02:24:54.132411Z",
+  "decision": "passed",
+  "evidence_commit": "3b8a62a245ffad53f3b7d9e8ea5227eb097c79f6",
+  "failures": [],
+  "implementation_tree_sha256": "53e43d3b9ac0f4a51d4bb2dbc85fa997bf68a69d4564418dc841d87cec31b6d3",
+  "manifest_sha256": "323bcc6084c1b01653bdf3cb5b299cab51c76864c8ca24878a9e5b002cb76278",
+  "phase_evidence": [
+    {
+      "phase": "stage2",
+      "repetitions": [
+        {
+          "cleanup": {
+            "child_process_released": true,
+            "owned_ray_processes": [],
+            "owned_ray_root": "/data-1/tmp/verl_agent_scratch/r/21",
+            "reaped_descendant_count": 29,
+            "resources_released": true
+          },
+          "elapsed_seconds": 237.9082441329956,
+          "formal_checkpoint_files": [],
+          "generation_count": 64,
+          "metrics": {
+            "timing_s/testing": 30.583201138302684,
+            "val-core/HumanEval+/acc/pass@1": 0.1875,
+            "val-core/LiveCodeBench/acc/pass@1": 0.125,
+            "val-core/MBPP+/acc/pass@1": 0.5,
+            "validation_elapsed_seconds": 30.583201138302684
+          },
+          "metrics_files": [
+            "/data-1/tmp/verl_agent_scratch/experiment_workflow/stage123/treatment-only-requalification-20260716T0207Z/probe-20260716T020756Z/runs/stage2/rep1/output/logs/metrics/OnPolicyWDLSFT-CodeTask/CALIBRATION-STAGE2-QWEN3-1P7B-CTX8K_1784167696.jsonl"
+          ],
+          "optimizer_enabled": false,
+          "phase": "stage2",
+          "repetition": 1,
+          "resources": {
+            "gpu_idle_sample_count": 185,
+            "gpu_idle_threshold_pct": 2,
+            "gpu_sample_count": 211,
+            "gpu_wait_fraction": 0.8767772511848341,
+            "memory_source": "calibration_container_cgroup_v2",
+            "peak_rss_gib": 137.77413940429688,
+            "sample_interval_seconds": 1.0,
+            "schema_version": 1
+          },
+          "returncode": 0,
+          "schema_version": 1,
+          "score_complete": true,
+          "stage3_proxy_kind": null,
+          "status": "passed",
+          "timed_out": false,
+          "training_steps": 0,
+          "truncated_count": 0,
+          "validation_generation_files": [
+            "/data-1/tmp/verl_agent_scratch/experiment_workflow/stage123/treatment-only-requalification-20260716T0207Z/probe-20260716T020756Z/runs/stage2/rep1/output/logs/validation/CALIBRATION-STAGE2-QWEN3-1P7B-CTX8K_1784167696/0.jsonl"
+          ]
+        },
+        {
+          "cleanup": {
+            "child_process_released": true,
+            "owned_ray_processes": [],
+            "owned_ray_root": "/data-1/tmp/verl_agent_scratch/r/22",
+            "reaped_descendant_count": 182,
+            "resources_released": true
+          },
+          "elapsed_seconds": 171.96738529205322,
+          "formal_checkpoint_files": [],
+          "generation_count": 64,
+          "metrics": {
+            "timing_s/testing": 26.62973439320922,
+            "val-core/HumanEval+/acc/pass@1": 0.3125,
+            "val-core/LiveCodeBench/acc/pass@1": 0.0625,
+            "val-core/MBPP+/acc/pass@1": 0.5,
+            "validation_elapsed_seconds": 26.62973439320922
+          },
+          "metrics_files": [
+            "/data-1/tmp/verl_agent_scratch/experiment_workflow/stage123/treatment-only-requalification-20260716T0207Z/probe-20260716T020756Z/runs/stage2/rep2/output/logs/metrics/OnPolicyWDLSFT-CodeTask/CALIBRATION-STAGE2-QWEN3-1P7B-CTX8K_1784167929.jsonl"
+          ],
+          "optimizer_enabled": false,
+          "phase": "stage2",
+          "repetition": 2,
+          "resources": {
+            "gpu_idle_sample_count": 115,
+            "gpu_idle_threshold_pct": 2,
+            "gpu_sample_count": 150,
+            "gpu_wait_fraction": 0.7666666666666667,
+            "memory_source": "calibration_container_cgroup_v2",
+            "peak_rss_gib": 147.63677978515625,
+            "sample_interval_seconds": 1.0,
+            "schema_version": 1
+          },
+          "returncode": 0,
+          "schema_version": 1,
+          "score_complete": true,
+          "stage3_proxy_kind": null,
+          "status": "passed",
+          "timed_out": false,
+          "training_steps": 0,
+          "truncated_count": 0,
+          "validation_generation_files": [
+            "/data-1/tmp/verl_agent_scratch/experiment_workflow/stage123/treatment-only-requalification-20260716T0207Z/probe-20260716T020756Z/runs/stage2/rep2/output/logs/validation/CALIBRATION-STAGE2-QWEN3-1P7B-CTX8K_1784167929/0.jsonl"
+          ]
+        },
+        {
+          "cleanup": {
+            "child_process_released": true,
+            "owned_ray_processes": [],
+            "owned_ray_root": "/data-1/tmp/verl_agent_scratch/r/23",
+            "reaped_descendant_count": 182,
+            "resources_released": true
+          },
+          "elapsed_seconds": 169.99874234199524,
+          "formal_checkpoint_files": [],
+          "generation_count": 64,
+          "metrics": {
+            "timing_s/testing": 26.93276702053845,
+            "val-core/HumanEval+/acc/pass@1": 0.4375,
+            "val-core/LiveCodeBench/acc/pass@1": 0.09375,
+            "val-core/MBPP+/acc/pass@1": 0.5,
+            "validation_elapsed_seconds": 26.93276702053845
+          },
+          "metrics_files": [
+            "/data-1/tmp/verl_agent_scratch/experiment_workflow/stage123/treatment-only-requalification-20260716T0207Z/probe-20260716T020756Z/runs/stage2/rep3/output/logs/metrics/OnPolicyWDLSFT-CodeTask/CALIBRATION-STAGE2-QWEN3-1P7B-CTX8K_1784168101.jsonl"
+          ],
+          "optimizer_enabled": false,
+          "phase": "stage2",
+          "repetition": 3,
+          "resources": {
+            "gpu_idle_sample_count": 116,
+            "gpu_idle_threshold_pct": 2,
+            "gpu_sample_count": 148,
+            "gpu_wait_fraction": 0.7837837837837838,
+            "memory_source": "calibration_container_cgroup_v2",
+            "peak_rss_gib": 153.55624389648438,
+            "sample_interval_seconds": 1.0,
+            "schema_version": 1
+          },
+          "returncode": 0,
+          "schema_version": 1,
+          "score_complete": true,
+          "stage3_proxy_kind": null,
+          "status": "passed",
+          "timed_out": false,
+          "training_steps": 0,
+          "truncated_count": 0,
+          "validation_generation_files": [
+            "/data-1/tmp/verl_agent_scratch/experiment_workflow/stage123/treatment-only-requalification-20260716T0207Z/probe-20260716T020756Z/runs/stage2/rep3/output/logs/validation/CALIBRATION-STAGE2-QWEN3-1P7B-CTX8K_1784168101/0.jsonl"
+          ]
+        }
+      ],
+      "status": "passed"
+    },
+    {
+      "phase": "stage3",
+      "repetitions": [
+        {
+          "cleanup": {
+            "child_process_released": true,
+            "owned_ray_processes": [],
+            "owned_ray_root": "/data-1/tmp/verl_agent_scratch/r/31",
+            "reaped_descendant_count": 182,
+            "resources_released": true
+          },
+          "elapsed_seconds": 157.97427797317505,
+          "formal_checkpoint_files": [],
+          "generation_count": 64,
+          "metrics": {
+            "timing_s/testing": 41.8416302036494,
+            "val-core/HumanEval+/acc/pass@1": 0.25,
+            "val-core/LiveCodeBench/acc/pass@1": 0.125,
+            "val-core/MBPP+/acc/pass@1": 0.5625,
+            "validation_elapsed_seconds": 41.8416302036494
+          },
+          "metrics_files": [
+            "/data-1/tmp/verl_agent_scratch/experiment_workflow/stage123/treatment-only-requalification-20260716T0207Z/probe-20260716T020756Z/runs/stage3/rep1/output/logs/metrics/OnPolicyWDLSFT-CodeTask/CALIBRATION-STAGE3-QWEN3-1P7B-CTX8K_1784168267.jsonl"
+          ],
+          "optimizer_enabled": false,
+          "phase": "stage3",
+          "repetition": 1,
+          "resources": {
+            "gpu_idle_sample_count": 122,
+            "gpu_idle_threshold_pct": 2,
+            "gpu_sample_count": 139,
+            "gpu_wait_fraction": 0.8776978417266187,
+            "memory_source": "calibration_container_cgroup_v2",
+            "peak_rss_gib": 153.55624389648438,
+            "sample_interval_seconds": 1.0,
+            "schema_version": 1
+          },
+          "returncode": 0,
+          "schema_version": 1,
+          "score_complete": true,
+          "stage3_proxy_kind": "pending_stage2_handoff_runtime_resource_proxy",
+          "status": "passed",
+          "timed_out": false,
+          "training_steps": 0,
+          "truncated_count": 0,
+          "validation_generation_files": [
+            "/data-1/tmp/verl_agent_scratch/experiment_workflow/stage123/treatment-only-requalification-20260716T0207Z/probe-20260716T020756Z/runs/stage3/rep1/output/logs/validation/CALIBRATION-STAGE3-QWEN3-1P7B-CTX8K_1784168267/0.jsonl"
+          ]
+        },
+        {
+          "cleanup": {
+            "child_process_released": true,
+            "owned_ray_processes": [],
+            "owned_ray_root": "/data-1/tmp/verl_agent_scratch/r/32",
+            "reaped_descendant_count": 181,
+            "resources_released": true
+          },
+          "elapsed_seconds": 132.54043412208557,
+          "formal_checkpoint_files": [],
+          "generation_count": 64,
+          "metrics": {
+            "timing_s/testing": 24.179436000064015,
+            "val-core/HumanEval+/acc/pass@1": 0.1875,
+            "val-core/LiveCodeBench/acc/pass@1": 0.125,
+            "val-core/MBPP+/acc/pass@1": 0.5,
+            "validation_elapsed_seconds": 24.179436000064015
+          },
+          "metrics_files": [
+            "/data-1/tmp/verl_agent_scratch/experiment_workflow/stage123/treatment-only-requalification-20260716T0207Z/probe-20260716T020756Z/runs/stage3/rep2/output/logs/metrics/OnPolicyWDLSFT-CodeTask/CALIBRATION-STAGE3-QWEN3-1P7B-CTX8K_1784168425.jsonl"
+          ],
+          "optimizer_enabled": false,
+          "phase": "stage3",
+          "repetition": 2,
+          "resources": {
+            "gpu_idle_sample_count": 98,
+            "gpu_idle_threshold_pct": 2,
+            "gpu_sample_count": 116,
+            "gpu_wait_fraction": 0.8448275862068966,
+            "memory_source": "calibration_container_cgroup_v2",
+            "peak_rss_gib": 153.55624389648438,
+            "sample_interval_seconds": 1.0,
+            "schema_version": 1
+          },
+          "returncode": 0,
+          "schema_version": 1,
+          "score_complete": true,
+          "stage3_proxy_kind": "pending_stage2_handoff_runtime_resource_proxy",
+          "status": "passed",
+          "timed_out": false,
+          "training_steps": 0,
+          "truncated_count": 0,
+          "validation_generation_files": [
+            "/data-1/tmp/verl_agent_scratch/experiment_workflow/stage123/treatment-only-requalification-20260716T0207Z/probe-20260716T020756Z/runs/stage3/rep2/output/logs/validation/CALIBRATION-STAGE3-QWEN3-1P7B-CTX8K_1784168425/0.jsonl"
+          ]
+        },
+        {
+          "cleanup": {
+            "child_process_released": true,
+            "owned_ray_processes": [],
+            "owned_ray_root": "/data-1/tmp/verl_agent_scratch/r/33",
+            "reaped_descendant_count": 181,
+            "resources_released": true
+          },
+          "elapsed_seconds": 130.0921585559845,
+          "formal_checkpoint_files": [],
+          "generation_count": 64,
+          "metrics": {
+            "timing_s/testing": 21.126021705567837,
+            "val-core/HumanEval+/acc/pass@1": 0.3125,
+            "val-core/LiveCodeBench/acc/pass@1": 0.0625,
+            "val-core/MBPP+/acc/pass@1": 0.4375,
+            "validation_elapsed_seconds": 21.126021705567837
+          },
+          "metrics_files": [
+            "/data-1/tmp/verl_agent_scratch/experiment_workflow/stage123/treatment-only-requalification-20260716T0207Z/probe-20260716T020756Z/runs/stage3/rep3/output/logs/metrics/OnPolicyWDLSFT-CodeTask/CALIBRATION-STAGE3-QWEN3-1P7B-CTX8K_1784168557.jsonl"
+          ],
+          "optimizer_enabled": false,
+          "phase": "stage3",
+          "repetition": 3,
+          "resources": {
+            "gpu_idle_sample_count": 97,
+            "gpu_idle_threshold_pct": 2,
+            "gpu_sample_count": 114,
+            "gpu_wait_fraction": 0.8508771929824561,
+            "memory_source": "calibration_container_cgroup_v2",
+            "peak_rss_gib": 153.55624389648438,
+            "sample_interval_seconds": 1.0,
+            "schema_version": 1
+          },
+          "returncode": 0,
+          "schema_version": 1,
+          "score_complete": true,
+          "stage3_proxy_kind": "pending_stage2_handoff_runtime_resource_proxy",
+          "status": "passed",
+          "timed_out": false,
+          "training_steps": 0,
+          "truncated_count": 0,
+          "validation_generation_files": [
+            "/data-1/tmp/verl_agent_scratch/experiment_workflow/stage123/treatment-only-requalification-20260716T0207Z/probe-20260716T020756Z/runs/stage3/rep3/output/logs/validation/CALIBRATION-STAGE3-QWEN3-1P7B-CTX8K_1784168557/0.jsonl"
+          ]
+        }
+      ],
+      "status": "passed"
+    }
+  ],
+  "policy_id": "stage123-calibration-policy-v1",
+  "policy_sha256": "c8f4df7240a9b4d2fef0ad6adb183b2562604375f5adba7dc396e406252850a1",
+  "prediction_comparison": {
+    "comparisons": [
+      {
+        "decision": {
+          "code": "qualified",
+          "context": {
+            "history_count": 6,
+            "ratio": 0.39566843794324597
+          },
+          "message": "prediction is supported by current probe evidence",
+          "qualified": true
+        },
+        "history": [
+          49.98861486464739,
+          49.942676505073905,
+          105.7492238227278,
+          78.60736407525837,
+          76.01937819831073,
+          83.76534734107554
+        ],
+        "history_count": 6,
+        "metric": "validation_elapsed_seconds",
+        "observed_maximum": 41.8416302036494,
+        "predicted_bound": 105.7492238227278
+      },
+      {
+        "decision": {
+          "code": "qualified",
+          "context": {
+            "history_count": 6,
+            "ratio": 0.8010378590336552
+          },
+          "message": "prediction is supported by current probe evidence",
+          "qualified": true
+        },
+        "history": [
+          241.0,
+          239.0,
+          297.0,
+          236.0,
+          233.0,
+          240.0
+        ],
+        "history_count": 6,
+        "metric": "phase_elapsed_seconds",
+        "observed_maximum": 237.9082441329956,
+        "predicted_bound": 297.0
+      },
+      {
+        "decision": {
+          "code": "qualified",
+          "context": {
+            "history_count": 6,
+            "ratio": 1.105455843663666
+          },
+          "message": "prediction is supported by current probe evidence",
+          "qualified": true
+        },
+        "history": [
+          130.7530059814453,
+          126.16583251953125,
+          138.90762329101562,
+          67.3317642211914,
+          71.49878311157227,
+          67.37337493896484
+        ],
+        "history_count": 6,
+        "metric": "peak_rss_gib",
+        "observed_maximum": 153.55624389648438,
+        "predicted_bound": 138.90762329101562
+      },
+      {
+        "decision": {
+          "code": "qualified",
+          "context": {
+            "history_count": 6,
+            "ratio": 0.9441901024634838
+          },
+          "message": "prediction is supported by current probe evidence",
+          "qualified": true
+        },
+        "history": [
+          0.8853211009174312,
+          0.8940092165898618,
+          0.9070631970260223,
+          0.9295774647887324,
+          0.9289099526066351,
+          0.8894009216589862
+        ],
+        "history_count": 6,
+        "metric": "gpu_wait_fraction",
+        "observed_maximum": 0.8776978417266187,
+        "predicted_bound": 0.9295774647887324
+      }
+    ],
+    "historical_evidence_role": "accepted_predecessor_history_only_not_current_authority",
+    "policy_id": "stage123-calibration-policy-v1",
+    "policy_sha256": "c8f4df7240a9b4d2fef0ad6adb183b2562604375f5adba7dc396e406252850a1",
+    "predecessor_result_path": "/workspace/verl/docs/joint_training/goals/calibration-qualification/calibration_result.json",
+    "predecessor_result_sha256": "8bdf646803916e231d7ce684edfa7302a706824e3afc008887c009374986218d",
+    "qualified": true
+  },
+  "probe_pointer": {
+    "authorization_decision_id": "D-EX-V13-TREATMENT-ONLY-REQUAL-02",
+    "generated_at_utc": "2026-07-16T03:03:04Z",
+    "reclassification": {
+      "reason": "F-EX-M2-20 phase-scope classification repair",
+      "source_pointer": "/data-1/tmp/verl_agent_scratch/experiment_workflow/stage123/treatment-only-requalification-20260716T0207Z/latest-probe.json",
+      "source_report_preserved": true
+    },
+    "report": "/data-1/tmp/verl_agent_scratch/experiment_workflow/stage123/treatment-only-requalification-20260716T0207Z/probe-20260716T020756Z/reprocessed-v1/probe-report.json",
+    "report_completed_at_utc": "2026-07-16T03:03:04Z",
+    "report_sha256": "bc2e52f1a2a1cc00c0deb72644b7a578919612d74532323bdc55e7250be42cbe",
+    "report_started_at_utc": "2026-07-16T02:07:57.452940Z",
+    "run_id": "stage123-treatment-requalification-20260716T0207Z",
+    "run_root": "/data-1/tmp/verl_agent_scratch/experiment_workflow/stage123/treatment-only-requalification-20260716T0207Z/probe-20260716T020756Z",
+    "schema_version": 2,
+    "status": "passed"
+  },
+  "resource_profile_sha256": "d9b6a36dd9fcc4307f7b502e5511989e60c1a257f57c9ac70574acaf12eee2b5",
+  "result_type": "calibration_result",
+  "schema_version": 1,
+  "started_at": "2026-07-16T02:07:57.452940Z",
+  "workload_identity": {
+    "producer_report_sha256": "bc2e52f1a2a1cc00c0deb72644b7a578919612d74532323bdc55e7250be42cbe",
+    "run_ids": [
+      "frac25-stage1-control",
+      "frac25-stage2",
+      "frac25-stage3"
+    ]
+  }
+}
