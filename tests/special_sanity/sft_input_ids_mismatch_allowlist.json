@@ -6,11 +6,6 @@
       "sha256": "4b84c867bb7610c087ddd4c04bed96a2abc15f04ead74a503f42e03a1cab8888"
     },
     {
-      "path": "recipe/on_policy_wdl_sft/format_cold_start/run_sft_code_qwen3_1p7b_kodcode_format.sh",
-      "reason": "Pre-existing code-task override pending separate target-format audit. New overrides are forbidden.",
-      "sha256": "35b44a73c6231b02a5ea07a8f3ca9503bb770ad5ce444933de35101bf3727da1"
-    },
-    {
       "path": "tests/special_e2e/sft/run_sft_engine.sh",
       "reason": "Pre-existing upstream E2E setting. New overrides are forbidden.",
       "sha256": "0d7b9a4bf58c93c18b9e11a7b839968a3b26cb773304138adccddf0f37316d40"
