@@ -120,6 +120,24 @@ def _metric_value_to_python_scalar(value: Any) -> Any | None:
     return None
 
 
+def _add_validation_macro_average(
+    metric_dict: dict[str, Any], trainer_config: Any, metric_view: str | None = None
+) -> None:
+    macro_sources = trainer_config.get("validation_macro_average_sources", None)
+    if not macro_sources:
+        return
+    macro_name = trainer_config.get("validation_macro_average_name", "macro_average")
+    macro_metric = trainer_config.get("validation_macro_average_metric", "acc/mean@1")
+    view_path = f"/{metric_view}" if metric_view else ""
+    source_keys = [f"val-core{view_path}/{source}/{macro_metric}" for source in macro_sources]
+    missing = [key for key in source_keys if key not in metric_dict]
+    if missing:
+        raise ValueError(f"validation macro average is missing required metrics: {missing}")
+    metric_dict[f"val-core{view_path}/{macro_name}/{macro_metric}"] = float(
+        np.mean([metric_dict[key] for key in source_keys])
+    )
+
+
 def extract_test_step_metrics_for_logging(
     metrics: dict[str, Any], prefixes: tuple[str, ...] = TEST_STEP_LOG_PREFIXES
 ) -> dict[str, Any]:
@@ -1173,6 +1191,9 @@ class RayPPOTrainer:
                     view_path = f"/{metric_view}" if metric_view else ""
                     pfx = f"{metric_sec}{view_path}/{data_source}/{var_name}/{metric_name}"
                     metric_dict[pfx] = metric_val
+
+        trainer_config = getattr(getattr(self, "config", None), "trainer", {})
+        _add_validation_macro_average(metric_dict, trainer_config, metric_view)
 
         if len(sample_turns) > 0:
             sample_turns = np.concatenate(sample_turns)

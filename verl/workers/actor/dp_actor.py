@@ -27,7 +27,7 @@ from torch.distributed.tensor import DTensor
 
 import verl.utils.torch_functional as verl_F
 from verl import DataProto
-from verl.trainer.ppo.core_algos import agg_loss, get_policy_loss_fn, kl_penalty
+from verl.trainer.ppo.core_algos import agg_loss, compute_wdl_sft_loss, get_policy_loss_fn, kl_penalty
 from verl.utils.attention_utils import index_first_axis, pad_input, rearrange, unpad_input
 from verl.utils.device import get_device_id, get_device_name
 from verl.utils.fsdp_utils import FSDPModule, fsdp2_clip_grad_norm_
@@ -167,6 +167,7 @@ class DataParallelPPOActor(BasePPOActor):
         calculate_sum_pi_squared = self.config.get("calculate_sum_pi_squared", False)
         sum_pi_squared_checkpointing = self.config.get("sum_pi_squared_checkpointing", False)
         return_submodel_log_probs = bool(micro_batch.get("return_submodel_log_probs", False))
+        submodel_log_prob_grad_indices = set(micro_batch.get("submodel_log_prob_grad_indices", []))
         if return_submodel_log_probs and (self.use_fused_kernels or self.use_prefix_grouper):
             raise NotImplementedError("submodel KL log-probs do not support fused kernels or PrefixGrouper yet")
         # PrefixGrouper path for shared-prefix optimization
@@ -318,6 +319,8 @@ class DataParallelPPOActor(BasePPOActor):
                         if not hasattr(output, "submodel_logits"):
                             raise RuntimeError("submodel KL requested but model output has no submodel_logits")
                         for sub_idx, sub_logits in enumerate(output.submodel_logits):
+                            if sub_idx not in submodel_log_prob_grad_indices:
+                                sub_logits = sub_logits.detach()
                             sub_logits_rmpad = sub_logits.squeeze(0)
                             sub_logits_rmpad = sub_logits_rmpad / temperature
                             submodel_log_probs_rmpad[sub_idx] = logprobs_from_logits(
@@ -453,6 +456,8 @@ class DataParallelPPOActor(BasePPOActor):
                         if not hasattr(output, "submodel_logits"):
                             raise RuntimeError("submodel KL requested but model output has no submodel_logits")
                         for sub_idx, sub_logits in enumerate(output.submodel_logits):
+                            if sub_idx not in submodel_log_prob_grad_indices:
+                                sub_logits = sub_logits.detach()
                             sub_logits = sub_logits / temperature
                             sub_logits = sub_logits[:, -response_length - 1 : -1, :]
                             submodel_log_probs[sub_idx] = logprobs_from_logits(sub_logits, micro_batch["responses"])
@@ -535,6 +540,9 @@ class DataParallelPPOActor(BasePPOActor):
 
         # Ratio with safe division
         ratio = norm1 / (norm2 + 1e-8)
+        norm_total = norm1 + norm2
+        model1_share = norm1 / (norm_total + 1e-8)
+        model2_share = norm2 / (norm_total + 1e-8)
 
         # Cosine similarity between flattened gradients
         cos_sim = self._compute_joint_grad_cosine_similarity(model1, model2)
@@ -542,9 +550,37 @@ class DataParallelPPOActor(BasePPOActor):
         return {
             "jointTraining/model1_grad_norm": norm1,
             "jointTraining/model2_grad_norm": norm2,
+            "jointTraining/model1_grad_norm_share": model1_share,
+            "jointTraining/model2_grad_norm_share": model2_share,
             "jointTraining/model_grad_norm_ratio": ratio,
             "jointTraining/model_grad_cosine_similarity": cos_sim,
         }
+
+    def _compute_joint_submodel_loss_metrics(
+        self,
+        outputs: dict[str, torch.Tensor],
+        response_mask: torch.Tensor,
+        advantages: torch.Tensor,
+    ) -> dict[str, float]:
+        beta = float(self.config.policy_loss.get("wdl_sft_beta", 0.0))
+        reward_labels = advantages[:, 0]
+        metrics = {}
+        for sub_idx in range(2):
+            logprob_key = self._submodel_logprob_key(sub_idx)
+            if logprob_key not in outputs:
+                raise KeyError(logprob_key)
+            with torch.no_grad():
+                result = compute_wdl_sft_loss(
+                    log_prob=outputs[logprob_key].detach(),
+                    response_mask=response_mask,
+                    reward_labels=reward_labels,
+                    beta=beta,
+                )
+            prefix = f"jointTraining/model{sub_idx + 1}/wdl_sft"
+            metrics[f"{prefix}_loss_positive"] = result["loss_positive"].item()
+            metrics[f"{prefix}_loss_negative"] = result["loss_negative"].item()
+            metrics[f"{prefix}_loss_total"] = result["total_loss"].item()
+        return metrics
 
     @staticmethod
     def _compute_joint_grad_cosine_similarity(model1: nn.Module, model2: nn.Module) -> float:
@@ -594,7 +630,10 @@ class DataParallelPPOActor(BasePPOActor):
         temperature = data.meta_info["temperature"]  # temperature must be in the data.meta_info to avoid silent error
         use_dynamic_bsz = data.meta_info["use_dynamic_bsz"]
         pad_token_id = data.meta_info.get("pad_token_id", 0)
-        requested_submodel_log_probs = data.meta_info.get("return_submodel_log_probs", [])
+        suppress_config_submodel_log_probs = data.meta_info.get("suppress_config_submodel_log_probs", False)
+        requested_submodel_log_probs = (
+            [] if suppress_config_submodel_log_probs else data.meta_info.get("return_submodel_log_probs", [])
+        )
         if requested_submodel_log_probs is True:
             requested_submodel_log_probs = [0, 1]
         elif requested_submodel_log_probs is False:
@@ -625,7 +664,7 @@ class DataParallelPPOActor(BasePPOActor):
         entropy_lst = []
         sum_pi_squared_lst = []
         submodel_log_probs_lst: dict[str, list[torch.Tensor]] = {}
-        enabled_submodel_kl_indices = self._enabled_submodel_kl_indices()
+        enabled_submodel_kl_indices = [] if suppress_config_submodel_log_probs else self._enabled_submodel_kl_indices()
         returned_submodel_indices = sorted(set(enabled_submodel_kl_indices) | set(requested_submodel_log_probs))
         for micro_batch in micro_batches:
             micro_batch = micro_batch.to(get_device_id())
@@ -757,7 +796,11 @@ class DataParallelPPOActor(BasePPOActor):
                         loss_scale_factor = 1 / self.gradient_accumulation
 
                     # all return: (bsz, response_length)
-                    model_inputs["return_submodel_log_probs"] = bool(enabled_submodel_kl_indices)
+                    track_joint_submodel_losses = bool(self.config.get("track_joint_submodel_losses", False))
+                    model_inputs["return_submodel_log_probs"] = bool(
+                        enabled_submodel_kl_indices or track_joint_submodel_losses
+                    )
+                    model_inputs["submodel_log_prob_grad_indices"] = enabled_submodel_kl_indices
                     outputs = self._forward_micro_batch(
                         model_inputs, temperature=temperature, calculate_entropy=calculate_entropy
                     )
@@ -801,6 +844,15 @@ class DataParallelPPOActor(BasePPOActor):
                         rollout_is_weights=rollout_is_weights,
                     )
                     micro_batch_metrics.update(pg_metrics)
+
+                    if track_joint_submodel_losses:
+                        micro_batch_metrics.update(
+                            self._compute_joint_submodel_loss_metrics(
+                                outputs=outputs,
+                                response_mask=response_mask,
+                                advantages=advantages,
+                            )
+                        )
 
                     # Skip if using bypass_mode loss (metrics already computed in pg_metrics)
                     rollout_log_prob = model_inputs.get("rollout_log_probs", None)

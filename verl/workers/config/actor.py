@@ -204,6 +204,7 @@ class ActorConfig(BaseConfig):
     tau_neg: float = 1.05
     calculate_entropy: bool = False
     use_kl_loss: bool = False
+    track_joint_submodel_losses: bool = False
     submodel_kl: SubmodelKLPairConfig = field(default_factory=SubmodelKLPairConfig)
     # Whether to enable PrefixGrouper-based shared-prefix forward
     use_prefix_grouper: bool = False

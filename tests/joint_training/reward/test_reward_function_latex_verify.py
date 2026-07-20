@@ -192,7 +192,20 @@ class TestComputeScoreLatexVerify:
             solution_str="\\boxed{1}",
             ground_truth="1",
         )
-        expected_keys = {"score", "acc", "pred", "has_eos", "answer_correct", "verification_method"}
+        expected_keys = {
+            "score",
+            "acc",
+            "pred",
+            "has_eos",
+            "truncated",
+            "think_complete",
+            "answer_complete",
+            "boxed_extraction_success",
+            "reward_grader_success",
+            "format_contract_success",
+            "answer_correct",
+            "verification_method",
+        }
         assert expected_keys == set(result.keys())
 
     def test_verification_method_is_populated(self):

@@ -20,6 +20,7 @@ import json
 import logging
 import os
 import warnings
+from contextlib import contextmanager
 from dataclasses import asdict
 
 import psutil
@@ -97,8 +98,24 @@ logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
 device_name = get_device_name()
 
 
-def _ref_logprob_tensors_from_actor_outputs(outputs: dict):
+@contextmanager
+def _ref_model_device_context(worker):
+    if worker._is_offload_param:
+        load_fsdp_model_to_gpu(worker.ref_module_fsdp)
+        log_gpu_memory_usage("After load ref model for compute_ref_log_prob", logger=logger)
+    try:
+        yield
+    finally:
+        if worker._is_offload_param:
+            offload_fsdp_model_to_cpu(worker.ref_module_fsdp)
+            log_gpu_memory_usage("After offload ref model during compute_ref_log_prob", logger=logger)
+
+
+def _ref_logprob_tensors_from_actor_outputs(outputs: dict, submodel_target_index: int | None = None):
     tensors = {"ref_log_prob": outputs["log_probs"]}
+    if submodel_target_index is not None:
+        tensors[f"model{submodel_target_index + 1}_ref_log_probs"] = outputs["log_probs"]
+        return tensors
     for key in ("model1_log_probs", "model2_log_probs"):
         if key in outputs:
             tensors[key.replace("_log_probs", "_ref_log_probs")] = outputs[key]
@@ -1053,6 +1070,9 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
                 actor_module=self.ref_module_fsdp,
                 dp_group=ref_dp_group,
             )
+            if self._is_offload_param:
+                offload_fsdp_model_to_cpu(self.ref_module_fsdp)
+                log_gpu_memory_usage("After offload ref model during init", logger=logger)
 
         if self._is_actor:
             self.flops_counter = FlopsCounter(self.actor_model_config)
@@ -1333,21 +1353,26 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
         data.meta_info["max_token_len"] = self.config.ref.log_prob_max_token_len_per_gpu
         data.meta_info["use_dynamic_bsz"] = self.config.ref.log_prob_use_dynamic_bsz
         data.meta_info.setdefault("pad_token_id", self.tokenizer.pad_token_id)
-        with self.ulysses_sharding_manager:
-            data = data.to("cpu")  # data will to device with each micro batch on ref.compute_log_prob
-            outputs = self.ref_policy.compute_log_prob(data=data, calculate_entropy=False)
-            tensors = _ref_logprob_tensors_from_actor_outputs(outputs)
-            output = DataProto.from_dict(tensors=tensors)
+        submodel_target_index = self.config.ref.get("submodel_kl_target_index", None)
+        if submodel_target_index is not None:
+            submodel_target_index = int(submodel_target_index)
+            data.meta_info["suppress_config_submodel_log_probs"] = True
+        with _ref_model_device_context(self):
+            with self.ulysses_sharding_manager:
+                data = data.to("cpu")  # data will to device with each micro batch on ref.compute_log_prob
+                outputs = self.ref_policy.compute_log_prob(data=data, calculate_entropy=False)
+                tensors = _ref_logprob_tensors_from_actor_outputs(outputs, submodel_target_index=submodel_target_index)
+                output = DataProto.from_dict(tensors=tensors)
 
-        output = output.to("cpu")
+            output = output.to("cpu")
 
-        # https://pytorch.org/docs/stable/notes/fsdp.html#fsdp-notes
-        # unshard the root FSDP module
-        if self.world_size > 1:
-            if fsdp_version(self.ref_policy.actor_module) == 1:
-                self.ref_policy.actor_module._handle.reshard(True)
-            elif fsdp_version(self.ref_policy.actor_module) == 2:
-                self.ref_policy.actor_module.reshard()
+            # https://pytorch.org/docs/stable/notes/fsdp.html#fsdp-notes
+            # unshard the root FSDP module
+            if self.world_size > 1:
+                if fsdp_version(self.ref_policy.actor_module) == 1:
+                    self.ref_policy.actor_module._handle.reshard(True)
+                elif fsdp_version(self.ref_policy.actor_module) == 2:
+                    self.ref_policy.actor_module.reshard()
 
         return output
 

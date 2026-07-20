@@ -96,6 +96,21 @@ class TestGradNormRatio:
         assert not (ratio != ratio), "ratio should not be NaN"  # NaN check
         assert ratio != float("inf"), "ratio should not be inf"
 
+    def test_grad_norm_shares_sum_to_one(self):
+        from verl.workers.actor.dp_actor import DataParallelPPOActor
+
+        actor = DataParallelPPOActor.__new__(DataParallelPPOActor)
+        actor.actor_module = _MockJointModel()
+        _populate_gradients(actor.actor_module, grad1_scale=3.0, grad2_scale=1.0)
+
+        metrics = actor._compute_joint_grad_norm_metrics()
+        assert metrics["jointTraining/model1_grad_norm_share"] > metrics["jointTraining/model2_grad_norm_share"]
+        assert abs(
+            metrics["jointTraining/model1_grad_norm_share"]
+            + metrics["jointTraining/model2_grad_norm_share"]
+            - 1.0
+        ) < 1e-6
+
 
 # ---------------------------------------------------------------------------
 # Tests for grad_cosine_similarity

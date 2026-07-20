@@ -94,6 +94,10 @@ calculate_entropy: false
 # Whether to use KL loss instead of KL reward penalty. True for GRPO
 use_kl_loss: false
 
+# Log standalone counterfactual WDL-SFT losses for each joint submodel.
+# Diagnostic only: these losses never participate in backward.
+track_joint_submodel_losses: false
+
 # Independent KL regularization for joint submodels
 submodel_kl:
 
