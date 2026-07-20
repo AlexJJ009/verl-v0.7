@@ -1,6 +1,8 @@
 # Qwen3-1.7B Stage123 Model2-KL / Split-Stage3 Experiment
 
-Status: implementation ready and CPU validated; no training launched.
+Status: the 2026-07-18 formal admission is stale after the 2026-07-20 training
+configuration and monitoring changes; regenerate calibration/admission before the
+next formal matrix launch.
 
 ## Pre-Registered Questions
 
@@ -25,6 +27,8 @@ not a general search for whichever of four Stage3 runs happens to peak highest.
 - shared Stage1 handoff: FRAC25 beta `0.1`, step `40`
 - Stage2: `20` steps, model2-only rollout, joint/fused WDL-SFT objective
 - Stage3: `40` steps, Stage1-like single-model training
+- optimizer learning rate: `1e-6` in Stage1, Stage2, and Stage3
+- optimizer warmup: `0` steps in Stage1, Stage2, and Stage3
 - training data order: `DATA_SHUFFLE=False`
 - rollout: `temperature=1.0`, `top_p=1.0`, sampled
 - validation: `temperature=0.2`, `top_p=0.95`, sampled, `n=3`
@@ -42,11 +46,29 @@ val-aux/model1/<dataset>/acc/std@3
 val-core/model2/<dataset>/acc/mean@3
 val-core/model2/<dataset>/acc/pass@3
 val-aux/model2/<dataset>/acc/std@3
+jointTraining/model1/wdl_sft_loss_positive
+jointTraining/model1/wdl_sft_loss_negative
+jointTraining/model1/wdl_sft_loss_total
+jointTraining/model2/wdl_sft_loss_positive
+jointTraining/model2/wdl_sft_loss_negative
+jointTraining/model2/wdl_sft_loss_total
+jointTraining/model1_grad_norm
+jointTraining/model2_grad_norm
+jointTraining/model1_grad_norm_share
+jointTraining/model2_grad_norm_share
+jointTraining/model_grad_norm_ratio
+jointTraining/model_grad_cosine_similarity
 ```
 
 `std@3` is the per-task standard deviation across the three sampled correctness
 labels, averaged across tasks. `pass@3` is exact any-of-three task success, while
 `mean@3` is the mean correctness of all three samples. They are not aliases.
+
+The per-model WDL-SFT losses are counterfactual diagnostics computed from each
+submodel's own target-token log probabilities on the same Stage2 responses and
+reward labels. They are detached and do not add another backward term. The
+per-model gradient norms and normalized shares measure actual participation in the
+fused optimization step.
 
 ## Matrix
 
@@ -172,18 +194,38 @@ variation are exploratory, not positive results.
 - phase adapter: `scripts/stage123_phase_adapter.py`
 - queue: `recipe/on_policy_wdl_sft/code_task/run_code_task_qwen3_1p7b_stage123_model2_kl_split_stage3_queue.sh`
 - monitor: `recipe/on_policy_wdl_sft/code_task/monitor_code_task_qwen3_1p7b_stage123_model2_kl_split_stage3.sh`
+- formal admission: `/data-2/model_weights/code_task/qwen3_1p7b_stage123_model2_kl_split_stage3_v2/admission.json`
 
 The overlay inherits the existing Stage123 dataset, scorer, timeout, calibration,
 and source-provenance descriptors while replacing only the experiment identity,
 validation protocol, KL arms, and Stage3 branching topology. The frozen legacy
 `stage123.yaml` remains unchanged.
 
-## Launch Boundary
+## Formal Admission And Launch Boundary
 
-This plan and implementation do not authorize GPU use or training. Before launch:
+The historical 2026-07-18 admission bound the v2 manifest to:
 
-1. focused CPU tests and dry-run rendering must pass;
-2. the matrix manifest hash and source paths must be recorded;
-3. launch must use tmux;
-4. queue and monitor must use the same manifest and state root;
-5. release-gate policy remains mandatory before registry or W&B publication.
+- FRAC25 Cold Start Model1 path plus config, tokenizer, chat-template, and
+  provenance hashes;
+- zero-step dual-view validation for both Stage2 arms, with `384` retained
+  generations per arm and no formal calibration checkpoints;
+- one real optimizer step for both the no-KL and model2-KL Stage2 arms;
+- rollout GPU memory utilization `0.40`, max batched tokens `32768`, generation
+  micro-batch `32`, rollout log-prob micro-batch `8`, reference micro-batch `1`,
+  and at least `1024 MiB` sampled GPU headroom;
+- standalone enabled-submodel Model2 KL reference, reference FSDP offload, actor
+  parameter offload, and actor optimizer offload;
+- runtime-file hashes for the exact dirty working tree used by the launch.
+
+That admission no longer authorizes a new launch because the source/config hashes
+changed on 2026-07-20. Formal training may launch only after fresh calibration and
+admission bind `LR=1e-6`, `LR_WARMUP_STEPS=0`, and Stage2 submodel-loss monitoring.
+Queue and monitor must run in separate tmux sessions with the same
+manifest and state root. Release-gate policy remains mandatory before registry or
+W&B publication; failed or incomplete attempts remain local diagnostic evidence.
+
+The admitted queue launched with no-KL Stage2 run
+`CODE-S2-QWEN3-1P7B-STAGE123-FRAC25-NOKL-SPLIT-S3-V2_1784364388`. Initial live
+verification confirmed the FRAC25 Model1 path, rollout GPU memory utilization
+`0.40`, max batched tokens `32768`, approximately `20 GiB` used per L40S during
+the first full validation rollout, and `86–89%` sampled GPU utilization.

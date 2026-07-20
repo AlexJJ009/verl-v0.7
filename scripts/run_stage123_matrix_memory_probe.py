@@ -40,10 +40,29 @@ def render_base(path: Path) -> dict:
     return json.loads(output)
 
 
-def run_environment(run: dict) -> dict[str, str]:
+def run_environment(run: dict, profile: dict | None = None) -> dict[str, str]:
     source = run["source"]
     kl = run["submodel_kl"]
+    profile = profile or {
+        "sha256": "",
+        "rollout_gpu_memory_utilization": 0.4,
+        "rollout_max_num_batched_tokens": 32768,
+        "rollout_free_cache_engine": False,
+        "rollout_enable_sleep_mode": False,
+        "ref_fsdp_offload": True,
+        "actor_param_offload": True,
+        "actor_optimizer_offload": True,
+        "ref_log_prob_micro_batch_size": 1,
+        "ref_log_prob_max_token_len_per_gpu": 9216,
+    }
     return {
+        "BASE_MODEL_PATH": source["model1_path"],
+        "EXPECTED_MODEL1_PATH": source["model1_path"],
+        "EXPECTED_MODEL1_CONFIG_SHA256": source["model1_config_sha256"],
+        "EXPECTED_MODEL1_TOKENIZER_CONFIG_SHA256": source["model1_tokenizer_config_sha256"],
+        "EXPECTED_MODEL1_CHAT_TEMPLATE_SHA256": source["model1_chat_template_sha256"],
+        "EXPECTED_MODEL1_PROVENANCE_PATH": source["model1_provenance_path"],
+        "EXPECTED_MODEL1_PROVENANCE_SHA256": source["model1_provenance_sha256"],
         "CALIBRATION_STAGE1_CKPT_DIR": source["checkpoint_root"],
         "CALIBRATION_STAGE1_MODEL2": source["model2_path"],
         "CALIBRATION_STAGE1_RUN_PREFIX": source["run_prefix"],
@@ -61,6 +80,16 @@ def run_environment(run: dict) -> dict[str, str]:
         "VAL_TEMPERATURE": "0.2",
         "VAL_TOP_P": "0.95",
         "VAL_DO_SAMPLE": "True",
+        "STAGE123_EXPECTED_PROFILE_HASH": str(profile["sha256"]),
+        "ROLLOUT_GPU_MEMORY_UTILIZATION": f"{float(profile['rollout_gpu_memory_utilization']):.2f}",
+        "ROLLOUT_MAX_NUM_BATCHED_TOKENS": str(profile["rollout_max_num_batched_tokens"]),
+        "ROLLOUT_FREE_CACHE_ENGINE": str(profile["rollout_free_cache_engine"]),
+        "ROLLOUT_ENABLE_SLEEP_MODE": str(profile["rollout_enable_sleep_mode"]),
+        "REF_FSDP_OFFLOAD": str(profile["ref_fsdp_offload"]),
+        "FSDP_OFFLOAD": str(profile["actor_param_offload"]),
+        "FSDP_OPTIMIZER_OFFLOAD": str(profile["actor_optimizer_offload"]),
+        "REF_LOG_PROB_MICRO_BATCH_SIZE": str(profile["ref_log_prob_micro_batch_size"]),
+        "REF_LOG_PROB_MAX_TOKEN_LEN_PER_GPU": str(profile["ref_log_prob_max_token_len_per_gpu"]),
     }
 
 
@@ -117,7 +146,7 @@ def main() -> int:
     parser.add_argument("--run-ids", default=",".join(DEFAULT_RUN_IDS))
     parser.add_argument("--repetitions", type=int, default=1)
     parser.add_argument("--scratch-root", type=Path, required=True)
-    parser.add_argument("--minimum-headroom-mib", type=int, default=4096)
+    parser.add_argument("--minimum-headroom-mib", type=int)
     parser.add_argument("--reuse-repetition", action="append", default=[])
     args = parser.parse_args()
     if not 1 <= args.repetitions <= 3:
@@ -127,6 +156,7 @@ def main() -> int:
 
     run_ids = args.run_ids.split(",")
     matrix = render_matrix(args.manifest)
+    minimum_headroom_mib = args.minimum_headroom_mib or int(matrix["resource_profile"]["minimum_gpu_headroom_mib"])
     base = render_base(args.manifest)
     by_id = {run["id"]: run for run in matrix["runs"]}
     if any(run_id not in by_id for run_id in run_ids):
@@ -154,12 +184,12 @@ def main() -> int:
         for repetition in range(1, args.repetitions + 1 if not repetitions else 1):
             result = qualify_matrix_repetition(run_repetition(
                 base, "stage2", repetition, run_root, splits, deadline,
-                environment_overrides=run_environment(run), repetition_label=run["id"],
+                environment_overrides=run_environment(run, matrix["resource_profile"]), repetition_label=run["id"],
             ))
             repetitions.append(result)
             if result["status"] != "passed":
                 break
-        reports.append(summarize(run, repetitions, args.minimum_headroom_mib))
+        reports.append(summarize(run, repetitions, minimum_headroom_mib))
         if reports[-1]["status"] != "passed":
             break
 
@@ -170,6 +200,27 @@ def main() -> int:
         "manifest_sha256": matrix["manifest_sha256"],
         "training_steps": 0,
         "optimizer_enabled": False,
+        "rollout_gpu_memory_utilization": matrix["resource_profile"]["rollout_gpu_memory_utilization"],
+        "rollout_max_num_batched_tokens": matrix["resource_profile"]["rollout_max_num_batched_tokens"],
+        "rollout_free_cache_engine": matrix["resource_profile"]["rollout_free_cache_engine"],
+        "rollout_enable_sleep_mode": matrix["resource_profile"]["rollout_enable_sleep_mode"],
+        "ref_fsdp_offload": matrix["resource_profile"]["ref_fsdp_offload"],
+        "actor_optimizer_offload": matrix["resource_profile"]["actor_optimizer_offload"],
+        "actor_param_offload": matrix["resource_profile"]["actor_param_offload"],
+        "minimum_gpu_headroom_mib": matrix["resource_profile"]["minimum_gpu_headroom_mib"],
+        "ref_log_prob_micro_batch_size": matrix["resource_profile"]["ref_log_prob_micro_batch_size"],
+        "ref_log_prob_max_token_len_per_gpu": matrix["resource_profile"]["ref_log_prob_max_token_len_per_gpu"],
+        "model1_identity": {
+            key: runs[0]["source"][key]
+            for key in (
+                "model1_path",
+                "model1_config_sha256",
+                "model1_tokenizer_config_sha256",
+                "model1_chat_template_sha256",
+                "model1_provenance_path",
+                "model1_provenance_sha256",
+            )
+        },
         "run_root": str(run_root),
         "runs": reports,
         "status": "passed" if len(reports) == len(runs) and all(item["status"] == "passed" for item in reports) else "failed",

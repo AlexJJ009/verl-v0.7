@@ -27,6 +27,7 @@ if str(ROOT) not in sys.path:
 from scripts.calibration_prediction import qualify
 
 PHASE_SCRIPT = ROOT / "recipe/on_policy_wdl_sft/code_task/run_code_task_operational_calibration_phase.sh"
+PHASE_SCRIPT_CONTAINER = "/workspace/verl/recipe/on_policy_wdl_sft/code_task/run_code_task_operational_calibration_phase.sh"
 REQUIRED_PHASES = ["stage1", "stage2", "stage3"]
 TREATMENT_ONLY_PHASES = ["stage2", "stage3"]
 ALLOWED_PHASE_SETS = (REQUIRED_PHASES, TREATMENT_ONLY_PHASES)
@@ -154,19 +155,37 @@ def load_manifest(path: Path) -> dict[str, Any]:
 
 
 def split_workload(root: Path) -> dict[str, Path]:
-    import pandas as pd
+    from scripts.split_calibration_workload import EXPECTED_COUNTS, split_workload as split_with_pandas
 
-    expected = {"HumanEval+": 16, "MBPP+": 16, "LiveCodeBench": 32}
-    frame = pd.read_parquet(WORKLOAD)
-    actual = frame["data_source"].value_counts().to_dict()
-    if actual != expected or sha256(WORKLOAD) != "c3eaf3374661fba71d1132f0de7a8dbdbd3d90295d4fabeb77b5e9dd7c221608":
-        raise RuntimeError(f"calibration workload mismatch: {actual}")
-    outputs: dict[str, Path] = {}
-    for name in expected:
-        path = root / "workload" / f"{name.lower().replace('+', '_plus')}.parquet"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        frame[frame["data_source"] == name].to_parquet(path, index=False)
-        outputs[name] = path
+    output_root = root / "workload"
+    if Path("/.dockerenv").exists():
+        return {name: Path(path) for name, path in split_with_pandas(WORKLOAD, output_root).items()}
+
+    receipt_path = root / "workload-split-receipt.json"
+    environment = os.environ.copy()
+    environment["REPO_HOST"] = str(ROOT)
+    subprocess.run(
+        [
+            "/data-1/verl07/run_train.sh",
+            "python",
+            "/workspace/verl/scripts/split_calibration_workload.py",
+            "--source",
+            str(WORKLOAD),
+            "--output-root",
+            str(output_root),
+            "--receipt",
+            str(receipt_path),
+        ],
+        cwd=ROOT,
+        env=environment,
+        check=True,
+    )
+    receipt = json.loads(receipt_path.read_text())
+    if receipt.get("source_sha256") != sha256(WORKLOAD) or set(receipt.get("outputs", {})) != set(EXPECTED_COUNTS):
+        raise RuntimeError("containerized workload split receipt mismatch")
+    outputs = {name: Path(value["path"]) for name, value in receipt["outputs"].items()}
+    if any(not path.is_file() for path in outputs.values()):
+        raise RuntimeError("containerized workload split did not create all outputs")
     return outputs
 
 
@@ -361,11 +380,15 @@ def run_repetition(
     env_delta = phase_environment(rendered, phase, repetition, output, splits)
     if environment_overrides:
         env_delta.update(environment_overrides)
+    container_suffix = re.sub(r"[^a-zA-Z0-9_.-]+", "-", repetition_label or phase).strip("-").lower()
+    container_name = f"stage123-memory-{container_suffix}-r{repetition}-{int(time.time())}"
+    env_delta["REPO_HOST"] = str(ROOT)
+    env_delta["DOCKER_CONTAINER_NAME"] = container_name
     write_json(rep_root / "launch.json", {"phase": phase, "repetition": repetition, "environment": env_delta})
     start = time.time()
     with log_path.open("w") as log:
         process = subprocess.Popen(
-            ["bash", str(PHASE_SCRIPT), phase],
+            ["/data-1/verl07/run_train.sh", "bash", PHASE_SCRIPT_CONTAINER, phase],
             cwd=ROOT,
             env={**os.environ, **env_delta},
             stdout=log,
@@ -380,6 +403,7 @@ def run_repetition(
             returncode = process.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
             timed_out = True
+            subprocess.run(["docker", "kill", container_name], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             os.killpg(process.pid, signal.SIGTERM)
             try:
                 returncode = process.wait(timeout=30)

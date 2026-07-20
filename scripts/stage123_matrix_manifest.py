@@ -65,6 +65,23 @@ def validate(manifest: dict) -> None:
             views = run.get("validation_views")
             if views != ["model1", "model2"]:
                 raise ValueError(f"{run['id']}: Stage2 must validate model1 and model2")
+            source = run.get("source", {})
+            required_model1 = {
+                "model1_path",
+                "model1_config_sha256",
+                "model1_tokenizer_config_sha256",
+                "model1_chat_template_sha256",
+                "model1_provenance_path",
+                "model1_provenance_sha256",
+            }
+            missing_model1 = sorted(required_model1 - source.keys())
+            if missing_model1:
+                raise ValueError(f"{run['id']}: missing Model1 identity fields: {missing_model1}")
+            if "format_cold_start_fraction/qwen3-1p7b-kodcode-format-sft-frac25" not in source["model1_path"]:
+                raise ValueError(f"{run['id']}: Model1 must be the FRAC25 format Cold Start model")
+            for field in required_model1 - {"model1_path", "model1_provenance_path"}:
+                if len(source[field]) != 64:
+                    raise ValueError(f"{run['id']}: invalid {field}")
         if run["phase"] == "stage3":
             source = run["source"]
             if source.get("run_id") not in seen or source.get("submodel") not in {"model1", "model2"}:
@@ -90,6 +107,29 @@ def validate(manifest: dict) -> None:
         raise ValueError("matrix primary endpoint drift")
     if decision_policy.get("minimum_effect_pp") != 1.0:
         raise ValueError("matrix minimum effect drift")
+    profile = manifest.get("resource_profile", {})
+    if float(profile.get("rollout_gpu_memory_utilization", 0.0)) < 0.4:
+        raise ValueError("matrix rollout GPU memory utilization must be throughput-qualified at >= 0.4")
+    if int(profile.get("rollout_max_num_batched_tokens", 0)) < 16384:
+        raise ValueError("matrix rollout token batching remains safety-only")
+    if not isinstance(profile.get("rollout_free_cache_engine"), bool) or not isinstance(
+        profile.get("rollout_enable_sleep_mode"), bool
+    ):
+        raise ValueError("matrix rollout cache lifecycle must be explicit")
+    if profile.get("ref_fsdp_offload") is not True:
+        raise ValueError("matrix m2-KL profile must offload the reference model between forward passes")
+    if profile.get("actor_optimizer_offload") is not True:
+        raise ValueError("matrix profile must offload optimizer state")
+    if profile.get("actor_param_offload") is not True:
+        raise ValueError("matrix profile must offload actor parameters between phases")
+    if int(profile.get("minimum_gpu_headroom_mib", 0)) < 1024:
+        raise ValueError("matrix profile GPU headroom threshold must be at least 1024 MiB")
+    if int(profile.get("ref_log_prob_micro_batch_size", 0)) != 1:
+        raise ValueError("matrix KL reference log-prob micro-batch must equal calibrated value 1")
+    if int(profile.get("ref_log_prob_max_token_len_per_gpu", 0)) != 9216:
+        raise ValueError("matrix KL reference dynamic token budget must cover the full context")
+    if profile.get("submodel_kl_reference_mode") != "standalone_enabled_submodel":
+        raise ValueError("matrix must use a standalone enabled-submodel KL reference")
 
 
 def main() -> int:

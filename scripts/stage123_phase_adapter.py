@@ -90,6 +90,8 @@ def common_environment(manifest_path: Path, manifest: dict, run: dict) -> dict[s
             "TRAIN_FILE": run["train_file"],
             "TOTAL_TRAINING_STEPS": str(run["final_step"]),
             "DATA_SHUFFLE": "False",
+            "LR": "1e-6",
+            "LR_WARMUP_STEPS": "0",
             "WDL_SFT_BETA": "0.1",
             "EXPECTED_STAGE1_BETA": "0.1",
             "FUSION_LAMBDA": "0.8",
@@ -126,6 +128,15 @@ def stage_environment(manifest: dict, run: dict, environment: dict[str, str]) ->
     if phase == "stage1":
         environment["INIT_MODEL_PATH"] = source["model_path"]
     elif phase == "stage2":
+        model1_path = source.get("model1_path", manifest["paths"].get("stage1_init_model", manifest["paths"]["base_model"]))
+        model1_provenance_path = source.get(
+            "model1_provenance_path", manifest["paths"].get("stage1_init_provenance", "")
+        )
+        identity_files = {
+            "model1_config_sha256": Path(model1_path) / "config.json",
+            "model1_tokenizer_config_sha256": Path(model1_path) / "tokenizer_config.json",
+            "model1_chat_template_sha256": Path(model1_path) / "chat_template.jinja",
+        }
         environment.update(
             {
                 "STAGE1_RUN_PREFIX": source["run_prefix"],
@@ -134,6 +145,22 @@ def stage_environment(manifest: dict, run: dict, environment: dict[str, str]) ->
                 "STAGE2_HANDOFF_STEP": str(source["handoff_step"]),
                 "MERGED_MODEL2_DIR": source["model2_path"],
                 "MODEL2_CACHE_TAG": run["chain"],
+                "TRACK_JOINT_SUBMODEL_LOSSES": "true",
+                "BASE_MODEL_PATH": model1_path,
+                "EXPECTED_MODEL1_PATH": model1_path,
+                "EXPECTED_MODEL1_CONFIG_SHA256": source.get(
+                    "model1_config_sha256", file_sha256(identity_files["model1_config_sha256"])
+                ),
+                "EXPECTED_MODEL1_TOKENIZER_CONFIG_SHA256": source.get(
+                    "model1_tokenizer_config_sha256", file_sha256(identity_files["model1_tokenizer_config_sha256"])
+                ),
+                "EXPECTED_MODEL1_CHAT_TEMPLATE_SHA256": source.get(
+                    "model1_chat_template_sha256", file_sha256(identity_files["model1_chat_template_sha256"])
+                ),
+                "EXPECTED_MODEL1_PROVENANCE_PATH": model1_provenance_path,
+                "EXPECTED_MODEL1_PROVENANCE_SHA256": source.get(
+                    "model1_provenance_sha256", file_sha256(Path(model1_provenance_path)) if model1_provenance_path else ""
+                ),
             }
         )
         validation_views = run.get("validation_views")
@@ -177,7 +204,7 @@ def execute_wrapper(manifest_path: Path, manifest: dict, run: dict, *, dry_run: 
     environment = stage_environment(manifest, run, common_environment(manifest_path, manifest, run))
     command = ["bash", str(WRAPPERS[run["phase"]])]
     if dry_run:
-        print(json.dumps({"command": command, "environment": {key: environment[key] for key in sorted(environment) if key.startswith("STAGE123_") or key.startswith("SUBMODEL_KL_") or key in {"RUN_PREFIX", "INIT_MODEL_PATH", "STAGE1_CKPT_DIR", "STAGE2_HANDOFF_STEP", "MERGED_MODEL2_DIR", "STAGE2_SUBMODEL", "STAGE2_MODEL_PATH", "STAGE2_MODEL2_PATH", "STAGE2_PROVENANCE_FILE", "JOINT_VALIDATION_VIEWS", "VAL_N", "VAL_TEMPERATURE", "VAL_TOP_P", "VAL_DO_SAMPLE", "BEST_CKPT_METRIC_KEY", "CODE_TRAIN_FILE", "TOTAL_TRAINING_STEPS", "BASE_CKPT_DIR", "LOG_DIR", "VERL_FILE_LOGGER_ROOT", "VALIDATION_DATA_DIR", "WANDB_DIR", "WANDB_MODE", "RAY_TMPDIR"}}}, sort_keys=True))
+        print(json.dumps({"command": command, "environment": {key: environment[key] for key in sorted(environment) if key.startswith("STAGE123_") or key.startswith("SUBMODEL_KL_") or key.startswith("EXPECTED_MODEL1_") or key in {"RUN_PREFIX", "INIT_MODEL_PATH", "BASE_MODEL_PATH", "STAGE1_CKPT_DIR", "STAGE2_HANDOFF_STEP", "MERGED_MODEL2_DIR", "STAGE2_SUBMODEL", "STAGE2_MODEL_PATH", "STAGE2_MODEL2_PATH", "STAGE2_PROVENANCE_FILE", "JOINT_VALIDATION_VIEWS", "VAL_N", "VAL_TEMPERATURE", "VAL_TOP_P", "VAL_DO_SAMPLE", "BEST_CKPT_METRIC_KEY", "CODE_TRAIN_FILE", "TOTAL_TRAINING_STEPS", "LR", "LR_WARMUP_STEPS", "TRACK_JOINT_SUBMODEL_LOSSES", "BASE_CKPT_DIR", "LOG_DIR", "VERL_FILE_LOGGER_ROOT", "VALIDATION_DATA_DIR", "WANDB_DIR", "WANDB_MODE", "RAY_TMPDIR"}}}, sort_keys=True))
         return None, None
     existing = list(Path(manifest["paths"]["checkpoint_root"]).glob(f"{run['run_prefix']}_*"))
     if existing:
