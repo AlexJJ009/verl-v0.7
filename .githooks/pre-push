@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root=$(git rev-parse --show-toplevel)
+cd "$repo_root"
+echo "[pre-push] validating SFT chat-template and loss-mask invariants"
+exec bash scripts/run_sft_loss_mask_gate.sh

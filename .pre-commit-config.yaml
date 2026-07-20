@@ -43,3 +43,12 @@ repos:
         entry: sh -c 'PYTHONWARNINGS=error python3 -m compileall -q . -x "(^|[\\/])(\.venv|venv|\.git)([\\/]|$)"'
         language: python
         pass_filenames: false
+
+  - repo: local
+    hooks:
+      - id: sft-loss-mask-gate
+        name: Validate SFT chat-template and loss-mask invariants
+        entry: bash scripts/run_sft_loss_mask_gate.sh
+        language: system
+        pass_filenames: false
+        stages: [pre-push]

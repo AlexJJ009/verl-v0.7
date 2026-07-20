@@ -37,6 +37,9 @@ data:
     name: null
   use_shm: False
   apply_chat_template_kwargs: {}
+  # Tokenize the complete conversation and derive assistant spans from whole-message prefixes.
+  # Enable this for context-sensitive templates such as Qwen3 Thinking.
+  tokenize_whole_message: False
   num_workers: 8
 
   # MultiTurnSFTDataset apply_chat_template to each turn separately and concat `input_ids`

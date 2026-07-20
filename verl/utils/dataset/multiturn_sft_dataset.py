@@ -19,6 +19,7 @@ Multi-turn SFT dataset that supports training on conversation data with multiple
 import logging
 import os
 import re
+from copy import deepcopy
 from functools import wraps
 from typing import Any, Optional
 
@@ -32,7 +33,7 @@ from transformers import PreTrainedTokenizer, ProcessorMixin
 
 from verl.models.transformers.qwen2_vl import get_rope_index
 from verl.utils import hf_tokenizer
-from verl.utils.chat_template import extract_system_prompt_and_generation
+from verl.utils.chat_template import extract_system_prompt_and_generation, normalize_chat_template_token_ids
 from verl.utils.dataset.dataset_utils import DatasetPadMode
 from verl.utils.dataset.vision_utils import process_image, process_video
 from verl.utils.fs import copy_local_path_from_hdfs
@@ -121,6 +122,7 @@ class MultiTurnSFTDataset(Dataset):
         self.enable_thinking_key = config.get("enable_thinking_key", "enable_thinking")
         self.enable_thinking_default = config.get("enable_thinking_default", None)
         self.apply_chat_template_kwargs = config.get("apply_chat_template_kwargs", {})
+        self.tokenize_whole_message = config.get("tokenize_whole_message", False)
         self.shuffle = config.get("shuffle", False)
         self.seed = config.get("seed")
         self.max_samples = max_samples
@@ -248,6 +250,117 @@ class MultiTurnSFTDataset(Dataset):
 
         return input_ids, loss_mask, attention_mask, inputs
 
+    def _apply_chat_template(
+        self,
+        messages: list[dict[str, Any]],
+        tools: Optional[list[dict[str, Any]]],
+        enable_thinking: Optional[bool],
+        add_generation_prompt: bool,
+    ) -> dict[str, torch.Tensor]:
+        processor = self.processor if self.processor is not None else self.tokenizer
+        apply_chat_template_kwargs = {**self.apply_chat_template_kwargs}
+        if enable_thinking is not None:
+            apply_chat_template_kwargs["enable_thinking"] = enable_thinking
+        return dict(
+            processor.apply_chat_template(
+                messages,
+                tools=tools,
+                add_generation_prompt=add_generation_prompt,
+                tokenize=True,
+                return_dict=True,
+                return_tensors="pt",
+                **apply_chat_template_kwargs,
+            )
+        )
+
+    def _process_whole_message(
+        self,
+        messages: list[dict[str, Any]],
+        tools: Optional[list[dict[str, Any]]],
+        enable_thinking: Optional[bool],
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, dict[str, torch.Tensor]]:
+        inputs = self._apply_chat_template(messages, tools, enable_thinking, add_generation_prompt=False)
+        input_ids = inputs.pop("input_ids")[0]
+        attention_mask = inputs.pop("attention_mask")[0]
+        loss_mask = torch.zeros_like(attention_mask)
+
+        empty_assistant_ids = torch.as_tensor(
+            normalize_chat_template_token_ids(
+                self.tokenizer.apply_chat_template(
+                    [{"role": "assistant", "content": ""}],
+                    add_generation_prompt=False,
+                    tokenize=True,
+                    **({"enable_thinking": enable_thinking} if enable_thinking is not None else {}),
+                )
+            )
+        )
+        sentinel_assistant_ids = torch.as_tensor(
+            normalize_chat_template_token_ids(
+                self.tokenizer.apply_chat_template(
+                    [{"role": "assistant", "content": "verl_sft_mask_sentinel"}],
+                    add_generation_prompt=False,
+                    tokenize=True,
+                    **({"enable_thinking": enable_thinking} if enable_thinking is not None else {}),
+                )
+            )
+        )
+        termination_length = 0
+        max_termination_length = min(len(empty_assistant_ids), len(sentinel_assistant_ids))
+        while (
+            termination_length < max_termination_length
+            and empty_assistant_ids[-1 - termination_length] == sentinel_assistant_ids[-1 - termination_length]
+        ):
+            termination_length += 1
+        assistant_termination_ids = empty_assistant_ids[-termination_length:]
+        if len(assistant_termination_ids) == 0:
+            raise AssertionError("Cannot derive assistant termination tokens from the chat template.")
+
+        generation_prompt_ids = torch.as_tensor(self.generation_prompt)
+        for index, message in enumerate(messages):
+            if message["role"] != "assistant":
+                continue
+
+            messages_without_response = deepcopy(messages)
+            messages_without_response[index] = {"role": "assistant", "content": ""}
+            empty_ids = self._apply_chat_template(
+                messages_without_response, tools, enable_thinking, add_generation_prompt=False
+            )["input_ids"][0]
+            common_prefix_length = 0
+            for full_token, empty_token in zip(input_ids, empty_ids, strict=False):
+                if full_token != empty_token:
+                    break
+                common_prefix_length += 1
+
+            response_start = None
+            for candidate_start in range(common_prefix_length - len(generation_prompt_ids), -1, -1):
+                candidate_end = candidate_start + len(generation_prompt_ids)
+                if torch.equal(input_ids[candidate_start:candidate_end], generation_prompt_ids):
+                    response_start = candidate_end
+                    break
+            if response_start is None:
+                raise AssertionError(
+                    "Cannot derive assistant loss mask from whole-message chat template: "
+                    f"assistant turn {index} has no identifiable response start."
+                )
+
+            termination_start = None
+            for candidate_start in range(
+                response_start, len(input_ids) - len(assistant_termination_ids) + 1
+            ):
+                candidate_end = candidate_start + len(assistant_termination_ids)
+                if torch.equal(input_ids[candidate_start:candidate_end], assistant_termination_ids):
+                    termination_start = candidate_start
+                    break
+            if termination_start is None:
+                raise AssertionError(
+                    "Cannot derive assistant loss mask from whole-message chat template: "
+                    f"assistant turn {index} is not followed by the expected termination tokens."
+                )
+            termination_end = termination_start + len(assistant_termination_ids)
+            loss_mask[response_start:termination_end] = 1
+
+        return input_ids, loss_mask, attention_mask, inputs
+
     def _build_messages(self, example: dict):
         """Replace <image> and <video> placeholder in messages with corresponding image and video
         which is required by processor.apply_chat_template.
@@ -302,31 +415,38 @@ class MultiTurnSFTDataset(Dataset):
             self.enable_thinking[item] if self.enable_thinking is not None else self.enable_thinking_default
         )
 
-        # 1. tokenize each message
-        input_ids, loss_mask, attention_mask, multi_modal_inputs = [], [], [], {}
-        for i, message in enumerate(messages):
-            _input_ids, _loss_mask, _attention_mask, _inputs = self._process_single_message(
-                index=i,
-                message=message,
-                full_message=messages,
-                tools=tools if i == 0 else None,
-                enable_thinking=enable_thinking,
+        # 1. tokenize messages and build assistant loss mask
+        if self.tokenize_whole_message:
+            input_ids, loss_mask, attention_mask, whole_message_inputs = self._process_whole_message(
+                messages, tools, enable_thinking
             )
-            input_ids.append(_input_ids)
-            loss_mask.append(_loss_mask)
-            attention_mask.append(_attention_mask)
-            for k, v in _inputs.items():
-                multi_modal_inputs.setdefault(k, []).append(v)
+            multi_modal_inputs = {key: [value] for key, value in whole_message_inputs.items()}
+        else:
+            input_ids, loss_mask, attention_mask, multi_modal_inputs = [], [], [], {}
+            for i, message in enumerate(messages):
+                _input_ids, _loss_mask, _attention_mask, _inputs = self._process_single_message(
+                    index=i,
+                    message=message,
+                    full_message=messages,
+                    tools=tools if i == 0 else None,
+                    enable_thinking=enable_thinking,
+                )
+                input_ids.append(_input_ids)
+                loss_mask.append(_loss_mask)
+                attention_mask.append(_attention_mask)
+                for k, v in _inputs.items():
+                    multi_modal_inputs.setdefault(k, []).append(v)
 
-        input_ids = torch.cat(input_ids, dim=0)
-        loss_mask = torch.cat(loss_mask, dim=0)
-        attention_mask = torch.cat(attention_mask, dim=0)
+            input_ids = torch.cat(input_ids, dim=0)
+            loss_mask = torch.cat(loss_mask, dim=0)
+            attention_mask = torch.cat(attention_mask, dim=0)
         assert input_ids.shape == loss_mask.shape == attention_mask.shape, (
             f"Shape mismatch: {input_ids.shape}, {loss_mask.shape}, {attention_mask.shape}"
         )
 
         print_assembled_message(self.tokenizer, messages, input_ids, loss_mask, attention_mask, tools)
-        self.sanity_check(input_ids, messages, tools, enable_thinking)
+        if not self.tokenize_whole_message:
+            self.sanity_check(input_ids, messages, tools, enable_thinking)
 
         # Since the tokenizer may return user-customized results, we need to filter out inconsistent tensor shapes
         keys_to_remove = []
