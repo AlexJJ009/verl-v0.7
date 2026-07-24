@@ -1,3 +1,6 @@
 [submodule "recipe"]
 	path = recipe
 	url = https://github.com/AlexJJ009/verl-recipe.git
+[submodule "feishu-research-hub"]
+	path = research/feishu-research-hub
+	url = https://github.com/AlexJJ009/feishu-research-hub.git
