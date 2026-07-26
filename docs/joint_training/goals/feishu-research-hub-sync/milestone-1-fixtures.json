@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "adapter_contract_version": "fake-lark-v1",
+  "entry_id_pattern": "^[A-Z][A-Z0-9-]{2,63}$",
+  "entry_kinds": [
+    "attachment",
+    "comparison",
+    "experiment_design",
+    "experiment_result",
+    "paper_note",
+    "report",
+    "workflow"
+  ],
+  "representations": ["docx", "markdown"],
+  "result_authorities": [
+    "authoritative_local",
+    "diagnostic",
+    "externally_verified"
+  ],
+  "sync_states": ["clean", "conflict", "detached", "tombstoned"],
+  "failure_code_prefixes": [
+    "E_ADAPTER_",
+    "E_ASSET_",
+    "E_CATALOG_",
+    "E_CONFLICT",
+    "E_GATE_",
+    "E_IDENTITY_",
+    "E_LINK_",
+    "E_SCHEMA_",
+    "E_SECRET_",
+    "E_SYNC_"
+  ],
+  "canaries": [
+    {"id": "C-SCHEMA-01", "mutation": "unknown_kind", "expected_code": "E_SCHEMA_KIND"},
+    {"id": "C-SCHEMA-02", "mutation": "duplicate_entry_id", "expected_code": "E_SCHEMA_DUPLICATE_ID"},
+    {"id": "C-CATALOG-01", "mutation": "stale_generated_catalog", "expected_code": "E_CATALOG_STALE"},
+    {"id": "C-LINK-01", "mutation": "unverified_external_link", "expected_code": "E_LINK_UNVERIFIED"},
+    {"id": "C-SECRET-01", "mutation": "credential_like_value", "expected_code": "E_SECRET_DETECTED"},
+    {"id": "C-ASSET-01", "mutation": "asset_hash_mismatch", "expected_code": "E_ASSET_HASH"},
+    {"id": "C-SYNC-01", "mutation": "unsupported_sync_state", "expected_code": "E_SYNC_STATE"},
+    {"id": "C-IDENTITY-01", "mutation": "unknown_editor_impersonates_human", "expected_code": "E_IDENTITY_IMPERSONATION"},
+    {"id": "C-ADAPTER-01", "mutation": "unsupported_cli_version", "expected_code": "E_ADAPTER_VERSION"},
+    {"id": "C-CONFLICT-01", "mutation": "concurrent_change_without_recoverable_ref", "expected_code": "E_CONFLICT_UNRECOVERABLE"},
+    {"id": "C-GATE-01", "mutation": "writer_constructs_adapter_before_gate", "expected_code": "E_GATE_ORDER"}
+  ],
+  "shared_writes_authorized": false
+}
