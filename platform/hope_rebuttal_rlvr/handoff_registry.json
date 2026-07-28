@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "registered_at": "2026-07-28",
+  "experiment_family": "rebuttal-rlvr-math-standard-grpo-v2",
+  "initializations": {
+    "R01": {
+      "classifier": "ordinary_sft",
+      "model_name": "R01_ORDINARY_SFT_4B_AM1P4M",
+      "path_template": "${ROOT}/models/rebuttal_rlvr/init/R01_ORDINARY_SFT_4B_AM1P4M",
+      "sft_dataset": "AM-1.4M",
+      "status": "pending_colleague_model_path_only"
+    },
+    "R02": {
+      "classifier": "offline_wdl_sft",
+      "model_id": "chhao/Weak-Driven-Learning",
+      "revision": "1bfdcc4506656288b115b8fa1d4e446f4e344f12",
+      "weight_file": "pytorch_model.bin",
+      "weight_bytes": 8045067711,
+      "weight_sha256": "3267350ca2bc2325c24b9b7d98852b776568a759c3d13242dd3cc7db1442d6b9",
+      "sft_dataset": "AM-1.4M",
+      "status": "pinned_loadable_external_provenance_assumption_accepted",
+      "pending_external_provenance": [
+        "initialization_seed",
+        "optimizer",
+        "training_steps",
+        "data_receipt",
+        "checkpoint_selection"
+      ]
+    }
+  },
+  "downstream_rlvr": {
+    "dataset_id": "hendrycks_math_7500",
+    "path_template": "${ROOT}/data/math/train_rl_format.parquet",
+    "source_rows": 7500,
+    "eligible_rows": 7405,
+    "trainer_steps": 115,
+    "shared_by_arms": true
+  },
+  "gates": {
+    "G0": "conditional_checkpoint_assumption_accepted_model_paths_pending",
+    "G1b": "passed",
+    "G1b_algorithm_sha256": "8dafbac42f911445e11438009ab2cf5a5f5e2075ce0bfb68abdd3629b9e54177",
+    "G3": "local_preparation_complete_meituan_terminal_evidence_pending",
+    "G4": "local_preparation_complete_meituan_h20_evidence_pending"
+  },
+  "bundle_layout": {
+    "manifest": "approved-batch.json",
+    "hope_semantics": "g3/hope-semantics.json",
+    "g3_admission": "g3/g3-admission.json",
+    "submission_ledger": "submission/global-submission-ledger.jsonl",
+    "render_archive": "rendered"
+  },
+  "offline_math7_analysis": "deferred_until_logs_and_checkpoints_return",
+  "release_policy": "automatic_after_terminal_success_complete"
+}

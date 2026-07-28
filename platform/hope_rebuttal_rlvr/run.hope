@@ -1,0 +1,74 @@
+[base]
+afo.app.name = REPLACE_APP_NAME
+type = ml-easy-job
+
+[resource]
+usergroup = hadoop-ai-search
+queue = root.shxs_training_cluster.hadoop-fridayagi.friday_h20_train
+
+[roles]
+workers = 1
+worker.memory = 1920000
+worker.vcore = 128
+worker.gcoresh20-141g = 8
+worker.script = bash jupyter.sh
+
+[user_args]
+
+[am]
+afo.app.am.resource.mb = 4096
+
+[tensorboard]
+with.tensor.board = false
+
+[docker]
+afo.docker.image.name = REPLACE_IMAGE_REFERENCE
+
+[data]
+afo.data.prefetch = false
+
+[failover]
+afo.app.support.engine.failover = false
+
+[others]
+client.git.revision.publish = false
+afo.app.env.YARN_CONTAINER_RUNTIME_DOCKER_SHM_SIZE_BYTES = 549755813888
+with_requirements = false
+afo.dolphinfs.otherusers = hadoop-mtsearch-assistant
+afo.role.worker.task.attempt.max.retry = 0
+afo.app.env.ROOT = REPLACE_ROOT
+afo.app.env.REPO_SUBPATH = REPLACE_REPO_SUBPATH
+afo.app.env.REPO_COMMIT = REPLACE_REPO_COMMIT
+afo.app.env.REPO_SUBMODULE_RECEIPT = REPLACE_REPO_SUBMODULE_RECEIPT
+afo.app.env.REPO_SUBMODULE_RECEIPT_HASH = REPLACE_REPO_SUBMODULE_RECEIPT_HASH
+afo.app.env.SUBMITTER_SOURCE_HASH = REPLACE_SUBMITTER_SOURCE_HASH
+afo.app.env.ARM = REPLACE_ARM
+afo.app.env.INIT_PAIR = REPLACE_INIT_PAIR
+afo.app.env.RLVR_SEED = REPLACE_RLVR_SEED
+afo.app.env.INIT_MODEL_PATH = REPLACE_INIT_MODEL_PATH
+afo.app.env.PAIRED_INIT_MANIFEST = REPLACE_PAIRED_INIT_MANIFEST
+afo.app.env.PAIRED_INIT_MANIFEST_HASH = REPLACE_PAIRED_INIT_MANIFEST_HASH
+afo.app.env.CHECKPOINT_RECEIPT = REPLACE_CHECKPOINT_RECEIPT
+afo.app.env.CHECKPOINT_RECEIPT_HASH = REPLACE_CHECKPOINT_RECEIPT_HASH
+afo.app.env.TRAIN_RECEIPT = REPLACE_TRAIN_RECEIPT
+afo.app.env.TRAIN_RECEIPT_HASH = REPLACE_TRAIN_RECEIPT_HASH
+afo.app.env.MATH7_RECEIPT = REPLACE_MATH7_RECEIPT
+afo.app.env.MATH7_RECEIPT_HASH = REPLACE_MATH7_RECEIPT_HASH
+afo.app.env.GRADER_RECEIPT = REPLACE_GRADER_RECEIPT
+afo.app.env.GRADER_RECEIPT_HASH = REPLACE_GRADER_RECEIPT_HASH
+afo.app.env.H20_PROFILE_PATH = REPLACE_H20_PROFILE_PATH
+afo.app.env.H20_PROFILE_HASH = REPLACE_H20_PROFILE_HASH
+afo.app.env.H20_CALIBRATION_RECEIPT = REPLACE_H20_CALIBRATION_RECEIPT
+afo.app.env.H20_CALIBRATION_RECEIPT_HASH = REPLACE_H20_CALIBRATION_RECEIPT_HASH
+afo.app.env.IMAGE_DIGEST = REPLACE_IMAGE_DIGEST
+afo.app.env.ALGORITHM_CONFIG_HASH = REPLACE_ALGORITHM_CONFIG_HASH
+afo.app.env.EVAL_CONFIG_HASH = REPLACE_EVAL_CONFIG_HASH
+afo.app.env.PATH_OVERRIDE_RECEIPT = REPLACE_PATH_OVERRIDE_RECEIPT
+afo.app.env.PATH_OVERRIDE_RECEIPT_HASH = REPLACE_PATH_OVERRIDE_RECEIPT_HASH
+afo.app.env.JOB_TAG = REPLACE_JOB_TAG
+afo.app.env.CELL_HASH = REPLACE_CELL_HASH
+afo.app.env.ATTEMPT_ID = REPLACE_ATTEMPT_ID
+afo.app.env.ATTEMPT_POLICY = REPLACE_ATTEMPT_POLICY
+afo.app.env.OUTPUT_POLICY_VERSION = REPLACE_OUTPUT_POLICY_VERSION
+afo.app.env.RUN_MODE = REPLACE_RUN_MODE
+afo.app.env.ALLOW_BASE_PLACEHOLDER = REPLACE_ALLOW_BASE_PLACEHOLDER

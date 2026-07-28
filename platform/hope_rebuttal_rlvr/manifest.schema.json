@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Rebuttal RLVR Hope batch manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "mode", "jobs"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "mode": {"enum": ["formal", "pilot", "smoke"]},
+    "jobs": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 18,
+      "items": {"$ref": "#/$defs/job"}
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "gitCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "safeValue": {"type": "string", "pattern": "^[A-Za-z0-9_./:@+-]+$", "minLength": 1},
+    "absolutePath": {
+      "type": "string",
+      "pattern": "^(?!.*(?:^|/)\\.{1,2}(?:/|$))/(?:[A-Za-z0-9_@+.:~-]+/)*[A-Za-z0-9_@+.:~-]+$"
+    },
+    "repoSubpath": {
+      "type": "string",
+      "pattern": "^(?!.*(?:^|/)\\.{1,2}(?:/|$))[A-Za-z0-9_@+.-]+(?:/[A-Za-z0-9_@+.-]+)*$"
+    },
+    "job": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "arm", "init_pair", "rl_seed", "init_model_path",
+        "paired_init_manifest", "paired_init_manifest_hash",
+        "checkpoint_receipt", "checkpoint_receipt_hash",
+        "train_receipt", "train_receipt_hash",
+        "math7_receipt", "math7_receipt_hash",
+        "grader_receipt", "grader_receipt_hash",
+        "image_reference", "image_digest",
+        "h20_profile_path", "h20_profile_hash",
+        "h20_calibration_receipt", "h20_calibration_receipt_hash",
+        "root", "repo_subpath", "repo_commit",
+        "repo_submodule_receipt", "repo_submodule_receipt_hash",
+        "submitter_source_hash", "algorithm_config_hash", "eval_config_hash",
+        "path_override_receipt", "path_override_receipt_hash",
+        "output_policy_version", "attempt_policy", "attempt_id",
+        "retry_of", "run_mode", "allow_base_placeholder"
+      ],
+      "properties": {
+        "arm": {"enum": ["sft", "wdl"]},
+        "init_pair": {"type": "string", "pattern": "^I[1-9][0-9]*$"},
+        "rl_seed": {"enum": [20260727, 20260728, 20260729]},
+        "init_model_path": {"$ref": "#/$defs/absolutePath"},
+        "paired_init_manifest": {"$ref": "#/$defs/absolutePath"},
+        "paired_init_manifest_hash": {"$ref": "#/$defs/sha256"},
+        "checkpoint_receipt": {"$ref": "#/$defs/absolutePath"},
+        "checkpoint_receipt_hash": {"$ref": "#/$defs/sha256"},
+        "train_receipt": {"$ref": "#/$defs/absolutePath"},
+        "train_receipt_hash": {"$ref": "#/$defs/sha256"},
+        "math7_receipt": {"$ref": "#/$defs/absolutePath"},
+        "math7_receipt_hash": {"$ref": "#/$defs/sha256"},
+        "grader_receipt": {"$ref": "#/$defs/absolutePath"},
+        "grader_receipt_hash": {"$ref": "#/$defs/sha256"},
+        "image_reference": {"$ref": "#/$defs/safeValue"},
+        "image_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "h20_profile_path": {"$ref": "#/$defs/absolutePath"},
+        "h20_profile_hash": {"$ref": "#/$defs/sha256"},
+        "h20_calibration_receipt": {
+          "oneOf": [{"$ref": "#/$defs/absolutePath"}, {"type": "null"}]
+        },
+        "h20_calibration_receipt_hash": {
+          "oneOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]
+        },
+        "root": {
+          "type": "string",
+          "pattern": "^(?!.*(?:^|/)\\.{1,2}(?:/|$))/mnt/dolphinfs/(?:[A-Za-z0-9_@+.-]+/)*[A-Za-z0-9_@+.-]+$"
+        },
+        "repo_subpath": {"$ref": "#/$defs/repoSubpath"},
+        "repo_commit": {"$ref": "#/$defs/gitCommit"},
+        "repo_submodule_receipt": {"$ref": "#/$defs/absolutePath"},
+        "repo_submodule_receipt_hash": {"$ref": "#/$defs/sha256"},
+        "submitter_source_hash": {"$ref": "#/$defs/sha256"},
+        "algorithm_config_hash": {"$ref": "#/$defs/sha256"},
+        "eval_config_hash": {"$ref": "#/$defs/sha256"},
+        "path_override_receipt": {"$ref": "#/$defs/absolutePath"},
+        "path_override_receipt_hash": {"$ref": "#/$defs/sha256"},
+        "output_policy_version": {"const": "rebuttal-output-v1"},
+        "attempt_policy": {"const": "rebuttal-attempt-v1"},
+        "attempt_id": {"type": "string", "pattern": "^[A-Za-z0-9_+-]{1,32}$"},
+        "retry_of": {"type": ["string", "null"], "pattern": "^[A-Za-z0-9_+-]{1,32}$"},
+        "run_mode": {"enum": ["formal", "smoke"]},
+        "allow_base_placeholder": {"type": "boolean"}
+      }
+    }
+  }
+}

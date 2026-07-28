@@ -6,7 +6,8 @@ Validates the 3-tier reward verification pipeline:
   2. Fallback: verl's math_verify
   3. Fallback: string matching on \\boxed{} extraction
 
-Also tests EOS detection logic and the DAPO reward manager integration.
+Also tests the strict `<think>/<answer>` format contract, EOS detection, and
+reward-manager compatibility.
 
 Run:
     cd /data-1/verl07/verl
@@ -123,7 +124,7 @@ class TestComputeScoreLatexVerify:
     def test_correct_answer_with_eos(self):
         result = compute_score_latex_verify(
             data_source="gsm8k",
-            solution_str="Let me think... The answer is \\boxed{42}.",
+            solution_str="<think>6 times 7 is 42.</think><answer>\\boxed{42}</answer>",
             ground_truth="42",
             extra_info={"valid_response_length": 50, "max_resp_len": 1024},
         )
@@ -135,7 +136,7 @@ class TestComputeScoreLatexVerify:
     def test_wrong_answer_with_eos(self):
         result = compute_score_latex_verify(
             data_source="gsm8k",
-            solution_str="The answer is \\boxed{7}.",
+            solution_str="<think>Incorrect calculation.</think><answer>\\boxed{7}</answer>",
             ground_truth="42",
             extra_info={"valid_response_length": 30, "max_resp_len": 1024},
         )
@@ -147,7 +148,7 @@ class TestComputeScoreLatexVerify:
         """Response truncated (no EOS) → reward = -1.0 even if answer is correct."""
         result = compute_score_latex_verify(
             data_source="gsm8k",
-            solution_str="The answer is \\boxed{42}.",
+            solution_str="<think>6 times 7 is 42.</think><answer>\\boxed{42}</answer>",
             ground_truth="42",
             extra_info={"valid_response_length": 1024, "max_resp_len": 1024},
         )
@@ -158,7 +159,7 @@ class TestComputeScoreLatexVerify:
     def test_no_boxed_answer(self):
         result = compute_score_latex_verify(
             data_source="gsm8k",
-            solution_str="I think the answer is 42.",
+            solution_str="<think>I think the answer is 42.</think><answer>42</answer>",
             ground_truth="42",
             extra_info={"valid_response_length": 30, "max_resp_len": 1024},
         )
@@ -169,7 +170,7 @@ class TestComputeScoreLatexVerify:
         """When extra_info is None, assume EOS is present."""
         result = compute_score_latex_verify(
             data_source="gsm8k",
-            solution_str="\\boxed{42}",
+            solution_str="<think>6 times 7 is 42.</think><answer>\\boxed{42}</answer>",
             ground_truth="42",
         )
         assert result["has_eos"] is True
@@ -178,7 +179,7 @@ class TestComputeScoreLatexVerify:
     def test_fraction_semantic_match(self):
         result = compute_score_latex_verify(
             data_source="math",
-            solution_str="Therefore \\boxed{\\frac{3}{6}}.",
+            solution_str="<think>Three sixths is one half.</think><answer>\\boxed{\\frac{3}{6}}</answer>",
             ground_truth="0.5",
             extra_info={"valid_response_length": 40, "max_resp_len": 1024},
         )
@@ -189,7 +190,7 @@ class TestComputeScoreLatexVerify:
         """Verify all expected keys are present in the result dict."""
         result = compute_score_latex_verify(
             data_source="gsm8k",
-            solution_str="\\boxed{1}",
+            solution_str="<think>The result is one.</think><answer>\\boxed{1}</answer>",
             ground_truth="1",
         )
         expected_keys = {
@@ -199,7 +200,9 @@ class TestComputeScoreLatexVerify:
             "has_eos",
             "truncated",
             "think_complete",
+            "think_nonempty",
             "answer_complete",
+            "format_ordered",
             "boxed_extraction_success",
             "reward_grader_success",
             "format_contract_success",
@@ -231,7 +234,7 @@ class TestComputeScoreLatexVerify:
 
         result = compute_score_latex_verify(
             data_source="gsm8k",
-            solution_str="anything",
+            solution_str="<think>Reasoning.</think><answer>\\boxed{42}</answer>",
             ground_truth="42",
         )
 
@@ -255,7 +258,7 @@ class TestComputeScoreLatexVerify:
 
         result = compute_score_latex_verify(
             data_source="gsm8k",
-            solution_str="The answer is \\boxed{42}.",
+            solution_str="<think>Reasoning.</think><answer>\\boxed{42}</answer>",
             ground_truth="42",
         )
 
@@ -268,7 +271,7 @@ class TestComputeScoreLatexVerify:
         the function should fall back to string matching."""
         result = compute_score_latex_verify(
             data_source="gsm8k",
-            solution_str="\\boxed{hello}",
+            solution_str="<think>The requested value is hello.</think><answer>\\boxed{hello}</answer>",
             ground_truth="hello",
             extra_info={"valid_response_length": 20, "max_resp_len": 1024},
         )
@@ -308,9 +311,10 @@ class TestEdgeCases:
         assert isinstance(result["score"], float)
 
     def test_multiline_response(self):
-        solution = """Step 1: We compute 6 * 7 = 42.
-Step 2: Therefore the answer is \\boxed{42}.
-"""
+        solution = """<think>
+Step 1: We compute 6 * 7 = 42.
+Step 2: The result is 42.
+</think><answer>\\boxed{42}</answer>"""
         result = compute_score_latex_verify(
             data_source="gsm8k",
             solution_str=solution,
@@ -319,22 +323,27 @@ Step 2: Therefore the answer is \\boxed{42}.
         assert result["score"] == 1.0
         assert result["acc"] is True
 
-    def test_thinking_tags_with_boxed(self):
-        """Simulate a model response with <think>...</think> tags."""
+    def test_missing_answer_tags_is_rejected(self):
+        """A correct boxed answer outside `<answer>` must receive -1."""
         solution = "<think>Let me work through this. 6*7=42.</think>\n\nThe answer is \\boxed{42}."
         result = compute_score_latex_verify(
             data_source="gsm8k",
             solution_str=solution,
             ground_truth="42",
         )
-        assert result["score"] == 1.0
+        assert result["score"] == -1.0
+        assert result["answer_complete"] is False
+        assert result["format_contract_success"] is False
 
     def test_multiple_boxed_conflicting_penalized(self):
         """Multiple conflicting boxed expressions — latex_semantic extracts ALL
         boxed content so \\boxed{7} conflicts with ground_truth=42, causing
         the verifier to reject. This is intended: the reward function penalizes
         self-contradictory answers."""
-        solution = "First attempt: \\boxed{7}. Wait, let me recalculate... \\boxed{42}."
+        solution = (
+            "<think>First attempt was 7; recalculation gives 42.</think>"
+            "<answer>\\boxed{7}; \\boxed{42}</answer>"
+        )
         result = compute_score_latex_verify(
             data_source="gsm8k",
             solution_str=solution,
@@ -344,7 +353,10 @@ Step 2: Therefore the answer is \\boxed{42}.
 
     def test_multiple_boxed_same_answer(self):
         """Multiple boxed with the SAME answer — should be correct."""
-        solution = "We get \\boxed{42}. Confirmed: \\boxed{42}."
+        solution = (
+            "<think>We get 42 and confirm it.</think>"
+            "<answer>\\boxed{42}; \\boxed{42}</answer>"
+        )
         result = compute_score_latex_verify(
             data_source="gsm8k",
             solution_str=solution,
