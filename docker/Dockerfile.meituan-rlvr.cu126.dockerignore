@@ -1,0 +1,6 @@
+**
+!docker/
+docker/*
+!docker/verify_meituan_rlvr_pip_check.py
+!docker/smoke_meituan_rlvr_h20.py
+!docker/smoke_meituan_code_firejail.py

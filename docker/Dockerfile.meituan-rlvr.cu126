@@ -1,0 +1,377 @@
+# syntax=docker/dockerfile:1.7
+#
+# Reference build for the current FSDP + vLLM rebuttal RLVR branch.
+# Formal Meituan builds MUST override CUDA_BASE_IMAGE and UV_IMAGE with internal
+# immutable references ending in @sha256:<digest> and archive all image digests.
+
+# Intentionally no public defaults: Docker resolves FROM before any RUN gate,
+# so callers must provide both image references explicitly.
+ARG CUDA_BASE_IMAGE
+ARG UV_IMAGE
+ARG FORMAL_BUILD=0
+ARG TRUSTED_IMAGE_PREFIX=
+ARG TRUSTED_APT_PREFIX=
+ARG TRUSTED_PYPI_PREFIX=
+ARG TRUSTED_PYTORCH_PREFIX=
+ARG TRUSTED_UV_PYTHON_PREFIX=
+ARG TRUSTED_GIT_PREFIX=
+
+FROM ${UV_IMAGE} AS uv-bin
+
+FROM ${CUDA_BASE_IMAGE} AS evaluator-source
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+ARG CUDA_BASE_IMAGE
+ARG UV_IMAGE
+ARG FORMAL_BUILD
+ARG TRUSTED_IMAGE_PREFIX
+ARG TRUSTED_APT_PREFIX
+ARG TRUSTED_GIT_PREFIX
+ARG DEBIAN_FRONTEND=noninteractive
+ARG APT_MIRROR=
+ARG EVALPLUS_GIT_URL=https://github.com/evalplus/evalplus.git
+ARG EVALPLUS_COMMIT=26d6d00bb1fd0fa37f39c99d5290da67891d1c5e
+ARG BIGCODEBENCH_GIT_URL=https://github.com/bigcode-project/bigcodebench.git
+ARG BIGCODEBENCH_COMMIT=09dd993f46c3fbf3a799465bb96d524edcb0b199
+ARG LIVECODEBENCH_GIT_URL=https://github.com/LiveCodeBench/LiveCodeBench.git
+ARG LIVECODEBENCH_COMMIT=28fef95ea8c9f7a547c8329f2cd3d32b92c1fa24
+
+RUN if [ "${FORMAL_BUILD}" = "1" ]; then \
+        for prefix in "${TRUSTED_IMAGE_PREFIX}" "${TRUSTED_APT_PREFIX}" "${TRUSTED_GIT_PREFIX}"; do \
+            test -n "${prefix}" && [[ "${prefix}" == */ ]] && [[ "${prefix}" != *example.invalid* ]] \
+                || { echo "formal build requires platform-owned trusted source prefixes" >&2; exit 2; }; \
+        done; \
+        case "${CUDA_BASE_IMAGE}" in \
+            "${TRUSTED_IMAGE_PREFIX}"*) ;; \
+            *) echo "CUDA_BASE_IMAGE is outside TRUSTED_IMAGE_PREFIX" >&2; exit 2 ;; \
+        esac; \
+        case "${UV_IMAGE}" in \
+            "${TRUSTED_IMAGE_PREFIX}"*) ;; \
+            *) echo "UV_IMAGE is outside TRUSTED_IMAGE_PREFIX" >&2; exit 2 ;; \
+        esac; \
+        printf '%s\n' "${CUDA_BASE_IMAGE}" | grep -Eq '@sha256:[0-9a-f]{64}$' \
+            || { echo "formal build requires immutable CUDA_BASE_IMAGE" >&2; exit 2; }; \
+        printf '%s\n' "${UV_IMAGE}" | grep -Eq '@sha256:[0-9a-f]{64}$' \
+            || { echo "formal build requires immutable UV_IMAGE" >&2; exit 2; }; \
+        case "${APT_MIRROR}" in \
+            "${TRUSTED_APT_PREFIX}"*) ;; \
+            *) echo "APT_MIRROR is outside TRUSTED_APT_PREFIX" >&2; exit 2 ;; \
+        esac; \
+        case "${EVALPLUS_GIT_URL}" in \
+            "${TRUSTED_GIT_PREFIX}"*) ;; \
+            *) echo "EVALPLUS_GIT_URL is outside TRUSTED_GIT_PREFIX" >&2; exit 2 ;; \
+        esac; \
+        case "${BIGCODEBENCH_GIT_URL}" in \
+            "${TRUSTED_GIT_PREFIX}"*) ;; \
+            *) echo "BIGCODEBENCH_GIT_URL is outside TRUSTED_GIT_PREFIX" >&2; exit 2 ;; \
+        esac; \
+        case "${LIVECODEBENCH_GIT_URL}" in \
+            "${TRUSTED_GIT_PREFIX}"*) ;; \
+            *) echo "LIVECODEBENCH_GIT_URL is outside TRUSTED_GIT_PREFIX" >&2; exit 2 ;; \
+        esac; \
+    fi \
+    && if [ -n "${APT_MIRROR}" ]; then \
+        sed -i \
+            -e "s|http://archive.ubuntu.com/ubuntu|${APT_MIRROR}|g" \
+            -e "s|http://security.ubuntu.com/ubuntu|${APT_MIRROR}|g" \
+            /etc/apt/sources.list; \
+    fi \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Keep Git checkouts and remote URLs out of the final runtime image. Mirror
+# URLs must not contain credentials; authenticated builders should use a
+# pre-vendored source stage or BuildKit secret/SSH mounts.
+RUN mkdir -p /src/revisions \
+    && git init /src/evalplus \
+    && git -C /src/evalplus remote add origin "${EVALPLUS_GIT_URL}" \
+    && git -C /src/evalplus fetch --depth 1 origin "${EVALPLUS_COMMIT}" \
+    && git -C /src/evalplus checkout --detach FETCH_HEAD \
+    && test "$(git -C /src/evalplus rev-parse HEAD)" = "${EVALPLUS_COMMIT}" \
+    && printf '%s\n' "${EVALPLUS_COMMIT}" > /src/revisions/evalplus \
+    && git init /src/bigcodebench \
+    && git -C /src/bigcodebench remote add origin "${BIGCODEBENCH_GIT_URL}" \
+    && git -C /src/bigcodebench fetch --depth 1 origin "${BIGCODEBENCH_COMMIT}" \
+    && git -C /src/bigcodebench checkout --detach FETCH_HEAD \
+    && test "$(git -C /src/bigcodebench rev-parse HEAD)" = "${BIGCODEBENCH_COMMIT}" \
+    && printf '%s\n' "${BIGCODEBENCH_COMMIT}" > /src/revisions/bigcodebench \
+    && git init /src/LiveCodeBench \
+    && git -C /src/LiveCodeBench remote add origin "${LIVECODEBENCH_GIT_URL}" \
+    && git -C /src/LiveCodeBench fetch --depth 1 origin "${LIVECODEBENCH_COMMIT}" \
+    && git -C /src/LiveCodeBench checkout --detach FETCH_HEAD \
+    && test "$(git -C /src/LiveCodeBench rev-parse HEAD)" = "${LIVECODEBENCH_COMMIT}" \
+    && printf '%s\n' "${LIVECODEBENCH_COMMIT}" > /src/revisions/livecodebench \
+    && rm -rf /src/evalplus/.git /src/bigcodebench/.git /src/LiveCodeBench/.git
+
+FROM ${CUDA_BASE_IMAGE} AS runtime
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+ARG CUDA_BASE_IMAGE
+ARG UV_IMAGE
+ARG FORMAL_BUILD
+ARG TARGETARCH
+ARG TRUSTED_IMAGE_PREFIX
+ARG TRUSTED_APT_PREFIX
+ARG TRUSTED_PYPI_PREFIX
+ARG TRUSTED_PYTORCH_PREFIX
+ARG TRUSTED_UV_PYTHON_PREFIX
+ARG DEBIAN_FRONTEND=noninteractive
+ARG APT_MIRROR=
+ARG PYTHON_VERSION=3.12.13
+ARG UV_PYTHON_INSTALL_MIRROR=
+ARG PYPI_INDEX_URL=https://pypi.org/simple
+ARG PYTORCH_INDEX_URL=https://download.pytorch.org/whl/cu126
+
+ARG TORCH_VERSION=2.9.1
+ARG TORCHVISION_VERSION=0.24.1
+ARG TORCHAUDIO_VERSION=2.9.1
+ARG VLLM_VERSION=0.12.0
+ARG FLASHINFER_VERSION=0.5.3
+ARG FLASH_ATTN_VERSION=2.8.1
+
+RUN if [ "${FORMAL_BUILD}" = "1" ]; then \
+        test "${TARGETARCH}" = "amd64" \
+            || { echo "formal build requires TARGETARCH=amd64 (use BuildKit --platform=linux/amd64)" >&2; exit 2; }; \
+        for prefix in \
+            "${TRUSTED_IMAGE_PREFIX}" "${TRUSTED_APT_PREFIX}" "${TRUSTED_PYPI_PREFIX}" \
+            "${TRUSTED_PYTORCH_PREFIX}" "${TRUSTED_UV_PYTHON_PREFIX}"; do \
+            test -n "${prefix}" && [[ "${prefix}" == */ ]] && [[ "${prefix}" != *example.invalid* ]] \
+                || { echo "formal build requires platform-owned trusted source prefixes" >&2; exit 2; }; \
+        done; \
+        case "${CUDA_BASE_IMAGE}" in \
+            "${TRUSTED_IMAGE_PREFIX}"*) ;; \
+            *) echo "CUDA_BASE_IMAGE is outside TRUSTED_IMAGE_PREFIX" >&2; exit 2 ;; \
+        esac; \
+        case "${UV_IMAGE}" in \
+            "${TRUSTED_IMAGE_PREFIX}"*) ;; \
+            *) echo "UV_IMAGE is outside TRUSTED_IMAGE_PREFIX" >&2; exit 2 ;; \
+        esac; \
+        printf '%s\n' "${CUDA_BASE_IMAGE}" | grep -Eq '@sha256:[0-9a-f]{64}$' \
+            || { echo "formal build requires immutable CUDA_BASE_IMAGE" >&2; exit 2; }; \
+        printf '%s\n' "${UV_IMAGE}" | grep -Eq '@sha256:[0-9a-f]{64}$' \
+            || { echo "formal build requires immutable UV_IMAGE" >&2; exit 2; }; \
+        case "${APT_MIRROR}" in \
+            "${TRUSTED_APT_PREFIX}"*) ;; \
+            *) echo "APT_MIRROR is outside TRUSTED_APT_PREFIX" >&2; exit 2 ;; \
+        esac; \
+        case "${PYPI_INDEX_URL}" in \
+            "${TRUSTED_PYPI_PREFIX}"*) ;; \
+            *) echo "PYPI_INDEX_URL is outside TRUSTED_PYPI_PREFIX" >&2; exit 2 ;; \
+        esac; \
+        case "${PYTORCH_INDEX_URL}" in \
+            "${TRUSTED_PYTORCH_PREFIX}"*) ;; \
+            *) echo "PYTORCH_INDEX_URL is outside TRUSTED_PYTORCH_PREFIX" >&2; exit 2 ;; \
+        esac; \
+        case "${UV_PYTHON_INSTALL_MIRROR}" in \
+            "${TRUSTED_UV_PYTHON_PREFIX}"*) ;; \
+            *) echo "UV_PYTHON_INSTALL_MIRROR is outside TRUSTED_UV_PYTHON_PREFIX" >&2; exit 2 ;; \
+        esac; \
+    fi \
+    && if [ -n "${APT_MIRROR}" ]; then \
+        sed -i \
+            -e "s|http://archive.ubuntu.com/ubuntu|${APT_MIRROR}|g" \
+            -e "s|http://security.ubuntu.com/ubuntu|${APT_MIRROR}|g" \
+            /etc/apt/sources.list; \
+    fi \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        cmake \
+        curl \
+        firejail \
+        firejail-profiles \
+        git \
+        libibverbs-dev \
+        libnuma-dev \
+        librdmacm-dev \
+        ninja-build \
+        numactl \
+        python3-pytest \
+        wget \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=uv-bin /uv /usr/local/bin/uv
+
+ENV VIRTUAL_ENV=/opt/venv \
+    UV_PYTHON_INSTALL_DIR=/opt/uv-python \
+    UV_NO_CONFIG=1 \
+    UV_INDEX= \
+    UV_EXTRA_INDEX_URL= \
+    UV_FIND_LINKS= \
+    UV_INDEX_STRATEGY=first-index \
+    PIP_CONFIG_FILE=/dev/null \
+    PIP_EXTRA_INDEX_URL= \
+    PIP_FIND_LINKS= \
+    PATH=/opt/venv/bin:/usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Install exact managed CPython from the declared mirror when supplied. Formal
+# builds require that mirror; public fallback exists only for local iteration.
+RUN if [ -n "${UV_PYTHON_INSTALL_MIRROR}" ]; then \
+        uv python install --mirror "${UV_PYTHON_INSTALL_MIRROR}" "${PYTHON_VERSION}"; \
+    else \
+        uv python install "${PYTHON_VERSION}"; \
+    fi \
+    && UV_PYTHON_DOWNLOADS=never uv venv "${VIRTUAL_ENV}" --python "${PYTHON_VERSION}" \
+    && UV_INDEX_URL="${PYPI_INDEX_URL}" \
+        uv pip install --python "${VIRTUAL_ENV}/bin/python" \
+        pip==26.0.1 setuptools==80.10.2 wheel==0.46.3 packaging==25.0 \
+    && python --version \
+    && uv --version
+
+# Preserve the branch-validated torch 2.9.1+cu126 runtime contract. vLLM
+# 0.12.0 metadata asks for torch 2.9.0; the final H20 GPU gates, not a silent
+# resolver downgrade, decide whether this explicit compatibility override is
+# admissible for the experiment.
+RUN uv pip install \
+        "torch==${TORCH_VERSION}" \
+        "torchvision==${TORCHVISION_VERSION}" \
+        "torchaudio==${TORCHAUDIO_VERSION}" \
+        --index-url "${PYTORCH_INDEX_URL}" \
+    && UV_INDEX_URL="${PYPI_INDEX_URL}" uv pip install "vllm==${VLLM_VERSION}" --no-deps \
+    && python -c 'from importlib.metadata import requires; from packaging.requirements import Requirement; from packaging.utils import canonicalize_name; blocked={"torch","torchvision","torchaudio"}; print("\n".join(item for item in (requires("vllm") or []) if canonicalize_name(Requirement(item).name) not in blocked))' \
+        > /tmp/vllm-nontorch-requirements.txt \
+    && printf '%s\n' \
+        'flashinfer-python==0.5.3' \
+        'numpy==1.26.4' \
+        'opencv-python-headless==4.11.0.86' \
+        'ray==2.54.1' \
+        'transformers==4.57.6' \
+        > /tmp/vllm-constraints.txt \
+    && UV_INDEX_URL="${PYPI_INDEX_URL}" \
+        uv pip install \
+        --requirement /tmp/vllm-nontorch-requirements.txt \
+        --constraint /tmp/vllm-constraints.txt \
+    && UV_INDEX_URL="${PYPI_INDEX_URL}" uv pip install --no-deps --reinstall \
+        nvidia-cudnn-cu12==9.10.2.21 \
+        nvidia-nccl-cu12==2.27.5 \
+        "flashinfer-python==${FLASHINFER_VERSION}" \
+    && UV_INDEX_URL="${PYPI_INDEX_URL}" uv pip install --reinstall \
+        numpy==1.26.4 \
+        opencv-python-headless==4.11.0.86 \
+    && rm -f /tmp/vllm-nontorch-requirements.txt /tmp/vllm-constraints.txt
+
+# Exact top-level versions observed in the branch's working local image. The
+# post-build receipt must additionally archive the full transitive freeze.
+RUN UV_INDEX_URL="${PYPI_INDEX_URL}" uv pip install \
+        accelerate==1.13.0 \
+        codetiming==1.4.0 \
+        datasets==4.8.4 \
+        dill==0.4.1 \
+        hydra-core==1.3.2 \
+        liger-kernel==0.7.0 \
+        numpy==1.26.4 \
+        packaging==25.0 \
+        pandas==3.0.2 \
+        peft==0.18.1 \
+        pyarrow==23.0.1 \
+        pybind11==3.0.3 \
+        pylatexenc==2.10 \
+        "ray[default]==2.54.1" \
+        tensorboard==2.20.0 \
+        tensordict==0.10.0 \
+        torchdata==0.11.0 \
+        transformers==4.57.6 \
+        wandb==0.25.1
+
+# Math parser/scorer and utilities used by the current strict reward path.
+RUN UV_INDEX_URL="${PYPI_INDEX_URL}" uv pip install \
+        latex2sympy2-extended==1.11.0 \
+        math-verify==0.9.0 \
+        mathruler==0.1.0 \
+        fastapi==0.135.3 \
+        matplotlib==3.10.8 \
+        nvtx==0.2.15 \
+        uvicorn==0.42.0
+
+# Minimal dependencies imported by the fixed-source official code evaluators.
+# Do not pip-install the evaluator projects with dependencies: their broad
+# metadata is allowed to upgrade torch/vLLM and destroy the training ABI.
+RUN UV_INDEX_URL="${PYPI_INDEX_URL}" uv pip install \
+        appdirs==1.4.4 \
+        e2b==1.11.1 \
+        fire==0.7.1 \
+        gradio-client==2.5.0 \
+        multipledispatch==1.0.0 \
+        pqdm==0.2.0 \
+        pytest==8.4.2 \
+        rich==14.3.3 \
+        tempdir==0.7.1 \
+        termcolor==3.3.0 \
+        timeout-decorator==0.5.0 \
+        tree-sitter==0.26.0 \
+        tree-sitter-python==0.25.0 \
+        wget==3.2
+
+RUN mkdir -p /opt/code-eval/official_site /opt/code-eval/revisions /opt/code-eval/manifests
+COPY --from=evaluator-source /src/evalplus/evalplus /opt/code-eval/official_site/evalplus
+COPY --from=evaluator-source /src/bigcodebench/bigcodebench /opt/code-eval/official_site/bigcodebench
+COPY --from=evaluator-source /src/LiveCodeBench /opt/code-eval/LiveCodeBench
+COPY --from=evaluator-source /src/revisions /opt/code-eval/revisions
+COPY --from=evaluator-source /src/bigcodebench/Requirements/requirements-eval.txt /opt/code-eval/manifests/bigcodebench-requirements-eval.txt
+COPY --from=evaluator-source /src/bigcodebench/Docker/Evaluate.Dockerfile /opt/code-eval/manifests/bigcodebench-Evaluate.Dockerfile
+
+# The full BigCodeBench task-library environment is intentionally not installed
+# into this Python 3.12/Torch training ABI. Its pinned manifest is retained for
+# a separate Python 3.10 evaluator image and checked against the reviewed commit.
+RUN test "$(sha256sum /opt/code-eval/manifests/bigcodebench-requirements-eval.txt | awk '{print $1}')" = \
+        "a4d01fb12cbce5223b51f982265cb7975bea770b758cd85cc91b803d3293e39f" \
+    && test "$(sha256sum /opt/code-eval/manifests/bigcodebench-Evaluate.Dockerfile | awk '{print $1}')" = \
+        "a0d56d681c9eeaf0c6d780309aab31b6df422bad21ad1a3de2c3da0598e05b12"
+
+# FlashAttention is compiled only after the final Torch and Python dependency
+# state is established.
+ENV CUDA_HOME=/usr/local/cuda
+RUN UV_INDEX_URL="${PYPI_INDEX_URL}" MAX_JOBS=16 uv pip install \
+        "flash-attn==${FLASH_ATTN_VERSION}" \
+        --no-build-isolation
+
+ENV PYTHONUNBUFFERED=1 \
+    HF_HOME=/root/.cache/huggingface \
+    HF_HUB_OFFLINE=1 \
+    HF_DATASETS_OFFLINE=1 \
+    TRANSFORMERS_OFFLINE=1 \
+    WANDB_MODE=offline \
+    VLLM_USE_V1=1 \
+    VLLM_ATTENTION_BACKEND=FLASHINFER \
+    VLLM_NO_USAGE_STATS=1 \
+    VLLM_DO_NOT_TRACK=1 \
+    CODE_EVAL_OFFICIAL_SITE=/opt/code-eval/official_site \
+    LCB_REPO_DIR=/opt/code-eval/LiveCodeBench \
+    PYTHONPATH=/opt/code-eval/official_site:/opt/code-eval/LiveCodeBench
+
+# The verifier runs real `pip check`, requires exactly the three reviewed vLLM
+# metadata conflicts, and self-tests that an additional conflict fails closed.
+COPY docker/verify_meituan_rlvr_pip_check.py /usr/local/libexec/verify_meituan_rlvr_pip_check.py
+COPY docker/smoke_meituan_rlvr_h20.py /usr/local/libexec/smoke_meituan_rlvr_h20.py
+COPY docker/smoke_meituan_code_firejail.py /usr/local/libexec/smoke_meituan_code_firejail.py
+RUN python /usr/local/libexec/verify_meituan_rlvr_pip_check.py --self-test \
+    && python /usr/local/libexec/verify_meituan_rlvr_pip_check.py \
+    && python /usr/local/libexec/smoke_meituan_rlvr_h20.py self-test \
+    && python -c 'path="/usr/local/libexec/smoke_meituan_code_firejail.py"; compile(open(path, encoding="utf-8").read(), path, "exec")'
+
+# CPU-safe build checks. Dataset indexes, model weights, NCCL, FlashInfer
+# kernel selection, FA2 forward/backward, and Firejail behavior are runtime
+# gates and must be executed inside the real AFO worker security context.
+RUN python -c 'import torch, vllm, flashinfer, flash_attn, ray, transformers; assert torch.__version__.startswith("2.9.1+"); assert torch.version.cuda == "12.6"; assert vllm.__version__ == "0.12.0"; assert flashinfer.__version__ == "0.5.3"; assert flash_attn.__version__ == "2.8.1"' \
+    && python -c 'from latex2sympy2_extended import NormalizationConfig; from math_verify import LatexExtractionConfig, parse, verify' \
+    && python -c 'import importlib; names=("evalplus.evaluate","evalplus.gen.util","evalplus.eval._special_oracle","bigcodebench.evaluate","bigcodebench.gen.util","bigcodebench.eval._special_oracle","lcb_runner.benchmarks.code_generation","lcb_runner.evaluation.compute_code_generation_metrics"); modules=[importlib.import_module(name) for name in names]; assert all(module.__file__.startswith("/opt/code-eval/") for module in modules)' \
+    && (cd /opt/code-eval/LiveCodeBench && python -c 'import lcb_runner.runner.custom_evaluator') \
+    && python -c 'import os; expected={"HF_HUB_OFFLINE":"1","HF_DATASETS_OFFLINE":"1","TRANSFORMERS_OFFLINE":"1","WANDB_MODE":"offline"}; assert {key: os.environ.get(key) for key in expected} == expected' \
+    && test "$(uname -m)" = x86_64 \
+    && test -x /usr/bin/firejail \
+    && /usr/bin/python3 -m pytest --version
+
+RUN rm -rf /root/.cache/pip /root/.cache/uv
+
+LABEL org.opencontainers.image.title="verl rebuttal RLVR cu126 candidate" \
+      org.opencontainers.image.description="FSDP + vLLM 0.12.0 math/online-code RLVR runtime; full BigCodeBench uses a separate evaluator image" \
+      ai.verl.evalplus.commit="26d6d00bb1fd0fa37f39c99d5290da67891d1c5e" \
+      ai.verl.bigcodebench.commit="09dd993f46c3fbf3a799465bb96d524edcb0b199" \
+      ai.verl.livecodebench.commit="28fef95ea8c9f7a547c8329f2cd3d32b92c1fa24"
+
+WORKDIR /workspace
+CMD ["bash"]
