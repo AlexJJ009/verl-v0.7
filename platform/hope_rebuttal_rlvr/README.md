@@ -10,6 +10,11 @@ G4 signature from the same independently governed allowlist, binding both arm
 terminal receipts and the actual staged resource projection. The checked-in
 allowlist is currently empty, so real submission intentionally fails closed.
 
+All Meituan workers are network-isolated. The launch path pins
+`WANDB_MODE=offline`; it stores W&B data under the persistent `ROOT`, never
+calls `wandb sync`, and records a SHA-256 manifest so the colleague can export
+the offline run together with logs/checkpoints for later joint analysis.
+
 For a colleague already inside an allocated eight-H20 worker, the minimal
 direct entry is `bash run_colleague.sh R01|R02 20260727`. It uses the explicit
 user-approved external-provenance assumption and does not require the signed

@@ -178,7 +178,7 @@ def test_rebuttal_registry_import_requires_and_consumes_success_gate(tmp_path: P
     assert "verl.rebuttal_rlvr.training" in imported.stdout
 
 
-def test_release_hook_runs_registry_and_wandb_after_terminal_success(tmp_path: Path) -> None:
+def test_release_hook_imports_registry_and_preserves_offline_wandb_after_terminal_success(tmp_path: Path) -> None:
     init_model = tmp_path / "init"
     checkpoints = tmp_path / "checkpoints"
     final_actor = checkpoints / "global_step_115/actor"
@@ -194,9 +194,11 @@ def test_release_hook_runs_registry_and_wandb_after_terminal_success(tmp_path: P
         json.dumps({"step": 115, "data": {"val-core/HuggingFaceH4/MATH-500/acc/mean@3": 0.5}}) + "\n"
     )
     train_file.write_bytes(b"test-parquet-placeholder")
+    (offline_run / "run-test.wandb").write_bytes(b"offline-wandb-data")
     fake_wandb = fake_bin / "wandb"
-    fake_wandb.write_text('#!/usr/bin/env bash\nfor last; do :; done\ntouch "$last/.synced"\n')
+    fake_wandb.write_text('#!/usr/bin/env bash\necho called >"$WANDB_CALLED_MARKER"\nexit 99\n')
     fake_wandb.chmod(0o755)
+    wandb_called_marker = tmp_path / "wandb-command-called"
 
     env = {
         **os.environ,
@@ -214,6 +216,8 @@ def test_release_hook_runs_registry_and_wandb_after_terminal_success(tmp_path: P
         "ATTEMPT_ROOT": str(attempt),
         "EXPERIMENT_REGISTRY_DB": str(tmp_path / "registry.sqlite"),
         "TRAINING_RELEASE_GATE_STATE": str(tmp_path / "gate.jsonl"),
+        "WANDB_MODE": "offline",
+        "WANDB_CALLED_MARKER": str(wandb_called_marker),
     }
     result = subprocess.run(
         ["bash", str(FAMILY / "release_after_success.sh")],
@@ -223,11 +227,17 @@ def test_release_hook_runs_registry_and_wandb_after_terminal_success(tmp_path: P
         check=False,
     )
     assert result.returncode == 0, (result.stdout, result.stderr, (attempt / "release.log").read_text())
-    assert "release_status=complete" in (attempt / "release_status.env").read_text()
-    assert (offline_run / ".synced").is_file()
+    release_status = (attempt / "release_status.env").read_text()
+    assert "release_status=local_complete" in release_status
+    assert "wandb_mode=offline" in release_status
+    assert "wandb_publication_status=deferred_manual_handoff" in release_status
+    assert f"wandb_offline_dir={offline_run}" in release_status
+    assert (attempt / "wandb_offline_run.sha256").is_file()
+    assert "run-test.wandb" in (attempt / "wandb_offline_run.sha256").read_text()
+    assert not wandb_called_marker.exists()
 
     launcher = (FAMILY / "_common_math_rlvr.sh").read_text()
-    assert 'if [ "$RUN_MODE" = "formal" ]; then' in launcher
+    assert 'if [ "$RUN_MODE" = "formal" ] || [ "$RUN_MODE" = "external_checkpoint_assumption" ]; then' in launcher
     assert 'bash "${SCRIPT_DIR}/release_after_success.sh"' in launcher
 
 

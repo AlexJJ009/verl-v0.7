@@ -51,5 +51,5 @@
     "render_archive": "rendered"
   },
   "offline_math7_analysis": "deferred_until_logs_and_checkpoints_return",
-  "release_policy": "automatic_after_terminal_success_complete"
+  "release_policy": "automatic_local_registry_and_offline_wandb_handoff_after_terminal_success_complete"
 }

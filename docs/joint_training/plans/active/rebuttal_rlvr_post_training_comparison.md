@@ -944,10 +944,14 @@ provide:
    dry-render tests;
 8. updated `docs/joint_training/guides/training_script_index.md` and launch
    runbook;
-9. background release integration triggered only by terminal
-   `success_complete`: release-gate check, registry import, W&B sync, and marker
-   verification; incomplete/failed attempts remain local-only and publication
-   failure is reported separately from training success.
+9. background local-release integration triggered only by terminal
+   `success_complete`: release-gate check, local registry import, offline W&B
+   directory verification, and a SHA-256 handoff manifest. Meituan workers are
+   network-isolated: `WANDB_MODE=offline` is mandatory and the worker must never
+   invoke `wandb sync`. The colleague returns offline W&B data, logs, and
+   checkpoints for joint analysis or later sync from a networked machine;
+   incomplete/failed attempts remain local-only and local-release failure is
+   reported separately from training success.
 
 Independent review must check checkpoint identity, algorithm provenance, paired
 seed/data routing, H20 symmetry, parent-root completeness, job-output
