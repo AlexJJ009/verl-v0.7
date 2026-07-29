@@ -181,12 +181,21 @@ def test_public_consumer_docs_do_not_export_this_hosts_network_or_storage_policy
         assert "Mihomo" not in document
         assert "/mnt/dolphinfs" not in document
         assert "Dockerfile" not in document
-    assert "b1c264a92ace36dace52babdda651e415d9e9f82" in guide
+    assert "5c3ce2d6a3b5ca61c60febccf202e7ee9d2615f8" in guide
+    assert "f7c88df7f830da3acbbd7b6eda8d1a1c55544239" in guide
+    assert "a65a8acc25cb02dd4abf8e3b871d126d31a5ccbc" in guide
     assert "REPLACE_WITH_VERIFIED_PUBLIC_COMMIT" not in guide
     assert "DATASET_REVISION" in readme
     assert "floating `main`" in readme
-    assert "sibling layout is convenient but optional" in readme
-    assert "This is a recommendation, not a constraint" in guide
+    for document in (guide, readme):
+        assert "WORK_ROOT" not in document
+        assert "MODEL_ROOT" not in document
+        assert "STATE_ROOT" not in document
+        assert "Recommended sibling layout" not in document
+    assert "destination path is not part of the dataset contract" in guide.lower()
+    assert "download destination is not part of the dataset contract" in readme.lower()
+    assert "JSON object containing" in guide
+    assert "JSON object containing" in readme
 
 
 def test_sanitized_public_receipt_pins_verified_release_without_host_details() -> None:
@@ -197,13 +206,15 @@ def test_sanitized_public_receipt_pins_verified_release_without_host_details() -
     receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
     assert receipt["repository"] == {
         "gated": False,
-        "head": "b1c264a92ace36dace52babdda651e415d9e9f82",
+        "head": "5c3ce2d6a3b5ca61c60febccf202e7ee9d2615f8",
         "history": [
+            "5c3ce2d6a3b5ca61c60febccf202e7ee9d2615f8",
+            "3d4d0e5f1be6dad9de2613d6caf88f197ec78044",
             "b1c264a92ace36dace52babdda651e415d9e9f82",
             "da622cf077ca3f0eaf0ebc55dd4e115d0ebc0b9c",
         ],
         "id": "AlexGeek/RLdataset",
-        "preserved_parent": "da622cf077ca3f0eaf0ebc55dd4e115d0ebc0b9c",
+        "preserved_parent": "3d4d0e5f1be6dad9de2613d6caf88f197ec78044",
         "private": False,
         "type": "dataset",
         "url": "https://huggingface.co/datasets/AlexGeek/RLdataset",
@@ -211,8 +222,11 @@ def test_sanitized_public_receipt_pins_verified_release_without_host_details() -
     assert receipt["bundle"]["file_count"] == 18
     assert receipt["bundle"]["payload_count"] == 13
     assert receipt["bundle"]["payload_rows"] == 22860
+    assert receipt["publication"]["changed_paths"] == ["README.md", "metadata/checksums.sha256"]
+    assert receipt["publication"]["parquet_payloads_changed"] is False
     assert receipt["verification"]["anonymous"]["ok"] is True
     assert receipt["verification"]["anonymous"]["credential_mode"] == "credential_free_fresh_home"
+    assert receipt["verification"]["anonymous"]["release_profile"] == "readme-reader-fixed-v6"
     serialized = json.dumps(receipt, sort_keys=True)
     assert "/data-1" not in serialized
     assert "/mnt/dolphinfs" not in serialized
@@ -220,7 +234,7 @@ def test_sanitized_public_receipt_pins_verified_release_without_host_details() -
     assert "大流量" not in serialized
 
 
-def test_full_dataset_readme_matches_reviewed_payload_paths_and_hashes() -> None:
+def test_full_dataset_readme_routes_exact_payload_details_to_machine_readable_metadata() -> None:
     readme = (REPO_ROOT / "docs/joint_training/reports/data/rebuttal_rlvr_full_dataset_README.md").read_text(
         encoding="utf-8"
     )
@@ -231,8 +245,10 @@ def test_full_dataset_readme_matches_reviewed_payload_paths_and_hashes() -> None
     )
     assert len(inventory["files"]) == 13
     for asset in inventory["files"]:
-        assert f"`{asset['relative_path']}`" in readme
-        assert f"`{asset['sha256']}`" in readme
+        assert asset["relative_path"] in readme
+        assert f"`{asset['sha256']}`" not in readme
+    assert "`metadata/publication_inventory.json`" in readme
+    assert "`metadata/checksums.sha256`" in readme
 
 
 def test_full_dataset_readme_cites_every_upstream_source_and_license() -> None:

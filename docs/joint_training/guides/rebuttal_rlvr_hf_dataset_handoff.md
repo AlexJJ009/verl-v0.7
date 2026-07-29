@@ -36,8 +36,13 @@ new full-13 public release with a different policy: preserve the repository's
 current history, append the v4 bundle to the reviewed private HEAD using
 `parent_commit`, verify the appended commit while private, and only then change
 visibility. The public-release path must not delete/recreate the repository or
-call `super_squash_history`. That publication completed on 2026-07-30
+call `super_squash_history`. The full data publication completed on 2026-07-30
 (Asia/Tokyo) at `b1c264a92ace36dace52babdda651e415d9e9f82`.
+A later README-only commit simplified the consumer instructions at
+`3d4d0e5f1be6dad9de2613d6caf88f197ec78044`; it preserved every payload byte
+and both earlier revisions. Reader testing then corrected the validator output
+description and `DATASET_ROOT` wording at
+`5c3ce2d6a3b5ca61c60febccf202e7ee9d2615f8`, again without changing payloads.
 
 The 13 payloads in v4 are the exact Parquet files consumed by the project's
 training and evaluation workflows. The publication builder copies their bytes
@@ -50,13 +55,15 @@ The authenticated and credential-free audits after publication observed:
 | Field | Value |
 |---|---|
 | repository | `AlexGeek/RLdataset` |
-| public HEAD | `b1c264a92ace36dace52babdda651e415d9e9f82` |
-| preserved parent | `da622cf077ca3f0eaf0ebc55dd4e115d0ebc0b9c` |
+| public HEAD | `5c3ce2d6a3b5ca61c60febccf202e7ee9d2615f8` |
+| reader-fix parent | `3d4d0e5f1be6dad9de2613d6caf88f197ec78044` |
+| README-update parent | `b1c264a92ace36dace52babdda651e415d9e9f82` |
+| original preserved parent | `da622cf077ca3f0eaf0ebc55dd4e115d0ebc0b9c` |
 | visibility | public |
 | gated | false |
 | files | 18 |
 | payloads / rows | 13 / 22,860 |
-| commits on `main` | exactly `[b1c264a..., da622cf...]` |
+| commits on `main` | exactly `[5c3ce2d6..., 3d4d0e5f..., b1c264a..., da622cf...]` |
 | anonymous download and validator | PASS |
 | automatic convert ref | `refs/convert/parquet` at one root commit `70f194360a421b036709efe81d4288363f7bb30d` |
 | other branches/tags/PR refs | none |
@@ -301,6 +308,25 @@ dataset and records its declared license or terms. The exact bundle was uploaded
 at `b1c264a92ace36dace52babdda651e415d9e9f82`. Do not rebuild or republish it
 for the existing release; regenerate all pins and use a new commit if any
 README, validator, decision receipt, source record, or builder input changes.
+
+The owner subsequently requested that the README remove suggested
+`WORK_ROOT`/sibling directory planning and explain only arbitrary download,
+launcher path overrides, and validation. The append-only README update changed
+exactly `README.md` and `metadata/checksums.sha256`; all 13 Parquet SHA-256
+values and `metadata/publication_inventory.json` remained unchanged. Its
+first verified revision was `3d4d0e5f1be6dad9de2613d6caf88f197ec78044`.
+Reader testing then aligned the documented validator output with its real JSON
+output and removed ambiguity around the launcher override. The final verified
+release is:
+
+```text
+revision=5c3ce2d6a3b5ca61c60febccf202e7ee9d2615f8
+metadata/publication_inventory.json=fe90ad41b1abbf08c3bbd17f9638954ba9b15b0dcf916b3edcfa62d24b95d130
+metadata/checksums.sha256=62bfaed9b1530af3f504e846ef84454cf771ad9673598a9e1bbf6e8e8c8b64cd
+changed_paths=README.md,metadata/checksums.sha256
+parquet_payloads_changed=false
+anonymous_validation=PASS
+```
 
 The v4 release state machine is:
 

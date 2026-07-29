@@ -2,33 +2,40 @@
   "bundle": {
     "file_count": 18,
     "inventory_sha256": "fe90ad41b1abbf08c3bbd17f9638954ba9b15b0dcf916b3edcfa62d24b95d130",
-    "manifest_sha256": "26cc2d7395e3aceb1f71ea44e150e3a458d285591766c9ad688c44efa604d394",
+    "manifest_sha256": "62bfaed9b1530af3f504e846ef84454cf771ad9673598a9e1bbf6e8e8c8b64cd",
     "payload_count": 13,
     "payload_rows": 22860,
     "publication_format_conversion": false
   },
-  "completed_at": "2026-07-29T15:21:42.231471+00:00",
+  "completed_at": "2026-07-29T15:55:47.031167+00:00",
   "owner_decision_id": "rebuttal-rlvr-full13-public-20260729",
   "publication": {
+    "changed_paths": [
+      "README.md",
+      "metadata/checksums.sha256"
+    ],
     "history_preserved": true,
+    "parquet_payloads_changed": false,
     "public_transition_complete": true,
     "release_gate_passed": true
   },
-  "receipt_kind": "hf_dataset_full13_public_release_sanitized",
+  "receipt_kind": "hf_dataset_readme_reader_fix_release_sanitized",
   "repository": {
     "gated": false,
-    "head": "b1c264a92ace36dace52babdda651e415d9e9f82",
+    "head": "5c3ce2d6a3b5ca61c60febccf202e7ee9d2615f8",
     "history": [
+      "5c3ce2d6a3b5ca61c60febccf202e7ee9d2615f8",
+      "3d4d0e5f1be6dad9de2613d6caf88f197ec78044",
       "b1c264a92ace36dace52babdda651e415d9e9f82",
       "da622cf077ca3f0eaf0ebc55dd4e115d0ebc0b9c"
     ],
     "id": "AlexGeek/RLdataset",
-    "preserved_parent": "da622cf077ca3f0eaf0ebc55dd4e115d0ebc0b9c",
+    "preserved_parent": "3d4d0e5f1be6dad9de2613d6caf88f197ec78044",
     "private": false,
     "type": "dataset",
     "url": "https://huggingface.co/datasets/AlexGeek/RLdataset"
   },
-  "schema_version": 1,
+  "schema_version": 3,
   "verification": {
     "anonymous": {
       "api_gated": false,
@@ -36,22 +43,29 @@
       "credential_mode": "credential_free_fresh_home",
       "file_count": 18,
       "inventory_sha256": "fe90ad41b1abbf08c3bbd17f9638954ba9b15b0dcf916b3edcfa62d24b95d130",
-      "manifest_sha256": "26cc2d7395e3aceb1f71ea44e150e3a458d285591766c9ad688c44efa604d394",
+      "manifest_sha256": "62bfaed9b1530af3f504e846ef84454cf771ad9673598a9e1bbf6e8e8c8b64cd",
       "ok": true,
       "payload_count": 13,
       "payload_rows": 22860,
-      "preserved_parent_reachable": true,
-      "receipt_sha256": "b110ac865a8b2af7d242534d5d3d3fef4976f262cceca9de05acaeecf16cad13",
-      "revision": "b1c264a92ace36dace52babdda651e415d9e9f82"
+      "preserved_revisions_reachable": [
+        "3d4d0e5f1be6dad9de2613d6caf88f197ec78044",
+        "b1c264a92ace36dace52babdda651e415d9e9f82",
+        "da622cf077ca3f0eaf0ebc55dd4e115d0ebc0b9c"
+      ],
+      "receipt_sha256": "fb08cf7976151bcf3f2a4ea5095211b06281ab1376c00a95661560a299436c6d",
+      "release_profile": "readme-reader-fixed-v6",
+      "revision": "5c3ce2d6a3b5ca61c60febccf202e7ee9d2615f8"
     },
     "authenticated": {
       "exact_file_tree_and_sha256": true,
       "history": [
+        "5c3ce2d6a3b5ca61c60febccf202e7ee9d2615f8",
+        "3d4d0e5f1be6dad9de2613d6caf88f197ec78044",
         "b1c264a92ace36dace52babdda651e415d9e9f82",
         "da622cf077ca3f0eaf0ebc55dd4e115d0ebc0b9c"
       ],
       "ok": true,
-      "revision": "b1c264a92ace36dace52babdda651e415d9e9f82"
+      "revision": "5c3ce2d6a3b5ca61c60febccf202e7ee9d2615f8"
     }
   }
 }

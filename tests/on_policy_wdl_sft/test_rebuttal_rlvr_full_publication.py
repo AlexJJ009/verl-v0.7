@@ -12,6 +12,7 @@ SCRIPTS = REPO_ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
+import publish_rebuttal_rlvr_dataset_readme_v6 as README_PUBLISH  # noqa: E402
 import publish_rebuttal_rlvr_full_dataset_v4 as PUBLISH  # noqa: E402
 import verify_rebuttal_rlvr_public_release as VERIFY  # noqa: E402
 
@@ -113,6 +114,54 @@ def test_publisher_create_commit_is_compare_and_swap_bound() -> None:
     assert keywords["revision"].value == "main"
 
 
+def test_readme_publisher_is_append_only_and_compare_and_swap_bound() -> None:
+    source = (SCRIPTS / "publish_rebuttal_rlvr_dataset_readme_v6.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    called = {
+        node.func.attr if isinstance(node.func, ast.Attribute) else node.func.id
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, (ast.Attribute, ast.Name))
+    }
+    assert called.isdisjoint(
+        {
+            "delete_repo",
+            "create_repo",
+            "super_squash_history",
+            "upload_folder",
+            "update_repo_settings",
+            "CommitOperationDelete",
+        }
+    )
+    calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "create_commit"
+    ]
+    assert len(calls) == 1
+    keywords = {item.arg: item.value for item in calls[0].keywords}
+    assert isinstance(keywords["parent_commit"], ast.Name)
+    assert keywords["parent_commit"].id == "EXPECTED_PARENT"
+    assert isinstance(keywords["revision"], ast.Constant)
+    assert keywords["revision"].value == "main"
+
+
+def test_readme_publisher_allows_only_readme_and_manifest_changes() -> None:
+    unchanged = {
+        "README.md": "a" * 64,
+        "metadata/checksums.sha256": "b" * 64,
+        "data/example.parquet": "c" * 64,
+    }
+    reviewed = {
+        "README.md": "d" * 64,
+        "metadata/checksums.sha256": "e" * 64,
+        "data/example.parquet": "c" * 64,
+    }
+    README_PUBLISH.prove_readme_only_change(unchanged, reviewed)
+    reviewed["data/example.parquet"] = "f" * 64
+    with pytest.raises(README_PUBLISH.ReadmePublicationError, match="unexpected paths"):
+        README_PUBLISH.prove_readme_only_change(unchanged, reviewed)
+
+
 def test_ref_snapshot_requires_main_to_target_expected_commit() -> None:
     sha = "a" * 40
     api = SimpleNamespace(list_repo_refs=lambda *args, **kwargs: refs(sha))
@@ -150,9 +199,34 @@ def test_public_verifier_cli_binds_reviewed_preserved_parent(tmp_path: Path) -> 
         receipt=tmp_path / "receipt.json",
         preserved_revision=[],
     )
-    with pytest.raises(VERIFY.PublicVerificationError, match="reviewed existing main parent"):
+    with pytest.raises(VERIFY.PublicVerificationError, match="selected release profile"):
         VERIFY.validate_args(parsed)
     parsed.preserved_revision = [VERIFY.EXPECTED_PRESERVED_PARENT]
+    VERIFY.validate_args(parsed)
+
+
+def test_public_verifier_readme_profile_binds_complete_preserved_history(tmp_path: Path) -> None:
+    parsed = SimpleNamespace(
+        revision="a" * 40,
+        local_dir=tmp_path / "download",
+        receipt=tmp_path / "receipt.json",
+        release_profile="readme-simplified-v5",
+        preserved_revision=[
+            VERIFY.README_SIMPLIFIED_PARENT,
+            VERIFY.EXPECTED_PRESERVED_PARENT,
+        ],
+    )
+    VERIFY.validate_args(parsed)
+    parsed.preserved_revision.reverse()
+    with pytest.raises(VERIFY.PublicVerificationError, match="selected release profile"):
+        VERIFY.validate_args(parsed)
+
+    parsed.release_profile = "readme-reader-fixed-v6"
+    parsed.preserved_revision = [
+        VERIFY.READER_FIXED_PARENT,
+        VERIFY.README_SIMPLIFIED_PARENT,
+        VERIFY.EXPECTED_PRESERVED_PARENT,
+    ]
     VERIFY.validate_args(parsed)
 
 

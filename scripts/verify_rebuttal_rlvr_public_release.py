@@ -25,6 +25,32 @@ EXPECTED_FILE_COUNT = 18
 EXPECTED_PAYLOAD_COUNT = 13
 EXPECTED_PAYLOAD_ROWS = 22860
 EXPECTED_PRESERVED_PARENT = "da622cf077ca3f0eaf0ebc55dd4e115d0ebc0b9c"
+README_SIMPLIFIED_PARENT = "b1c264a92ace36dace52babdda651e415d9e9f82"
+README_SIMPLIFIED_MANIFEST_SHA256 = "5f702e98e6cce21949d4ca901be189fce4e3e9b556ad6827023d91b411a3b9ad"
+READER_FIXED_PARENT = "3d4d0e5f1be6dad9de2613d6caf88f197ec78044"
+READER_FIXED_MANIFEST_SHA256 = "62bfaed9b1530af3f504e846ef84454cf771ad9673598a9e1bbf6e8e8c8b64cd"
+DEFAULT_RELEASE_PROFILE = "full13-v4"
+RELEASE_PROFILES = {
+    DEFAULT_RELEASE_PROFILE: {
+        "inventory_sha256": EXPECTED_INVENTORY_SHA256,
+        "manifest_sha256": EXPECTED_MANIFEST_SHA256,
+        "preserved_revisions": [EXPECTED_PRESERVED_PARENT],
+    },
+    "readme-simplified-v5": {
+        "inventory_sha256": EXPECTED_INVENTORY_SHA256,
+        "manifest_sha256": README_SIMPLIFIED_MANIFEST_SHA256,
+        "preserved_revisions": [README_SIMPLIFIED_PARENT, EXPECTED_PRESERVED_PARENT],
+    },
+    "readme-reader-fixed-v6": {
+        "inventory_sha256": EXPECTED_INVENTORY_SHA256,
+        "manifest_sha256": READER_FIXED_MANIFEST_SHA256,
+        "preserved_revisions": [
+            READER_FIXED_PARENT,
+            README_SIMPLIFIED_PARENT,
+            EXPECTED_PRESERVED_PARENT,
+        ],
+    },
+}
 TOKEN_ENV_VARS = (
     "HF_TOKEN",
     "HF_TOKEN_PATH",
@@ -78,13 +104,24 @@ def validate_anonymous_environment() -> dict[str, str]:
     return {"home": str(home), "hf_home": str(hf_home)}
 
 
-def expected_bundle(bundle: Path) -> tuple[dict[str, str], dict[str, Any]]:
+def release_profile(name: str) -> dict[str, Any]:
+    try:
+        return RELEASE_PROFILES[name]
+    except KeyError as exc:
+        raise PublicVerificationError(f"unknown release profile: {name}") from exc
+
+
+def expected_bundle(
+    bundle: Path,
+    profile_name: str = DEFAULT_RELEASE_PROFILE,
+) -> tuple[dict[str, str], dict[str, Any]]:
     if not bundle.is_absolute() or bundle.is_symlink() or not bundle.is_dir():
         raise PublicVerificationError("--bundle must be an absolute non-symlink directory")
+    profile = release_profile(profile_name)
     result = dataset_validator.validate(bundle)
     if (
-        result["inventory_sha256"] != EXPECTED_INVENTORY_SHA256
-        or result["manifest_sha256"] != EXPECTED_MANIFEST_SHA256
+        result["inventory_sha256"] != profile["inventory_sha256"]
+        or result["manifest_sha256"] != profile["manifest_sha256"]
         or result["file_count"] != EXPECTED_FILE_COUNT
         or result["payload_count"] != EXPECTED_PAYLOAD_COUNT
         or result["payload_rows"] != EXPECTED_PAYLOAD_ROWS
@@ -97,7 +134,7 @@ def expected_bundle(bundle: Path) -> tuple[dict[str, str], dict[str, Any]]:
     ):
         raise PublicVerificationError("bundle does not contain the approved full-13 publication decision")
     checksums = dataset_validator.parse_checksum_manifest(bundle / dataset_validator.MANIFEST_PATH)
-    checksums[dataset_validator.MANIFEST_PATH] = EXPECTED_MANIFEST_SHA256
+    checksums[dataset_validator.MANIFEST_PATH] = profile["manifest_sha256"]
     if len(checksums) != EXPECTED_FILE_COUNT:
         raise PublicVerificationError("reviewed public bundle has an unexpected exact file count")
     return checksums, result
@@ -144,6 +181,8 @@ def write_json_new(path: Path, value: dict[str, Any]) -> None:
 
 
 def validate_args(args: argparse.Namespace) -> None:
+    profile_name = getattr(args, "release_profile", DEFAULT_RELEASE_PROFILE)
+    profile = release_profile(profile_name)
     if not is_commit_sha(args.revision):
         raise PublicVerificationError("--revision must be an exact lowercase 40-character commit")
     if not args.local_dir.is_absolute() or args.local_dir.is_symlink() or args.local_dir.exists():
@@ -160,16 +199,19 @@ def validate_args(args: argparse.Namespace) -> None:
         not is_commit_sha(revision) for revision in args.preserved_revision
     ):
         raise PublicVerificationError("--preserved-revision values must be unique lowercase commit SHAs")
-    if args.preserved_revision != [EXPECTED_PRESERVED_PARENT]:
+    if args.preserved_revision != profile["preserved_revisions"]:
         raise PublicVerificationError(
-            f"--preserved-revision must bind the reviewed existing main parent {EXPECTED_PRESERVED_PARENT}"
+            "--preserved-revision must match the selected release profile: "
+            f"{profile['preserved_revisions']}"
         )
 
 
 def verify(args: argparse.Namespace) -> dict[str, Any]:
     validate_args(args)
+    profile_name = getattr(args, "release_profile", DEFAULT_RELEASE_PROFILE)
+    profile = release_profile(profile_name)
     anonymous_environment = validate_anonymous_environment()
-    checksums, local_bundle_result = expected_bundle(args.bundle)
+    checksums, local_bundle_result = expected_bundle(args.bundle, profile_name)
     args.local_dir.parent.mkdir(parents=True, exist_ok=True)
     partial = Path(tempfile.mkdtemp(prefix=f".{args.local_dir.name}.partial-", dir=args.local_dir.parent))
 
@@ -252,8 +294,8 @@ def verify(args: argparse.Namespace) -> dict[str, Any]:
 
         downloaded_result = dataset_validator.validate(partial)
         if (
-            downloaded_result["manifest_sha256"] != EXPECTED_MANIFEST_SHA256
-            or downloaded_result["inventory_sha256"] != EXPECTED_INVENTORY_SHA256
+            downloaded_result["manifest_sha256"] != profile["manifest_sha256"]
+            or downloaded_result["inventory_sha256"] != profile["inventory_sha256"]
             or downloaded_result["file_count"] != EXPECTED_FILE_COUNT
             or downloaded_result["payload_count"] != EXPECTED_PAYLOAD_COUNT
             or downloaded_result["payload_rows"] != EXPECTED_PAYLOAD_ROWS
@@ -306,6 +348,7 @@ def verify(args: argparse.Namespace) -> dict[str, Any]:
         "inventory_sha256": downloaded_result["inventory_sha256"],
         "file_sha256": file_hashes,
         "history_policy": "preserve_existing_history",
+        "release_profile": profile_name,
         "preserved_history": preserved_history,
         "authentication": {
             "token_argument": False,
@@ -328,6 +371,11 @@ def verify(args: argparse.Namespace) -> dict[str, Any]:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--release-profile",
+        choices=sorted(RELEASE_PROFILES),
+        default=DEFAULT_RELEASE_PROFILE,
+    )
     parser.add_argument("--bundle", type=Path, required=True)
     parser.add_argument("--revision", required=True)
     parser.add_argument("--local-dir", type=Path, required=True)
