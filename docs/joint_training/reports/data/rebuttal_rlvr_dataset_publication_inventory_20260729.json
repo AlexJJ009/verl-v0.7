@@ -1,0 +1,255 @@
+{
+  "schema_version": 1,
+  "inventory_id": "rebuttal-rlvr-dataset-publication-20260729",
+  "layout_version": "rebuttal-rlvr-dataset-v1",
+  "generated_at": "2026-07-29",
+  "target_repository": {
+    "repo_id": "beichenhang/EnsembleLLM-data",
+    "repo_type": "dataset",
+    "observed_head": "fabf5cb2d41103c4b6f004a7506e8505b87a8aa5",
+    "observed_private": false,
+    "observed_gated": "auto",
+    "observed_file_count": 74,
+    "observed_last_modified": "2026-04-01T03:40:59Z",
+    "current_credential_identity": "AlexGeek",
+    "current_credential_can_write": false
+  },
+  "public_assets": [
+    {
+      "asset_id": "math-train-hendrycks-7500",
+      "role": "math_rlvr_train",
+      "local_path": "/data-1/dataset/math/train_rl_format.parquet",
+      "path_in_repo": "data/math/train_rl_format.parquet",
+      "size_bytes": 3988417,
+      "row_count": 7500,
+      "sha256": "86531549f6825f6737ce58f0f6bfd8e0df5b0298b35cb18192e40f460ba3cb58",
+      "source_id": "ck46/hendrycks_math",
+      "source_revision": "0e71a2aaa3c196023c96b67f2960fca36631ae2b",
+      "license_ids": ["MATH-MIT"],
+      "modifications": "Converted to verl RL parquet; added system/user prompt structure, reward ground truth, metadata, and two documented empty-box fixes."
+    },
+    {
+      "asset_id": "math7-math500",
+      "role": "math_eval",
+      "local_path": "/data-1/dataset/MATH-500/math500-test_with_system_prompt.parquet",
+      "path_in_repo": "data/math7/MATH-500/math500-test_with_system_prompt.parquet",
+      "size_bytes": 273983,
+      "row_count": 500,
+      "sha256": "9ee8e81d86df4dbaa125432ffef38b2e88317fdf56d85ef147e9d18c063577be",
+      "source_id": "HuggingFaceH4/MATH-500",
+      "source_revision": "6e4ed1a2a79af7d8630a6b768ec859cb5af4d3be",
+      "license_ids": ["MATH-MIT"],
+      "modifications": "Converted to verl evaluation parquet and added the project system prompt."
+    },
+    {
+      "asset_id": "math7-aqua",
+      "role": "math_eval",
+      "local_path": "/data-1/dataset/AQUA/aqua-test_with_system_prompt.parquet",
+      "path_in_repo": "data/math7/AQUA/aqua-test_with_system_prompt.parquet",
+      "size_bytes": 118649,
+      "row_count": 254,
+      "sha256": "854f5cbe7b88a065c99a5d619c9e5c76e3df783cbe3e6e559379d342f3e71cd2",
+      "source_id": "deepmind/aqua_rat",
+      "source_revision": "33301c6a050c96af81f63cad5562cb5363e88971",
+      "license_ids": ["AQuA-Apache-2.0"],
+      "modifications": "Converted to verl evaluation parquet and added the project system prompt."
+    },
+    {
+      "asset_id": "math7-gsm8k",
+      "role": "math_eval",
+      "local_path": "/data-1/dataset/gsm8k/gsm8k-test_with_system_prompt.parquet",
+      "path_in_repo": "data/math7/gsm8k/gsm8k-test_with_system_prompt.parquet",
+      "size_bytes": 621359,
+      "row_count": 1319,
+      "sha256": "a7b4521427780e8b7d28f5abd17428b103af267977ae7a9f4b73085d4c0900cb",
+      "source_id": "openai/gsm8k",
+      "source_revision": "740312add88f781978c0658806c59bc2815b9866",
+      "license_ids": ["GSM8K-MIT"],
+      "modifications": "Converted to verl evaluation parquet and added the project system prompt."
+    },
+    {
+      "asset_id": "code-eval-humaneval-plus",
+      "role": "code_eval",
+      "local_path": "/data-1/dataset/code/verl_rl/online_full_humaneval_plus/official_humaneval_plus_val.parquet",
+      "path_in_repo": "data/code/verl_rl/online_full_humaneval_plus/official_humaneval_plus_val.parquet",
+      "size_bytes": 2035187,
+      "row_count": 164,
+      "sha256": "e317c71511c7b6b3df98ef88bf409644bc000e11a0621a57cdc944ccb82a9fab",
+      "source_id": "evalplus/evalplus",
+      "source_revision": "26d6d00bb1fd0fa37f39c99d5290da67891d1c5e",
+      "license_ids": ["EvalPlus-Apache-2.0", "HumanEval-MIT"],
+      "modifications": "Converted the public HumanEval+ tasks and tests into the project's code-think-answer-python-v1 verl validation format."
+    }
+  ],
+  "restricted_assets": [
+    {
+      "asset_id": "math7-aime-2025",
+      "role": "math_eval",
+      "local_path": "/data-1/dataset/AIME-2025/aime-2025_with_system_prompt.parquet",
+      "expected_path_below_dataset_root": "data/math7/AIME-2025/aime-2025_with_system_prompt.parquet",
+      "size_bytes": 30855,
+      "row_count": 30,
+      "sha256": "38f6034e6d28fedb71d29edafad068e6ea500cb570a1f1a8f53505ba5fda7ddf",
+      "publication_status": "blocked_no_redistribution_license",
+      "reason": "MAA competition content; no explicit public redistribution authorization was found."
+    },
+    {
+      "asset_id": "math7-amc23",
+      "role": "math_eval",
+      "local_path": "/data-1/dataset/AMC23/amc23-test_with_system_prompt.parquet",
+      "expected_path_below_dataset_root": "data/math7/AMC23/amc23-test_with_system_prompt.parquet",
+      "size_bytes": 51888,
+      "row_count": 40,
+      "sha256": "fd87b30a3edd7f152cb7fe5170892ed1e0d3672daa2e195d8d40943938ee52fa",
+      "publication_status": "blocked_no_redistribution_license",
+      "reason": "MAA competition content; no explicit public redistribution authorization was found."
+    },
+    {
+      "asset_id": "math7-mawps",
+      "role": "math_eval",
+      "local_path": "/data-1/dataset/MAWPS/mawps-test_with_system_prompt.parquet",
+      "expected_path_below_dataset_root": "data/math7/MAWPS/mawps-test_with_system_prompt.parquet",
+      "size_bytes": 71277,
+      "row_count": 355,
+      "sha256": "8d69bdff471dfa6da9996125a22cc5cffc3768fecab5d891442a84508d54fddd",
+      "publication_status": "blocked_no_redistribution_license",
+      "reason": "No data-level redistribution license was found for the MAWPS corpus."
+    },
+    {
+      "asset_id": "math7-svamp",
+      "role": "math_eval",
+      "local_path": "/data-1/dataset/SVAMP/svamp-test_with_system_prompt.parquet",
+      "expected_path_below_dataset_root": "data/math7/SVAMP/svamp-test_with_system_prompt.parquet",
+      "size_bytes": 62917,
+      "row_count": 300,
+      "sha256": "5c87092e34e85488b8fa835e11befc35f944b7ffec8c5e6fd571969004a0e34f",
+      "publication_status": "blocked_incomplete_upstream_rights_chain",
+      "reason": "SVAMP is MIT, but the distributed records are transformed from MAWPS and ASDiv-A and their full redistribution chain was not established."
+    },
+    {
+      "asset_id": "code-train-kodcode-light-rl-10k",
+      "role": "code_rl_train",
+      "local_path": "/data-1/dataset/code/verl_rl/kodcode_light_rl_10k_train_rl_format.parquet",
+      "expected_path_below_dataset_root": "data/code/verl_rl/kodcode_light_rl_10k_train_rl_format.parquet",
+      "size_bytes": 19552437,
+      "row_count": 10000,
+      "sha256": "a0b5326a5e2f0ea2efee1dab5149ef35ac31f5f2c26fa45410c51324eb805201",
+      "publication_status": "blocked_mixed_source_and_noncommercial_rights",
+      "reason": "The upstream card says CC-BY-NC-4.0 and mixes Codeforces, LeetCode, TACO and other sources; a complete prompt/test redistribution chain was not established."
+    },
+    {
+      "asset_id": "code-eval-mbpp-plus",
+      "role": "code_eval",
+      "local_path": "/data-1/dataset/code/verl_rl/online_full_mbpp_plus/official_mbpp_plus_val.parquet",
+      "expected_path_below_dataset_root": "data/code/verl_rl/online_full_mbpp_plus/official_mbpp_plus_val.parquet",
+      "size_bytes": 693952,
+      "row_count": 378,
+      "sha256": "3221e7f53c88bfbd91d788fb7bcb37168fb088fa504fddf12b9126c2147312d2",
+      "publication_status": "blocked_no_data_redistribution_license",
+      "reason": "EvalPlus Apache-2.0 does not establish redistribution rights for the underlying MBPP dataset."
+    },
+    {
+      "asset_id": "code-eval-livecodebench-v5",
+      "role": "code_eval",
+      "local_path": "/data-1/dataset/code/verl_rl/online_full_livecodebench_v5/official_livecodebench_val.parquet",
+      "expected_path_below_dataset_root": "data/code/verl_rl/online_full_livecodebench_v5/official_livecodebench_val.parquet",
+      "size_bytes": 591491,
+      "row_count": 880,
+      "sha256": "fe7d2bfe2779bcf106492347ca173e30b9220c15c1b8783949d35edcd93a43d1",
+      "publication_status": "blocked_competition_content_and_tests",
+      "reason": "The evaluator code is MIT, but benchmark prompts/tests originate from third-party competition platforms."
+    },
+    {
+      "asset_id": "code-eval-bigcodebench",
+      "role": "code_eval",
+      "local_path": "/data-1/dataset/code/verl_rl/online_full_bigcodebench/official_bigcodebench_val.parquet",
+      "expected_path_below_dataset_root": "data/code/verl_rl/online_full_bigcodebench/official_bigcodebench_val.parquet",
+      "size_bytes": 1684205,
+      "row_count": 1140,
+      "sha256": "84c5ebedf6a445f86107427394e7f5e84d60d744d731a332e4d8b0e65338d962",
+      "publication_status": "blocked_no_data_redistribution_license",
+      "reason": "The BigCodeBench repository code is Apache-2.0, but no separate license covering prompts, reference implementations and tests was found."
+    },
+    {
+      "asset_id": "livecodebench-release-v5-evaluator-index",
+      "role": "code_evaluator_cache",
+      "local_path": "/data-2/evaluator_assets/livecodebench_cache/index/release_v5_input_output.sqlite",
+      "expected_private_path": "evaluator_assets/livecodebench_cache/index/release_v5_input_output.sqlite",
+      "size_bytes": 3634851840,
+      "row_count": 880,
+      "sha256": "2f049e91c20f55b3967655c2828f4188cef4bc13108fd3a6d0407046375954b4",
+      "publication_status": "blocked_contains_third_party_tests",
+      "reason": "The SQLite evaluator index contains LiveCodeBench test inputs/outputs and must remain in the private evaluator handoff."
+    },
+    {
+      "asset_id": "bigcodebench-v0.1.4-jsonl",
+      "role": "code_evaluator_data",
+      "local_path": "/data-1/dataset/code/official_sources/bigcodebench/BigCodeBench-v0.1.4.jsonl",
+      "expected_private_path": "data/code/official_sources/bigcodebench/BigCodeBench-v0.1.4.jsonl",
+      "size_bytes": 6953834,
+      "row_count": 1140,
+      "sha256": "ceaf3652bfdc2f445ce5c5dd2585a7b024f68c9aaaa70a2b9a91fcde5edad2e3",
+      "publication_status": "blocked_no_data_redistribution_license",
+      "reason": "Keep the fixed evaluator data private until the benchmark authors confirm data-level redistribution rights."
+    }
+  ],
+  "evaluator_source_pins": [
+    {
+      "name": "EvalPlus",
+      "repository": "https://github.com/evalplus/evalplus.git",
+      "commit": "26d6d00bb1fd0fa37f39c99d5290da67891d1c5e",
+      "source_code_license": "Apache-2.0"
+    },
+    {
+      "name": "BigCodeBench",
+      "repository": "https://github.com/bigcode-project/bigcodebench.git",
+      "commit": "09dd993f46c3fbf3a799465bb96d524edcb0b199",
+      "source_code_license": "Apache-2.0"
+    },
+    {
+      "name": "LiveCodeBench",
+      "repository": "https://github.com/LiveCodeBench/LiveCodeBench.git",
+      "commit": "28fef95ea8c9f7a547c8329f2cd3d32b92c1fa24",
+      "source_code_license": "MIT"
+    }
+  ],
+  "license_files": [
+    {
+      "license_id": "MATH-MIT",
+      "path_in_repo": "LICENSES/MATH-MIT.txt",
+      "url": "https://raw.githubusercontent.com/hendrycks/math/master/LICENSE",
+      "sha256": "8f6401fb0b1fbfcac17aac8d61e4e1b0d2de9aa190d8aa655fedc5fd783b2ace"
+    },
+    {
+      "license_id": "AQuA-Apache-2.0",
+      "path_in_repo": "LICENSES/AQuA-Apache-2.0.txt",
+      "url": "https://raw.githubusercontent.com/deepmind/AQuA/master/LICENSE",
+      "sha256": "189bff4f09eccdbc1790f7a9085ddd031ddf050f27929608fa4ba8a57e14a7c3"
+    },
+    {
+      "license_id": "GSM8K-MIT",
+      "path_in_repo": "LICENSES/GSM8K-MIT.txt",
+      "url": "https://raw.githubusercontent.com/openai/grade-school-math/master/LICENSE",
+      "sha256": "86bbb73e855821d7c401912fd4bf82e34313e6e3b6fd6f909f2b6cc9e209a53b"
+    },
+    {
+      "license_id": "EvalPlus-Apache-2.0",
+      "path_in_repo": "LICENSES/EvalPlus-Apache-2.0.txt",
+      "url": "https://raw.githubusercontent.com/evalplus/evalplus/26d6d00bb1fd0fa37f39c99d5290da67891d1c5e/LICENSE",
+      "sha256": "fcc1f77fe5443b21bfc4dfcc3d66f7654f599b91582df771850e5e876986a103"
+    },
+    {
+      "license_id": "HumanEval-MIT",
+      "path_in_repo": "LICENSES/HumanEval-MIT.txt",
+      "url": "https://raw.githubusercontent.com/openai/human-eval/master/LICENSE",
+      "sha256": "bcba3de214851cce46ed5af42d6698044616eeace887c3231bc7a20474ab639e"
+    }
+  ],
+  "processing_files": [
+    {
+      "local_path": "/data-1/dataset/math/prepare_train_rl_format.py",
+      "path_in_repo": "processing/prepare_train_rl_format.py",
+      "sha256": "3f7b6e1bf88de3201ef4eb6eb30626d25d9cc7caf7523c0bcc643773b6d329e8"
+    }
+  ]
+}

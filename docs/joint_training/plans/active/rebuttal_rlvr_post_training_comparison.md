@@ -724,11 +724,14 @@ The Layer-2 shim must fail closed and export the interface literally:
 
 ```bash
 : "${ROOT:?ROOT must be set by run.hope}"
+: "${DATASET_ROOT:?DATASET_ROOT must be set by run.hope}"
+: "${MODEL_ROOT:?MODEL_ROOT must be set by run.hope}"
+: "${STATE_ROOT:?STATE_ROOT must be set by run.hope}"
 : "${REPO_SUBPATH:?REPO_SUBPATH must be set by run.hope}"
 : "${REPO_COMMIT:?REPO_COMMIT must be set by run.hope}"
-export ROOT REPO_SUBPATH REPO_COMMIT
-export REPO_ROOT="${REPO_ROOT:-$ROOT/$REPO_SUBPATH}"
-export LGX="${LGX:-$ROOT}"
+export ROOT DATASET_ROOT MODEL_ROOT STATE_ROOT REPO_SUBPATH REPO_COMMIT
+export REPO_ROOT="$ROOT/$REPO_SUBPATH"
+export LGX="$ROOT"
 test "$(git -C "$REPO_ROOT" rev-parse HEAD)" = "$REPO_COMMIT"
 test -z "$(git -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)"
 ```
@@ -737,31 +740,32 @@ test -z "$(git -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)"
 account or hard-coded DolphinFS path. `REPO_SUBPATH` should point to an immutable
 worktree created for `REPO_COMMIT`, not a shared checkout that later jobs update
 with `git pull`. The repo receipt also freezes and verifies recursive submodule
-commit/status output before Layer 3 executes. Layer 3 derives defaults for all
-persistent inputs, outputs, and caches from `ROOT`:
+commit/status output before Layer 3 executes. `ROOT` is the containment
+boundary; the manifest separately binds three strict child roots. Layer 3 uses:
 
 ```text
-$ROOT/models/...                 init checkpoints
-$ROOT/data/math/...              RL train file
-$ROOT/data/math7/...             seven evaluation files
-$ROOT/verl-exp/checkpoints/...   checkpoints
-$ROOT/verl-exp/eval/...          evaluation outputs
-$ROOT/verl-exp/logs/...          logs and receipts
-$ROOT/verl-exp/wandb_runs/...    offline W&B staging
-$ROOT/verl-exp/cache/hf/...      HF_HOME / HUGGINGFACE_HUB_CACHE
-$ROOT/verl-exp/cache/datasets/... HF_DATASETS_CACHE
-$ROOT/verl-exp/cache/xdg/...     XDG_CACHE_HOME
+$MODEL_ROOT/...                       init checkpoints
+$DATASET_ROOT/data/math/...           RL train file
+$DATASET_ROOT/data/math7/...          seven evaluation files
+$STATE_ROOT/verl-exp/checkpoints/...  checkpoints
+$STATE_ROOT/verl-exp/eval/...         evaluation outputs
+$STATE_ROOT/verl-exp/logs/...         logs and receipts
+$STATE_ROOT/verl-exp/wandb_runs/...   offline W&B staging
+$STATE_ROOT/verl-exp/cache/hf/...     HF_HOME / HUGGINGFACE_HUB_CACHE
+$STATE_ROOT/verl-exp/cache/datasets/... HF_DATASETS_CACHE
+$STATE_ROOT/verl-exp/cache/xdg/...    XDG_CACHE_HOME
+$STATE_ROOT/experiment_registry/...   registry DB and release-gate state
 ```
 
 Local/manual wrappers remain individually overridable. Formal AFO jobs derive
-the repo, train file, seven Math-7 files, outputs, and caches from the single
-manifest `ROOT`; inherited worker/client path variables are overwritten. Ray,
+the repo from `ROOT` and bind dataset/model/state through the three controlled
+manifest roots; inherited worker/client path variables are overwritten. Ray,
 vLLM, ZMQ, and other high-churn scratch use pod-local `/tmp`, never DolphinFS.
 The path receipt records the exact resolved init path plus checkpoint, eval,
 log, W&B, receipt, HF, datasets, XDG, Ray, vLLM, TMP, and ZMQ roots actually
 passed to the worker validator. Formal init paths must be concrete directories
-below `$ROOT/models/rebuttal_rlvr/init`; merely recording that parent while
-launching `$ROOT/arbitrary/other-model` fails. Init models on DolphinFS must be
+below `$MODEL_ROOT`; merely recording that parent while launching a model from
+another subtree fails. Init models on DolphinFS must be
 flat real-file directories, not symlinked HF cache layouts. A different formal
 layout requires an amended path adapter and new path/data receipts; ad hoc
 environment overrides fail validation.
@@ -777,7 +781,8 @@ contains at least:
 schema_version, arm, init_pair, rl_seed, init_model_path,
 paired_init_manifest, checkpoint_receipt, train_receipt, math7_receipt,
 grader_receipt, image_reference, image_digest, h20_profile_path,
-h20_profile_hash, h20_calibration_receipt, root, repo_subpath, output_policy_version,
+h20_profile_hash, h20_calibration_receipt, root, dataset_root, model_root,
+state_root, repo_subpath, output_policy_version,
 repo_commit, repo_submodule_receipt, submitter_source_hash,
 algorithm_config_hash, eval_config_hash, path_override_receipt,
 attempt_policy, retry_of
@@ -789,7 +794,7 @@ approved field: schema version, arm, init pair, RLVR
 seed, resolved init path/content/paired-init receipts, train/Math-7/grader
 receipts, algorithm/eval config hashes, repo commit/submodule receipt,
 submitter source hash, image digest, H20 profile and signed-calibration hashes,
-ROOT/repo path and any
+ROOT/dataset/model/state/repo paths and any
 path-override receipt, output-policy version, and attempt policy. It excludes
 only `ATTEMPT_ID`, `retry_of`, status/timestamps, and paths derived from
 `JOB_TAG`. The canonical cell JSON is archived beside every attempt.
@@ -931,7 +936,7 @@ provide:
 
 1. two thin default-local, overridable-everything training wrappers;
 2. one shared standard-GRPO v2 launcher with explicit enabled/disabled assertions;
-3. the complete four-layer Meituan family and one-root path adapter;
+3. the complete four-layer Meituan family and controlled multi-root path adapter;
 4. a manifest schema, renderer, concurrent Hope submitter, and unique-output
    collision checks;
 5. the six fail-closed validators in Section 10.2 and immutable paired-init,

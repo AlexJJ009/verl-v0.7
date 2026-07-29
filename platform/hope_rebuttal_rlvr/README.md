@@ -11,9 +11,21 @@ terminal receipts and the actual staged resource projection. The checked-in
 allowlist is currently empty, so real submission intentionally fails closed.
 
 All Meituan workers are network-isolated. The launch path pins
-`WANDB_MODE=offline`; it stores W&B data under the persistent `ROOT`, never
+`WANDB_MODE=offline`; it stores W&B data under the persistent `STATE_ROOT`, never
 calls `wandb sync`, and records a SHA-256 manifest so the colleague can export
 the offline run together with logs/checkpoints for later joint analysis.
+
+The manifest keeps `root` as the storage-security boundary and requires three
+controlled roots below it: `dataset_root`, `model_root`, and `state_root`.
+Workers receive these as `DATASET_ROOT`, `MODEL_ROOT`, and `STATE_ROOT`.
+Repository checkout remains at `$ROOT/$REPO_SUBPATH`; train/Math-7 inputs are
+under `$DATASET_ROOT/data`, formal initialization is below `$MODEL_ROOT`, and
+all persistent output/checkpoint/eval/log/offline-W&B/receipt/cache paths derive
+from `$STATE_ROOT/verl-exp`. Pod-local Ray/vLLM/ZMQ/TMP paths remain under
+`/tmp/rebuttal_rlvr`. The local registry DB and release-gate state are fixed
+below `$STATE_ROOT/experiment_registry`; per-attempt release log/status and file
+metrics are rebound below the receipt/log attempt directories, so inherited
+host paths cannot escape the storage boundary.
 
 For a colleague already inside an allocated eight-H20 worker, the minimal
 direct entry is `bash run_colleague.sh R01|R02 20260727`. It uses the explicit
@@ -26,15 +38,16 @@ The colleague-facing entry is:
 ```bash
 cp platform/hope_rebuttal_rlvr/handoff.env.example \
    platform/hope_rebuttal_rlvr/handoff.env
-# Fill ROOT, HANDOFF_BUNDLE_ROOT, and R01_MODEL_PATH after R01/G3/G4 arrive.
+# Fill ROOT, DATASET_ROOT, MODEL_ROOT, STATE_ROOT, HANDOFF_BUNDLE_ROOT,
+# and R01_MODEL_PATH after R01/G3/G4 arrive.
 bash platform/hope_rebuttal_rlvr/run_handoff.sh
 ```
 
 `run_handoff.sh` validates the pre-registered slots and expands the full
 submitter invocation. The colleague does not manually assemble receipt flags.
 The reviewed bundle uses fixed filenames below `HANDOFF_BUNDLE_ROOT`, so the
-normal handoff has only three environment-owned paths rather than one flag per
-receipt.
+normal handoff uses one storage boundary plus three controlled roots and the
+bundle/model slots, rather than one flag per receipt.
 The machine-readable source of the known/pending split is
 `handoff_registry.json`; unknown provenance remains explicitly pending rather
 than being converted into a fake passing receipt.

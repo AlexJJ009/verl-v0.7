@@ -102,6 +102,9 @@ CELL_FIELDS = (
     "h20_calibration_receipt",
     "h20_calibration_receipt_hash",
     "root",
+    "dataset_root",
+    "model_root",
+    "state_root",
     "repo_subpath",
     "repo_commit",
     "repo_submodule_receipt",
@@ -175,6 +178,16 @@ def path_is_under(path: str, root: str) -> bool:
     return candidate != anchor
 
 
+def resolved_path_is_under(path: Path, root: Path) -> bool:
+    candidate = path.resolve()
+    anchor = root.resolve()
+    try:
+        relative = candidate.relative_to(anchor)
+    except ValueError:
+        return False
+    return bool(relative.parts)
+
+
 def load_manifest_bytes(payload: bytes, path: Path) -> dict[str, Any]:
     try:
         raw = json.loads(payload)
@@ -220,6 +233,16 @@ def validate_matrix(raw: dict[str, Any]) -> None:
             raise ManifestError("repo_subpath contains an empty, dot, or parent component")
         if not path_is_under(f"{job['root']}/{job['repo_subpath']}", job["root"]):
             raise ManifestError("resolved repository path must be below ROOT")
+        outside_roots = [
+            field
+            for field in ("dataset_root", "model_root", "state_root")
+            if not path_is_under(job[field], job["root"])
+        ]
+        if outside_roots:
+            raise ManifestError(
+                "dataset_root, model_root, and state_root must be strict children of ROOT; "
+                f"outside fields: {outside_roots}"
+            )
         if mode in {"formal", "pilot"}:
             if job["run_mode"] != "formal" or job["allow_base_placeholder"]:
                 raise ManifestError("formal/pilot manifests forbid placeholder or smoke rows")
@@ -227,9 +250,8 @@ def validate_matrix(raw: dict[str, Any]) -> None:
                 job["h20_calibration_receipt_hash"], str
             ):
                 raise ManifestError("formal/pilot manifests require a signed H20 calibration receipt")
-            formal_model_root = f"{job['root']}/models/rebuttal_rlvr/init"
-            if not path_is_under(job["init_model_path"], formal_model_root):
-                raise ManifestError("formal/pilot init_model_path must be below ROOT/models/rebuttal_rlvr/init")
+            if not path_is_under(job["init_model_path"], job["model_root"]):
+                raise ManifestError("formal/pilot init_model_path must be below model_root")
         elif job["run_mode"] != "smoke":
             raise ManifestError("smoke manifest rows must use run_mode=smoke")
         elif job["h20_calibration_receipt"] is not None or job["h20_calibration_receipt_hash"] is not None:
@@ -285,6 +307,10 @@ def validate_live_bindings(raw: dict[str, Any]) -> None:
         raise ManifestError("submission checkout must be clean and immutable")
 
     for job in raw["jobs"]:
+        job_root = Path(job["root"])
+        job_repo = job_root / job["repo_subpath"]
+        if not resolved_path_is_under(job_repo, job_root):
+            raise ManifestError("resolved repository path escapes ROOT through filesystem links")
         if job["submitter_source_hash"] != expected_source_hash:
             raise ManifestError("submitter_source_hash does not match checked-in submitter")
         if job["algorithm_config_hash"] != expected_config_hash:
@@ -332,6 +358,9 @@ def new_parser() -> configparser.ConfigParser:
 def controlled_environment(job: dict[str, Any], digest: str, job_tag: str) -> dict[str, str]:
     return {
         "afo.app.env.ROOT": job["root"],
+        "afo.app.env.DATASET_ROOT": job["dataset_root"],
+        "afo.app.env.MODEL_ROOT": job["model_root"],
+        "afo.app.env.STATE_ROOT": job["state_root"],
         "afo.app.env.REPO_SUBPATH": job["repo_subpath"],
         "afo.app.env.REPO_COMMIT": job["repo_commit"],
         "afo.app.env.REPO_SUBMODULE_RECEIPT": job["repo_submodule_receipt"],

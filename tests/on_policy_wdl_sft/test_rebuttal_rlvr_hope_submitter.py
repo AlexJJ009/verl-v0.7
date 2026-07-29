@@ -51,12 +51,15 @@ def with_receipt_hash(value: dict) -> dict:
 
 def make_job(arm: str = "sft", init_pair: str = "I1", seed: int = 20260727) -> dict:
     root = "/mnt/dolphinfs/ssd_pool/test/lgx"
+    dataset_root = f"{root}/datasets"
+    model_root = f"{root}/models/rebuttal_rlvr/init"
+    state_root = f"{root}/state"
     digest = "a" * 64
     return {
         "arm": arm,
         "init_pair": init_pair,
         "rl_seed": seed,
-        "init_model_path": f"{root}/models/rebuttal_rlvr/init/{arm}/{init_pair}",
+        "init_model_path": f"{model_root}/{arm}/{init_pair}",
         "paired_init_manifest": f"{root}/receipts/pairs/{init_pair}.json",
         "paired_init_manifest_hash": digest,
         "checkpoint_receipt": f"{root}/receipts/models/{arm}-{init_pair}.json",
@@ -74,6 +77,9 @@ def make_job(arm: str = "sft", init_pair: str = "I1", seed: int = 20260727) -> d
         "h20_calibration_receipt": f"{root}/receipts/h20-calibration.json",
         "h20_calibration_receipt_hash": digest,
         "root": root,
+        "dataset_root": dataset_root,
+        "model_root": model_root,
+        "state_root": state_root,
         "repo_subpath": "repos/verl-rebuttal-rlvr",
         "repo_commit": "c" * 40,
         "repo_submodule_receipt": f"{root}/receipts/submodules.json",
@@ -188,6 +194,9 @@ def test_all_eighteen_cells_render_unique_strict_ini() -> None:
         parser.read_string(rendered.decode())
         assert parser["roles"]["worker.script"] == "bash jupyter.sh"
         assert parser["others"]["afo.app.env.CELL_HASH"] == cell_hash
+        assert parser["others"]["afo.app.env.DATASET_ROOT"] == job["dataset_root"]
+        assert parser["others"]["afo.app.env.MODEL_ROOT"] == job["model_root"]
+        assert parser["others"]["afo.app.env.STATE_ROOT"] == job["state_root"]
         assert parser["others"]["afo.app.env.PAIRED_INIT_MANIFEST_HASH"] == job["paired_init_manifest_hash"]
         assert parser["others"]["afo.app.env.GRADER_RECEIPT_HASH"] == job["grader_receipt_hash"]
     assert len(identities) == 18
@@ -224,6 +233,31 @@ def test_formal_manifest_rejects_placeholder_and_duplicate_cell() -> None:
         SUBMITTER.validate_matrix(manifest)
 
 
+@pytest.mark.parametrize("field", ["dataset_root", "model_root", "state_root"])
+def test_manifest_rejects_controlled_root_outside_storage_boundary(field: str) -> None:
+    manifest = formal_manifest()
+    manifest["jobs"][0][field] = "/mnt/dolphinfs/ssd_pool/test/outside"
+    with pytest.raises(SUBMITTER.ManifestError, match="strict children"):
+        SUBMITTER.validate_matrix(manifest)
+
+
+def test_formal_manifest_rejects_init_model_outside_model_root() -> None:
+    manifest = formal_manifest()
+    manifest["jobs"][0]["init_model_path"] = f"{manifest['jobs'][0]['root']}/other/model"
+    with pytest.raises(SUBMITTER.ManifestError, match="below model_root"):
+        SUBMITTER.validate_matrix(manifest)
+
+
+def test_resolved_path_containment_rejects_symlink_escape(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    outside = tmp_path / "outside"
+    root.mkdir()
+    outside.mkdir()
+    (root / "repo-link").symlink_to(outside, target_is_directory=True)
+    assert not SUBMITTER.resolved_path_is_under(root / "repo-link", root)
+    assert SUBMITTER.resolved_path_is_under(root / "real-repo", root)
+
+
 def test_renderer_rejects_ini_injection() -> None:
     job = make_job()
     job["init_model_path"] = job["init_model_path"] + "\nmalicious=true"
@@ -235,6 +269,7 @@ def test_renderer_rejects_ini_injection() -> None:
     ("field", "value"),
     [
         ("init_model_path", "/mnt/dolphinfs/ssd_pool/test/lgx/../../escape"),
+        ("dataset_root", "/mnt/dolphinfs/ssd_pool/test/lgx/../escape"),
         ("train_receipt", "/mnt/dolphinfs/ssd_pool/test/lgx/receipts/../escape.json"),
         ("repo_subpath", "repos/../other-checkout"),
     ],
@@ -286,6 +321,9 @@ def test_render_archive_binds_exact_manifest_and_environment(tmp_path: Path) -> 
     environment = json.loads((archive / "resolved_environment.json").read_text())
     assert environment["afo.app.env.TRAIN_RECEIPT_HASH"] == "a" * 64
     assert environment["afo.app.env.EXPERIMENT"] == "R01"
+    assert environment["afo.app.env.DATASET_ROOT"] == make_job()["dataset_root"]
+    assert environment["afo.app.env.MODEL_ROOT"] == make_job()["model_root"]
+    assert environment["afo.app.env.STATE_ROOT"] == make_job()["state_root"]
     assert rendered["run_hope_sha256"] == hashlib.sha256((stage / "run.hope").read_bytes()).hexdigest()
 
 

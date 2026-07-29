@@ -658,7 +658,9 @@ def test_family_paths_are_root_derived_and_repo_launch_is_relative() -> None:
     entry = (FAMILY / "run_experiment.sh").read_text()
 
     assert "/data-1/dataset" not in common
-    assert '${ROOT}/dataset/math/train_rl_format.parquet' in common
+    assert '${DATASET_ROOT}/dataset/math/train_rl_format.parquet' in common
+    assert 'export DATASET_ROOT=${DATASET_ROOT:-"${ROOT}"}' in common
+    assert 'export STATE_ROOT=${STATE_ROOT:-"${ROOT}"}' in common
     assert 'HF_MODEL_CACHE_ROOT=${HF_MODEL_CACHE_ROOT:-"${ROOT}/.cache/huggingface"}' in models
     assert "WDL_4B_WEIGHT_BYTES=${WDL_4B_WEIGHT_BYTES:-8045067711}" in models
     assert "WDL_4B_WEIGHT_SHA256=${WDL_4B_WEIGHT_SHA256:-3267350" in models
@@ -1060,9 +1062,12 @@ def test_live_train_math7_grader_and_h20_receipts_are_content_bound(
         )
 
     root = tmp_path / "parent"
+    dataset_root = root / "datasets"
+    model_root = root / "models/rebuttal_rlvr/init"
+    state_root = root / "state"
     repo_subpath = "repos/verl-rebuttal-rlvr"
-    init_model = root / "models/rebuttal_rlvr/init/sft/I1"
-    output_root = root / "verl-exp"
+    init_model = model_root / "sft/I1"
+    output_root = state_root / "verl-exp"
     runtime_paths = {
         "output_root": output_root,
         "checkpoint_root": output_root / "checkpoints/rebuttal_rlvr",
@@ -1084,24 +1089,58 @@ def test_live_train_math7_grader_and_h20_receipts_are_content_bound(
             "schema_version": 1,
             "receipt_kind": "rebuttal_parent_root_layout",
             "root": str(root),
+            "dataset_root": str(dataset_root),
+            "state_root": str(state_root),
             "repo_subpath": repo_subpath,
             "repo_root": str(root / repo_subpath),
-            "model_root": str(root / "models/rebuttal_rlvr/init"),
+            "model_root": str(model_root),
             "init_model_path": str(init_model),
-            "train_file": str(root / "data/math/train_rl_format.parquet"),
-            "math7_root": str(root / "data/math7"),
+            "train_file": str(dataset_root / "data/math/train_rl_format.parquet"),
+            "math7_root": str(dataset_root / "data/math7"),
             **{key: str(value) for key, value in runtime_paths.items()},
         },
         "receipt_sha256",
     )
-    VALIDATOR.validate_path_override_receipt(path_receipt, root, repo_subpath, init_model, "formal", runtime_paths)
+    VALIDATOR.validate_path_override_receipt(
+        path_receipt,
+        root,
+        dataset_root,
+        model_root,
+        state_root,
+        repo_subpath,
+        init_model,
+        "formal",
+        runtime_paths,
+    )
+    with pytest.raises(VALIDATOR.ValidationError, match="strict children"):
+        VALIDATOR.validate_path_override_receipt(
+            path_receipt,
+            root,
+            dataset_root,
+            model_root,
+            root,
+            repo_subpath,
+            init_model,
+            "formal",
+            runtime_paths,
+        )
     path_receipt["output_root"] = "/outside/output"
     path_receipt = with_self_hash(
         {k: v for k, v in path_receipt.items() if k != "receipt_sha256"},
         "receipt_sha256",
     )
-    with pytest.raises(VALIDATOR.ValidationError, match="one-root"):
-        VALIDATOR.validate_path_override_receipt(path_receipt, root, repo_subpath, init_model, "formal", runtime_paths)
+    with pytest.raises(VALIDATOR.ValidationError, match="multi-root"):
+        VALIDATOR.validate_path_override_receipt(
+            path_receipt,
+            root,
+            dataset_root,
+            model_root,
+            state_root,
+            repo_subpath,
+            init_model,
+            "formal",
+            runtime_paths,
+        )
     outside_model = root / "arbitrary/other-model"
     path_receipt["output_root"] = str(output_root)
     path_receipt["init_model_path"] = str(outside_model)
@@ -1113,6 +1152,9 @@ def test_live_train_math7_grader_and_h20_receipts_are_content_bound(
         VALIDATOR.validate_path_override_receipt(
             path_receipt,
             root,
+            dataset_root,
+            model_root,
+            state_root,
             repo_subpath,
             outside_model,
             "formal",
@@ -1122,24 +1164,40 @@ def test_live_train_math7_grader_and_h20_receipts_are_content_bound(
 
 def test_platform_env_overwrites_inherited_paths(tmp_path: Path) -> None:
     root = tmp_path / "root"
-    model = root / "models/init"
+    dataset_root = root / "datasets"
+    model_root = root / "models/init"
+    state_root = root / "state"
+    model = model_root / "sft"
     model.mkdir(parents=True)
     env = {
         **os.environ,
         "ROOT": str(root),
+        "DATASET_ROOT": str(dataset_root),
+        "MODEL_ROOT": str(model_root),
+        "STATE_ROOT": str(state_root),
         "REQUIRE_PLATFORM_RECEIPTS": "1",
         "INIT_MODEL_PATH": str(model),
         "TRAIN_FILE": "/outside/train.parquet",
         "OUTPUT_ROOT": "/outside/output",
         "HF_HOME": "/outside/hf",
         "RAY_TMPDIR": "/outside/ray",
+        "REGISTRY_ROOT": "/outside/registry",
+        "EXPERIMENT_REGISTRY_DB": "/outside/registry.sqlite",
+        "TRAINING_RELEASE_GATE_STATE": "/outside/gate.jsonl",
+        "RELEASE_LOG_FILE": "/outside/release.log",
+        "RELEASE_STATUS_FILE": "/outside/release.env",
+        "VERL_FILE_LOGGER_ROOT": "/outside/metrics",
     }
     script = FAMILY / "meituan/env.sh"
     result = subprocess.run(
         [
             "bash",
             "-c",
-            'source "$1"; printf "%s\n%s\n%s\n%s\n" "$TRAIN_FILE" "$OUTPUT_ROOT" "$HF_HOME" "$RAY_TMPDIR"',
+            'source "$1"; printf "%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n" '
+            '"$TRAIN_FILE" "$OUTPUT_ROOT" "$HF_HOME" "$RAY_TMPDIR" "$REGISTRY_ROOT" '
+            '"$EXPERIMENT_REGISTRY_DB" "$TRAINING_RELEASE_GATE_STATE" '
+            '"${RELEASE_LOG_FILE-unset}" "${RELEASE_STATUS_FILE-unset}" '
+            '"${VERL_FILE_LOGGER_ROOT-unset}"',
             "bash",
             str(script),
         ],
@@ -1149,10 +1207,59 @@ def test_platform_env_overwrites_inherited_paths(tmp_path: Path) -> None:
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout.splitlines() == [
+        str(dataset_root / "data/math/train_rl_format.parquet"),
+        str(state_root / "verl-exp"),
+        str(state_root / "verl-exp/cache/hf"),
+        "/tmp/rebuttal_rlvr/ray",
+        str(state_root / "experiment_registry"),
+        str(state_root / "experiment_registry/experiment_registry.sqlite"),
+        str(state_root / "experiment_registry/training_release_gate.jsonl"),
+        "unset",
+        "unset",
+        "unset",
+    ]
+
+    common = (FAMILY / "_common_math_rlvr.sh").read_text()
+    assert 'export RELEASE_LOG_FILE="${ATTEMPT_ROOT}/release.log"' in common
+    assert 'export RELEASE_STATUS_FILE="${ATTEMPT_ROOT}/release_status.env"' in common
+    assert 'export VERL_FILE_LOGGER_ROOT="${RUN_LOG_DIR}/metrics"' in common
+
+
+def test_local_meituan_env_keeps_legacy_root_defaults(tmp_path: Path) -> None:
+    root = tmp_path / "legacy-root"
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if key
+        not in {
+            "DATASET_ROOT",
+            "MODEL_ROOT",
+            "STATE_ROOT",
+            "OUTPUT_ROOT",
+            "TRAIN_FILE",
+        }
+    }
+    env.update({"ROOT": str(root), "REQUIRE_PLATFORM_RECEIPTS": "0"})
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            'source "$1"; printf "%s\n%s\n%s\n%s\n%s\n" '
+            '"$DATASET_ROOT" "$MODEL_ROOT" "$STATE_ROOT" "$TRAIN_FILE" "$OUTPUT_ROOT"',
+            "bash",
+            str(FAMILY / "meituan/env.sh"),
+        ],
+        env=env,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines() == [
+        str(root),
+        str(root / "models/rebuttal_rlvr/init"),
+        str(root),
         str(root / "data/math/train_rl_format.parquet"),
         str(root / "verl-exp"),
-        str(root / "verl-exp/cache/hf"),
-        "/tmp/rebuttal_rlvr/ray",
     ]
 
 
@@ -1191,6 +1298,9 @@ def test_worker_rejects_receipt_hash_drift_before_recipe_launch(tmp_path: Path) 
     env = {
         **os.environ,
         "ROOT": str(root),
+        "DATASET_ROOT": str(root / "datasets"),
+        "MODEL_ROOT": str(root / "models"),
+        "STATE_ROOT": str(root / "state"),
         "REPO_SUBPATH": "repo",
         "REPO_COMMIT": commit,
         "REPO_SUBMODULE_RECEIPT": str(submodules),

@@ -4,6 +4,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 : "${ROOT:?ROOT must be set by run.hope}"
+: "${DATASET_ROOT:?DATASET_ROOT must be set by run.hope}"
+: "${MODEL_ROOT:?MODEL_ROOT must be set by run.hope}"
+: "${STATE_ROOT:?STATE_ROOT must be set by run.hope}"
 : "${REPO_SUBPATH:?REPO_SUBPATH must be set by run.hope}"
 : "${REPO_COMMIT:?REPO_COMMIT must be set by run.hope}"
 : "${REPO_SUBMODULE_RECEIPT:?REPO_SUBMODULE_RECEIPT must be set by run.hope}"
@@ -35,6 +38,35 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 : "${PATH_OVERRIDE_RECEIPT_HASH:?PATH_OVERRIDE_RECEIPT_HASH must be set by run.hope}"
 : "${RUN_MODE:?RUN_MODE must be set by run.hope}"
 
+python3 - "$ROOT" "$DATASET_ROOT" "$MODEL_ROOT" "$STATE_ROOT" "$INIT_MODEL_PATH" "$RUN_MODE" <<'PY'
+from pathlib import Path
+import sys
+
+root, dataset_root, model_root, state_root, init_model, run_mode = sys.argv[1:]
+storage = Path(root).resolve()
+for label, raw in (
+    ("DATASET_ROOT", dataset_root),
+    ("MODEL_ROOT", model_root),
+    ("STATE_ROOT", state_root),
+):
+    path = Path(raw)
+    if not path.is_absolute():
+        raise SystemExit(f"ERROR: {label} must be absolute")
+    try:
+        relative = path.resolve().relative_to(storage)
+    except ValueError as exc:
+        raise SystemExit(f"ERROR: {label} must be below ROOT") from exc
+    if not relative.parts:
+        raise SystemExit(f"ERROR: {label} must be a strict child of ROOT")
+if run_mode == "formal":
+    try:
+        model_relative = Path(init_model).resolve().relative_to(Path(model_root).resolve())
+    except ValueError as exc:
+        raise SystemExit("ERROR: formal INIT_MODEL_PATH must be below MODEL_ROOT") from exc
+    if not model_relative.parts:
+        raise SystemExit("ERROR: formal INIT_MODEL_PATH must name a concrete directory below MODEL_ROOT")
+PY
+
 if [[ "$REPO_SUBPATH" == /* || "/$REPO_SUBPATH/" == *"/../"* || "/$REPO_SUBPATH/" == *"/./"* || "$REPO_SUBPATH" == *"//"* ]]; then
     echo "ERROR: unsafe REPO_SUBPATH: $REPO_SUBPATH" >&2
     exit 2
@@ -43,8 +75,23 @@ fi
 # Platform jobs never inherit a caller-selected checkout or parent root.
 REPO_ROOT="$ROOT/$REPO_SUBPATH"
 LGX="$ROOT"
-export ROOT REPO_SUBPATH REPO_COMMIT REPO_ROOT LGX
+STORAGE_ROOT="$ROOT"
+export ROOT STORAGE_ROOT DATASET_ROOT MODEL_ROOT STATE_ROOT REPO_SUBPATH REPO_COMMIT REPO_ROOT LGX
 export REQUIRE_PLATFORM_RECEIPTS=1
+
+python3 - "$ROOT" "$REPO_ROOT" <<'PY'
+from pathlib import Path
+import sys
+
+storage = Path(sys.argv[1]).resolve()
+repo = Path(sys.argv[2]).resolve()
+try:
+    relative = repo.relative_to(storage)
+except ValueError as exc:
+    raise SystemExit("ERROR: resolved REPO_ROOT must remain below ROOT") from exc
+if not relative.parts:
+    raise SystemExit("ERROR: REPO_ROOT must name a concrete checkout below ROOT")
+PY
 
 if [ ! -d "$REPO_ROOT/.git" ] && [ ! -f "$REPO_ROOT/.git" ]; then
     echo "ERROR: immutable repo worktree not found: $REPO_ROOT" >&2
@@ -151,6 +198,9 @@ python3 "$VALIDATOR" platform-artifacts \
     --image-digest "$IMAGE_DIGEST" \
     --repo-root "$REPO_ROOT" \
     --root "$ROOT" \
+    --dataset-root "$DATASET_ROOT" \
+    --model-root "$MODEL_ROOT" \
+    --state-root "$STATE_ROOT" \
     --repo-subpath "$REPO_SUBPATH" \
     --init-model-path "$INIT_MODEL_PATH" \
     --output-root "$OUTPUT_ROOT" \

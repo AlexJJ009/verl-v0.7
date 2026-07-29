@@ -6,7 +6,7 @@
     "R01": {
       "classifier": "ordinary_sft",
       "model_name": "R01_ORDINARY_SFT_4B_AM1P4M",
-      "path_template": "${ROOT}/models/rebuttal_rlvr/init/R01_ORDINARY_SFT_4B_AM1P4M",
+      "path_template": "${MODEL_ROOT}/R01_ORDINARY_SFT_4B_AM1P4M",
       "sft_dataset": "AM-1.4M",
       "status": "pending_colleague_model_path_only"
     },
@@ -30,11 +30,20 @@
   },
   "downstream_rlvr": {
     "dataset_id": "hendrycks_math_7500",
-    "path_template": "${ROOT}/data/math/train_rl_format.parquet",
+    "path_template": "${DATASET_ROOT}/data/math/train_rl_format.parquet",
     "source_rows": 7500,
     "eligible_rows": 7405,
     "trainer_steps": 115,
     "shared_by_arms": true
+  },
+  "storage_layout": {
+    "boundary_variable": "ROOT",
+    "controlled_roots": ["DATASET_ROOT", "MODEL_ROOT", "STATE_ROOT"],
+    "repo_template": "${ROOT}/${REPO_SUBPATH}",
+    "dataset_template": "${DATASET_ROOT}/data",
+    "model_template": "${MODEL_ROOT}",
+    "state_template": "${STATE_ROOT}/verl-exp",
+    "constraint": "all_controlled_roots_are_strict_children_of_ROOT"
   },
   "gates": {
     "G0": "conditional_checkpoint_assumption_accepted_model_paths_pending",
