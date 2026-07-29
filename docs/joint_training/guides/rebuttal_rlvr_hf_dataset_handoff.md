@@ -1,5 +1,13 @@
 # Rebuttal RLVR Hugging Face dataset handoff
 
+> **Internal publisher/migration record.** The proxy, Mihomo, credential, and
+> history-rewrite details in this file describe this machine's operator-side
+> controls. They are not requirements for a colleague downloading a public
+> repository. The colleague-facing contract is
+> `docs/joint_training/guides/rebuttal_rlvr_hf_public_consumer_handoff.md` and
+> uses the standard public Hugging Face endpoint with a colleague-selected
+> `DATASET_ROOT`. Image construction is outside that consumer handoff.
+
 ## Current decision
 
 Use the owner-controlled dataset repository
@@ -262,6 +270,24 @@ Do not change repository visibility for the current revision. The checked-in
 publisher has no `--public-transition` argument and no code path that can set
 `private=False` for this v3 `private_handoff_only` bundle.
 
+The prepared full-scope v4 review candidate is:
+
+```text
+/data-1/tmp/verl_agent_scratch/rlvr_full_upload_candidate_20260729_v4r1
+publication_status=private_candidate_pending_owner_decision
+files=18
+payloads=13
+rows=22860
+metadata/publication_inventory.json=a76ae309b593b28a72a8fb5d8e54a337facb5e854dad59ae2e0c55587a54b914
+metadata/checksums.sha256=b0f285fb04ec92f9bc6c7a274d974d6f09009bc76e2283e4ba2f3f03fff630b9
+```
+
+It adds the consumer README and `validate_dataset.py`, removes host paths from
+the published inventory, and passes exact tree, SHA-256, row-count, Arrow
+schema, and all-row semantic validation. It has not been uploaded and is not a
+public-release approval. Rebuild it again if either checked-in source file
+changes.
+
 A future public release in `AlexGeek/RLdataset` must be implemented as a new v4
 publication change with all of the following evidence:
 
@@ -286,10 +312,13 @@ Reusing `da622cf...`, its README/inventory, or its private receipt for a public
 transition is a hard failure. The archival five-payload public-subset design is
 not itself a live v4 bundle or publication approval.
 
-## Colleague storage mapping
+## Historical private staging-host mapping (do not send to consumers)
 
-Keep the colleague's ownership boundary and separate immutable inputs from
-experiment state:
+The commands below preserve the completed private migration record for this
+machine. They hard-code one operator's DolphinFS layout, token home, and local
+Mihomo route, so they must not be copied into the public colleague handoff.
+Public consumers choose their own paths and use
+`rebuttal_rlvr_hf_public_consumer_handoff.md`.
 
 ```bash
 set -euo pipefail
