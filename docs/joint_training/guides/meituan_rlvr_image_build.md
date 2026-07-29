@@ -9,7 +9,7 @@
 3. **数学 scorer**：`math-verify==0.9.0`、`latex2sympy2-extended==1.11.0`、`pylatexenc==2.10`。formal RLVR 强制使用 `recipe/joint_training/custom_reward_function_latex_verify.py`。这条数学 RLVR 路径在镜像 build + H20 gate 通过后可用。
 4. **代码 scorer**：EvalPlus、BigCodeBench、LiveCodeBench 不能只写在文档里或在 worker 启动后安装。三个 pinned harness 源码必须进入训练镜像；KodCode 还要求 `firejail`、`firejail-profiles` 和 system Python 的 `pytest`。主镜像只承诺 parser、harness import 和基本 sandbox prerequisites，不承诺 BigCodeBench 全量 library execution。当前 code-task formal 入口还被第 3.2 节的路径不一致、LCB index receipt、真实 Firejail 行为，以及 KodCode runner 暴露 test source 的安全问题阻塞。
 5. **运行时禁止安装**：Hope job 内不执行 `apt-get`、`pip install`、`git clone` 或在线 dataset/model download。`run.hope` 保持 `with_requirements=false`，正式作业绑定 image digest。
-6. **DolphinFS 只放持久化内容**：`ROOT` 是总安全边界；dataset 放 `$DATASET_ROOT`，模型放 `$MODEL_ROOT`，checkpoint、日志、offline W&B、receipt 和 registry 放 `$STATE_ROOT`。三个目录都必须是 `ROOT` 的严格子目录。Ray、vLLM、ZMQ、`TMPDIR` 放 pod-local `/tmp`。模型目录必须是 flat files，不能使用 Hugging Face symlink cache layout。
+6. **DolphinFS 只放持久化内容**：`ROOT` 是总安全边界；Hub dataset 放 `$DATASET_ROOT`，独立 evaluator 资产放 `$EVALUATOR_ASSET_ROOT`，模型放 `$MODEL_ROOT`，checkpoint、日志、offline W&B、receipt 和 registry 放 `$STATE_ROOT`。四个目录都必须是 `ROOT` 的严格子目录。Ray、vLLM、ZMQ、`TMPDIR` 放 pod-local `/tmp`。模型目录必须是 flat files，不能使用 Hugging Face symlink cache layout。
 7. **不能原样复制旧 Dockerfile**：当前本地 `verl-harness:latest` 能运行，但其构建不是严格可复现；现有 Dockerfile 还有浮动 Git ref、`uv:latest`、未 pin Python 依赖和 cuDNN 注释与实际环境不一致的问题。
 8. **推荐两镜像**：本文件的 cu126 training image 用于 FSDP/vLLM、数学 RLVR 和 online code reward；完整 BigCodeBench offline eval 使用独立 Python 3.10 evaluator image。两者通过 generation JSONL、benchmark asset receipt 和 repo commit 对接，不共享可写 checkpoint mount。
 
@@ -33,21 +33,37 @@ export STORAGE_ROOT=/mnt/dolphinfs/ssd_pool/docker/user/hadoop-xt-ai-search/ai-s
 export ROOT="$STORAGE_ROOT"
 export REPO_SUBPATH=wdl/WDL-SFT/verl-rebuttal-rlvr
 export REPO_ROOT="$ROOT/$REPO_SUBPATH"
-export DATASET_ROOT="$ROOT/huggingface/dataset/EnsembleLLM-data"
+export DATASET_ROOT="$ROOT/huggingface/dataset/RLdataset"
+export EVALUATOR_ASSET_ROOT="$ROOT/huggingface/evaluator_assets/rebuttal_rlvr"
 export MODEL_ROOT="$ROOT/huggingface.co"
 export STATE_ROOT="$ROOT/wdl/WDL-SFT/state/rebuttal_rlvr"
 ```
 
-`STATE_ROOT` 必须位于 clean Git checkout 外。公开 dataset 的下载、校验、许可边界和 private overlay 规则见 `docs/joint_training/guides/rebuttal_rlvr_hf_dataset_handoff.md`。
+`STATE_ROOT` 必须位于 clean Git checkout 外。Hugging Face credential 只放在
+联网 staging host 的 operator-only secret path，并且该路径必须位于
+`ROOT` 外；不能把 credential 放进 `STATE_ROOT` 或挂载给 worker。完整
+dataset 当前是 private；其不可变 revision、受控下载、校验和 public gate
+见 `docs/joint_training/guides/rebuttal_rlvr_hf_dataset_handoff.md`。
 
 在有 Git 网络或内部 mirror 访问能力的 preparation/builder 环境中准备 checkout；正式 Hope worker 网络隔离，禁止在 worker 启动时 `git clone`：
 
 ```bash
 set -euo pipefail
+: "${EXPECTED_REPO_COMMIT:?set the delivered superproject commit from the handoff message}"
+: "${EXPECTED_RECIPE_COMMIT:?set the delivered recipe gitlink from the handoff message}"
+for fetch_url in "$VERL_GIT_URL" "$RECIPE_GIT_URL"; do
+  case "$fetch_url" in
+    http://*@*|https://*@*)
+      echo "HTTP(S) Git URLs must not embed credentials" >&2
+      exit 2
+      ;;
+  esac
+done
 test ! -e "$REPO_ROOT"
 mkdir -p "$(dirname "$REPO_ROOT")"
-git clone --single-branch --branch codex/rebuttal-rlvr \
+git clone --no-checkout --single-branch --branch codex/rebuttal-rlvr \
   "$VERL_GIT_URL" "$REPO_ROOT"
+git -C "$REPO_ROOT" checkout --detach "$EXPECTED_REPO_COMMIT"
 # Override the public .gitmodules URL before the first submodule fetch. This is
 # mandatory when RECIPE_GIT_URL points to an internal mirror.
 git -C "$REPO_ROOT" config submodule.recipe.url "$RECIPE_GIT_URL"
@@ -62,6 +78,8 @@ RECIPE_GITLINK=$(git -C "$REPO_ROOT" ls-tree HEAD recipe | awk '{print $3}')
 VERL_FETCH_URL=$(git -C "$REPO_ROOT" remote get-url origin)
 RECIPE_FETCH_URL=$(git -C "$REPO_ROOT/recipe" remote get-url origin)
 test "$RECIPE_COMMIT" = "$RECIPE_GITLINK"
+test "$REPO_COMMIT" = "$EXPECTED_REPO_COMMIT"
+test "$RECIPE_COMMIT" = "$EXPECTED_RECIPE_COMMIT"
 test -z "$(git -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)"
 printf 'VERL_FETCH_URL=%s\nRECIPE_FETCH_URL=%s\nREPO_COMMIT=%s\nRECIPE_COMMIT=%s\n' \
   "$VERL_FETCH_URL" "$RECIPE_FETCH_URL" "$REPO_COMMIT" "$RECIPE_COMMIT"
@@ -204,7 +222,7 @@ $DATASET_ROOT/data/math7/SVAMP/svamp-test_with_system_prompt.parquet
 
 不要对 evaluator 执行普通的 `pip install <repo>`：EvalPlus、BigCodeBench 和 LiveCodeBench 的完整 dependency metadata 会重新解析 Torch/vLLM，破坏训练 ABI。参考 Dockerfile 按固定 commit 拉取源码，只把源码树复制到最终 runtime stage，并显式安装已审核的最小 runtime dependencies。
 
-**当前 formal code-task 路径尚未统一。** 镜像默认是 `/opt/code-eval/...`；`check_official_scorer_dependencies.py` 仍硬编码 `/data-1/code_eval_envs/...`；code-task 的 Meituan adapter 又默认 `$LGX/verl-exp/code_eval_envs/...`。在 checker 改为读取 `CODE_EVAL_OFFICIAL_SITE` / `LCB_REPO_DIR` 并显式绑定 `DATASET_ROOT` / `STATE_ROOT`，或形成等价的只读 mount + hash receipt 前，不能宣称 code-task formal launch ready。这个 blocker 不影响本次数学 GRPO。
+**当前 formal code-task 路径尚未统一。** 镜像默认是 `/opt/code-eval/...`；`check_official_scorer_dependencies.py` 仍硬编码 `/data-1/code_eval_envs/...`；code-task 的 Meituan adapter 又默认 `$LGX/verl-exp/code_eval_envs/...`。在 checker 改为读取 `CODE_EVAL_OFFICIAL_SITE` / `LCB_REPO_DIR` 并显式绑定 `DATASET_ROOT` / `EVALUATOR_ASSET_ROOT` / `STATE_ROOT`，或形成等价的只读 mount + hash receipt 前，不能宣称 code-task formal launch ready。这个 blocker 不影响本次数学 GRPO。
 
 **当前 KodCode test 还不是真正隐藏的。** `official_aligned_reward.py` 把 base64 编码后的 candidate 与 test source 一起写进 Firejail 内执行的 `runner.py`；candidate 与 test 又在同一 Python interpreter 中运行。candidate 可以通过 `sys.argv[0]` 读取 `runner.py`、恢复 test source，再针对测试作答。`--private`、`--private-tmp` 和 seccomp 能限制部分宿主访问，但不能对正在执行该文件的 interpreter 隐藏 `runner.py`。因此当前实现只能作为 project-local execution reward，不能称为 formal hidden-test reward。必须先把 candidate 与 test materialization 拆到彼此不可读的隔离边界，再让本文件提供的 confidentiality probe 由红转绿。这个 blocker 同样不影响数学 GRPO。
 
@@ -241,16 +259,22 @@ firejail profiles
 
 ### 3.3 代码评测资产
 
-以下资产不 baked into image，放在 `$DATASET_ROOT` 的 project-owned、只读目录：
+Hub 上的 1+4 个 code parquet 仍属于 `$DATASET_ROOT` 的 exact dataset
+tree；不属于该 Hub bundle 的 evaluator cache/data 放在独立、只读的
+`$EVALUATOR_ASSET_ROOT`。不要把 evaluator 资产写进 `$DATASET_ROOT`，否则
+会破坏 17-file download receipt：
 
 ```text
-$DATASET_ROOT/evaluator_assets/evalplus/...
-$DATASET_ROOT/evaluator_assets/bigcodebench/BigCodeBench-v0.1.4.jsonl
-$DATASET_ROOT/evaluator_assets/livecodebench_cache/snapshots/<snapshot>/test.jsonl ... test5.jsonl
-$DATASET_ROOT/evaluator_assets/livecodebench_cache/index/release_v5_input_output.sqlite
-$DATASET_ROOT/evaluator_assets/livecodebench_cache/index/release_v5_input_output.receipt.json
-$DATASET_ROOT/data/code/.../HumanEval+_MBPP+_LiveCodeBench_validation.parquet
-$DATASET_ROOT/data/code/.../KodCode_or_DeepCoder_train.parquet
+$EVALUATOR_ASSET_ROOT/evalplus/...
+$EVALUATOR_ASSET_ROOT/bigcodebench/BigCodeBench-v0.1.4.jsonl
+$EVALUATOR_ASSET_ROOT/livecodebench_cache/snapshots/<snapshot>/test.jsonl ... test5.jsonl
+$EVALUATOR_ASSET_ROOT/livecodebench_cache/index/release_v5_input_output.sqlite
+$EVALUATOR_ASSET_ROOT/livecodebench_cache/index/release_v5_input_output.receipt.json
+$DATASET_ROOT/data/code/verl_rl/kodcode_light_rl_10k_train_rl_format_author_signature_v2.parquet
+$DATASET_ROOT/data/code/verl_rl/online_full_humaneval_plus/official_humaneval_plus_val.parquet
+$DATASET_ROOT/data/code/verl_rl/online_full_mbpp_plus/official_mbpp_plus_val.parquet
+$DATASET_ROOT/data/code/verl_rl/online_full_livecodebench_v5/official_livecodebench_val.parquet
+$DATASET_ROOT/data/code/verl_rl/online_full_bigcodebench/official_bigcodebench_val.parquet
 ```
 
 当前本机 `release_v5_input_output.sqlite` 的已验证 receipt 是 `row_count=880`、`size_bytes=3634851840`、SHA256 `2f049e91c20f55b3967655c2828f4188cef4bc13108fd3a6d0407046375954b4`。复制到 DolphinFS 后必须重新计算 SHA256，并通过 `LCB_INPUT_OUTPUT_INDEX`、`LCB_INPUT_OUTPUT_INDEX_SHA256`、`LCB_INPUT_OUTPUT_INDEX_RECEIPT` 同时绑定路径、内容和 receipt；任何一项缺失都 fail closed。
@@ -603,10 +627,10 @@ dataset/model receipt hashes
 - `run.hope` 使用 1 worker、8×H20、1,920,000 MB memory、128 vcores、512 GiB shm；变更资源需要重新形成 profile/receipt。
 - `afo.docker.image.name` 填不可变 image reference；manifest 同时记录 digest。
 - `with_requirements=false`；worker 不做依赖安装。
-- 镜像默认 `HF_HUB_OFFLINE=1`、`HF_DATASETS_OFFLINE=1`、`TRANSFORMERS_OFFLINE=1`、`WANDB_MODE=offline`；成功训练经过 release gate 后再同步。
+- 镜像默认 `HF_HUB_OFFLINE=1`、`HF_DATASETS_OFFLINE=1`、`TRANSFORMERS_OFFLINE=1`、`WANDB_MODE=offline`。Meituan worker 永远不执行 `wandb sync`；成功训练通过 release gate 后，把 offline run、日志、checkpoint 和 SHA-256 manifest 交给联网机器，再由人手工处理后续同步。
 - `RAY_TMPDIR`、`TMPDIR`、`VLLM_CONFIG_ROOT`、`VERL_ZMQ_IPC_DIR` 放 `/tmp/rebuttal_rlvr/...`。
-- `ROOT` 只定义总安全边界；manifest 分别绑定其严格子目录 `DATASET_ROOT`、`MODEL_ROOT`、`STATE_ROOT`。代码 checkout 位于 `$ROOT/$REPO_SUBPATH`，dataset 位于 `$DATASET_ROOT`，模型位于 `$MODEL_ROOT`，checkpoint/eval/log/offline-W&B/receipt/cache/registry 位于 `$STATE_ROOT`；formal worker 丢弃继承的 `/data-1` 或其他用户路径。
-- DolphinFS 不支持 symlink/hardlink。模型使用 flat directory；`hf download` 必须在有网机器上使用 `--local-dir`，再以 tar/内部对象存储转移，并校验每个 weight shard hash。
+- `ROOT` 只定义总安全边界；manifest 分别绑定其严格子目录 `DATASET_ROOT`、`EVALUATOR_ASSET_ROOT`、`MODEL_ROOT`、`STATE_ROOT`。代码 checkout 位于 `$ROOT/$REPO_SUBPATH`，Hub dataset 位于 `$DATASET_ROOT`，evaluator cache/data 位于 `$EVALUATOR_ASSET_ROOT`，模型位于 `$MODEL_ROOT`，checkpoint/eval output/log/offline-W&B/receipt/registry 位于 `$STATE_ROOT`；formal worker 丢弃继承的 `/data-1` 或其他用户路径。
+- DolphinFS 不支持 symlink/hardlink。模型使用 flat directory；dataset 必须由联网 staging host 上的 guarded downloader 通过 `大流量 -> [BW] 香港非家宽 leaf` 拉取并核验，不能在 worker 内执行裸 `hf download`。route receipt 必须是 schema v2，并绑定 runtime selector membership、controller projection、每个 redirect hostname 和包含 server/port 的 leaf identity fingerprint；模型转移同样使用 flat directory，并校验每个 weight shard hash。
 - formal worker 校验 clean repo commit、recipe gitlink、image digest、model/data/scorer receipts；任一漂移 fail closed。
 
 ## 10. 给同事的最终交付包
@@ -624,7 +648,7 @@ docs/joint_training/guides/rebuttal_rlvr_hf_dataset_handoff.md
 verl/recipe remote URL + `codex/rebuttal-rlvr` branch
 若走内网：`VERL_GIT_URL` + `RECIPE_GIT_URL` + mirror snapshot identity
 `REPO_SUBPATH` + repo commit + recipe gitlink + recursive submodule receipt
-`ROOT` + `DATASET_ROOT` + `MODEL_ROOT` + `STATE_ROOT` 的 manifest 值及 path receipt
+`ROOT` + `DATASET_ROOT` + `EVALUATOR_ASSET_ROOT` + `MODEL_ROOT` + `STATE_ROOT` 的 manifest 值及 path receipt
 三个 evaluator commit / 内部 mirror URL
 CUDA base image internal digest
 uv helper image internal digest + uv-managed CPython mirror identity

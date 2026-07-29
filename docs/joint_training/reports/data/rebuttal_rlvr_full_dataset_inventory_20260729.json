@@ -1,0 +1,217 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-29",
+  "layout_version": "meituan-handoff-data-v1",
+  "bundle_purpose": "RLVR mathematical and code-task complete private handoff candidate",
+  "publication_status": "private_handoff_only",
+  "target_repository": {
+    "repo_id": "AlexGeek/RLdataset",
+    "repo_type": "dataset",
+    "required_visibility": "private",
+    "observed_parent_commit": "df19d512f4306aee8c3abce0387f968b09a5b234"
+  },
+  "source_root": "/data-1",
+  "canonical_dataset_root": "/data-1/dataset",
+  "canonical_dataset_root_resolved": "/data-2/dataset",
+  "bundle_dataset_prefix": "data",
+  "payload_summary": {
+    "file_count": 13,
+    "row_count_sum": 22860,
+    "bytes": 30269214,
+    "math_training_files": 1,
+    "math_evaluation_files": 7,
+    "code_training_files": 1,
+    "code_evaluation_files": 4
+  },
+  "evaluation_contracts": {
+    "math": [
+      "AIME-2025",
+      "MATH-500",
+      "AMC23",
+      "AQUA",
+      "GSM8K",
+      "MAWPS",
+      "SVAMP"
+    ],
+    "code": [
+      "HumanEval+",
+      "MBPP+",
+      "LiveCodeBench release_v5",
+      "BigCodeBench"
+    ]
+  },
+  "evaluator_source_pins": [
+    {
+      "name": "EvalPlus",
+      "repository": "https://github.com/evalplus/evalplus.git",
+      "commit": "26d6d00bb1fd0fa37f39c99d5290da67891d1c5e",
+      "source_code_license": "Apache-2.0"
+    },
+    {
+      "name": "BigCodeBench",
+      "repository": "https://github.com/bigcode-project/bigcodebench.git",
+      "commit": "09dd993f46c3fbf3a799465bb96d524edcb0b199",
+      "source_code_license": "Apache-2.0"
+    },
+    {
+      "name": "LiveCodeBench",
+      "repository": "https://github.com/LiveCodeBench/LiveCodeBench.git",
+      "commit": "28fef95ea8c9f7a547c8329f2cd3d32b92c1fa24",
+      "source_code_license": "MIT"
+    }
+  ],
+  "license_review": {
+    "reviewed_at": "2026-07-29",
+    "public_redistribution_documented": [
+      "Hendrycks MATH RLVR train",
+      "MATH-500",
+      "AQUA",
+      "GSM8K",
+      "HumanEval+"
+    ],
+    "private_only_pending_rights_clearance": [
+      "AIME-2025",
+      "AMC23",
+      "MAWPS",
+      "SVAMP",
+      "KodCode-Light-RL-10K author-signature-v2",
+      "MBPP+",
+      "LiveCodeBench release_v5",
+      "BigCodeBench"
+    ],
+    "note": "Evaluator source-code licenses do not automatically grant redistribution rights for benchmark prompts, reference answers, or tests."
+  },
+  "files": [
+    {
+      "category": "math_training",
+      "dataset": "Hendrycks MATH RLVR train",
+      "relative_path": "data/math/train_rl_format.parquet",
+      "source_path": "/data-1/dataset/math/train_rl_format.parquet",
+      "rows": 7500,
+      "bytes": 3988417,
+      "sha256": "86531549f6825f6737ce58f0f6bfd8e0df5b0298b35cb18192e40f460ba3cb58"
+    },
+    {
+      "category": "math_evaluation",
+      "dataset": "AIME-2025",
+      "relative_path": "data/math7/AIME-2025/aime-2025_with_system_prompt.parquet",
+      "source_path": "/data-1/dataset/AIME-2025/aime-2025_with_system_prompt.parquet",
+      "rows": 30,
+      "bytes": 30855,
+      "sha256": "38f6034e6d28fedb71d29edafad068e6ea500cb570a1f1a8f53505ba5fda7ddf"
+    },
+    {
+      "category": "math_evaluation",
+      "dataset": "MATH-500",
+      "relative_path": "data/math7/MATH-500/math500-test_with_system_prompt.parquet",
+      "source_path": "/data-1/dataset/MATH-500/math500-test_with_system_prompt.parquet",
+      "rows": 500,
+      "bytes": 273983,
+      "sha256": "9ee8e81d86df4dbaa125432ffef38b2e88317fdf56d85ef147e9d18c063577be"
+    },
+    {
+      "category": "math_evaluation",
+      "dataset": "AMC23",
+      "relative_path": "data/math7/AMC23/amc23-test_with_system_prompt.parquet",
+      "source_path": "/data-1/dataset/AMC23/amc23-test_with_system_prompt.parquet",
+      "rows": 40,
+      "bytes": 51888,
+      "sha256": "fd87b30a3edd7f152cb7fe5170892ed1e0d3672daa2e195d8d40943938ee52fa"
+    },
+    {
+      "category": "math_evaluation",
+      "dataset": "AQUA",
+      "relative_path": "data/math7/AQUA/aqua-test_with_system_prompt.parquet",
+      "source_path": "/data-1/dataset/AQUA/aqua-test_with_system_prompt.parquet",
+      "rows": 254,
+      "bytes": 118649,
+      "sha256": "854f5cbe7b88a065c99a5d619c9e5c76e3df783cbe3e6e559379d342f3e71cd2"
+    },
+    {
+      "category": "math_evaluation",
+      "dataset": "GSM8K",
+      "relative_path": "data/math7/gsm8k/gsm8k-test_with_system_prompt.parquet",
+      "source_path": "/data-1/dataset/gsm8k/gsm8k-test_with_system_prompt.parquet",
+      "rows": 1319,
+      "bytes": 621359,
+      "sha256": "a7b4521427780e8b7d28f5abd17428b103af267977ae7a9f4b73085d4c0900cb"
+    },
+    {
+      "category": "math_evaluation",
+      "dataset": "MAWPS",
+      "relative_path": "data/math7/MAWPS/mawps-test_with_system_prompt.parquet",
+      "source_path": "/data-1/dataset/MAWPS/mawps-test_with_system_prompt.parquet",
+      "rows": 355,
+      "bytes": 71277,
+      "sha256": "8d69bdff471dfa6da9996125a22cc5cffc3768fecab5d891442a84508d54fddd"
+    },
+    {
+      "category": "math_evaluation",
+      "dataset": "SVAMP",
+      "relative_path": "data/math7/SVAMP/svamp-test_with_system_prompt.parquet",
+      "source_path": "/data-1/dataset/SVAMP/svamp-test_with_system_prompt.parquet",
+      "rows": 300,
+      "bytes": 62917,
+      "sha256": "5c87092e34e85488b8fa835e11befc35f944b7ffec8c5e6fd571969004a0e34f"
+    },
+    {
+      "category": "code_training",
+      "dataset": "KodCode-Light-RL-10K author-signature-v2",
+      "relative_path": "data/code/verl_rl/kodcode_light_rl_10k_train_rl_format_author_signature_v2.parquet",
+      "source_path": "/data-1/dataset/code/verl_rl/kodcode_light_rl_10k_train_rl_format_author_signature_v2.parquet",
+      "rows": 10000,
+      "bytes": 20045034,
+      "sha256": "80467821362328e370a738ed51b7311f596496ae42572ad2f6793ed8cd51c47d"
+    },
+    {
+      "category": "code_evaluation",
+      "dataset": "HumanEval+",
+      "relative_path": "data/code/verl_rl/online_full_humaneval_plus/official_humaneval_plus_val.parquet",
+      "source_path": "/data-1/dataset/code/verl_rl/online_full_humaneval_plus/official_humaneval_plus_val.parquet",
+      "rows": 164,
+      "bytes": 2035187,
+      "sha256": "e317c71511c7b6b3df98ef88bf409644bc000e11a0621a57cdc944ccb82a9fab"
+    },
+    {
+      "category": "code_evaluation",
+      "dataset": "MBPP+",
+      "relative_path": "data/code/verl_rl/online_full_mbpp_plus/official_mbpp_plus_val.parquet",
+      "source_path": "/data-1/dataset/code/verl_rl/online_full_mbpp_plus/official_mbpp_plus_val.parquet",
+      "rows": 378,
+      "bytes": 693952,
+      "sha256": "3221e7f53c88bfbd91d788fb7bcb37168fb088fa504fddf12b9126c2147312d2"
+    },
+    {
+      "category": "code_evaluation",
+      "dataset": "LiveCodeBench release_v5",
+      "relative_path": "data/code/verl_rl/online_full_livecodebench_v5/official_livecodebench_val.parquet",
+      "source_path": "/data-1/dataset/code/verl_rl/online_full_livecodebench_v5/official_livecodebench_val.parquet",
+      "rows": 880,
+      "bytes": 591491,
+      "sha256": "fe7d2bfe2779bcf106492347ca173e30b9220c15c1b8783949d35edcd93a43d1"
+    },
+    {
+      "category": "code_evaluation",
+      "dataset": "BigCodeBench",
+      "relative_path": "data/code/verl_rl/online_full_bigcodebench/official_bigcodebench_val.parquet",
+      "source_path": "/data-1/dataset/code/verl_rl/online_full_bigcodebench/official_bigcodebench_val.parquet",
+      "rows": 1140,
+      "bytes": 1684205,
+      "sha256": "84c5ebedf6a445f86107427394e7f5e84d60d744d731a332e4d8b0e65338d962"
+    }
+  ],
+  "excluded_evaluator_assets": [
+    {
+      "path": "/data-2/evaluator_assets/livecodebench_cache/index/release_v5_input_output.sqlite",
+      "reason": "Large evaluator-only IO index; not a benchmark parquet and not part of this upload candidate",
+      "bytes": 3634851840,
+      "sha256": "2f049e91c20f55b3967655c2828f4188cef4bc13108fd3a6d0407046375954b4"
+    }
+  ],
+  "notes": [
+    "No executable Code-7 contract exists; the current executable code suite has four dataset files.",
+    "EvalPlus base and plus metrics share the HumanEval+ and MBPP+ input files.",
+    "This complete bundle must remain private; use the separately reviewed five-payload bundle for a public mirror.",
+    "This inventory verifies bytes and structure but is not legal advice."
+  ]
+}

@@ -4,15 +4,10 @@
   "layout_version": "rebuttal-rlvr-dataset-v1",
   "generated_at": "2026-07-29",
   "target_repository": {
-    "repo_id": "beichenhang/EnsembleLLM-data",
+    "repo_id": null,
     "repo_type": "dataset",
-    "observed_head": "fabf5cb2d41103c4b6f004a7506e8505b87a8aa5",
-    "observed_private": false,
-    "observed_gated": "auto",
-    "observed_file_count": 74,
-    "observed_last_modified": "2026-04-01T03:40:59Z",
-    "current_credential_identity": "AlexGeek",
-    "current_credential_can_write": false
+    "publication_status": "archival_design_not_uploaded",
+    "note": "This five-payload public-subset design is not the live AlexGeek/RLdataset repository and grants no approval to publish that repository."
   },
   "public_assets": [
     {

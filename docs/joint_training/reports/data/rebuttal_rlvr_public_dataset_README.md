@@ -1,32 +1,15 @@
----
-configs:
-- config_name: math_rlvr_train
-  data_files:
-  - split: train
-    path: data/math/train_rl_format.parquet
-- config_name: math_eval_public
-  data_files:
-  - split: test
-    path: data/math7/**/*.parquet
-- config_name: code_eval_public
-  data_files:
-  - split: test
-    path: data/code/**/*.parquet
-task_categories:
-- text-generation
-language:
-- en
-license: other
-pretty_name: Rebuttal RLVR public training and evaluation assets
----
+# Archived proposed public subset (not the live RLdataset repository)
 
-# Rebuttal RLVR public training and evaluation assets
+> **Archival design only.** This five-payload subset was never established as
+> the contents of `AlexGeek/RLdataset`. The live `AlexGeek/RLdataset` repository
+> currently contains the complete 13-payload private handoff bundle. Do not use
+> this document as a download manifest or as approval to make that repository
+> public.
 
-This repository is the public, checksum-pinned subset of the data used by the
-WDL rebuttal RLVR math and code workflows. It intentionally does **not** mirror
-every local benchmark asset. Competition problems, hidden/public test bundles,
-and derived evaluator caches are excluded when an explicit data redistribution
-license was not established.
+This document proposed a public, checksum-pinned subset of the data used by the
+WDL rebuttal RLVR math and code workflows. It was not published at the current
+target. The design intentionally omitted local benchmark assets when an
+explicit data redistribution license was not established.
 
 ## Included files
 
@@ -38,10 +21,10 @@ license was not established.
 | `data/math7/gsm8k/gsm8k-test_with_system_prompt.parquet` | math evaluation | 1,319 | `a7b4521427780e8b7d28f5abd17428b103af267977ae7a9f4b73085d4c0900cb` | `openai/gsm8k@740312add88f781978c0658806c59bc2815b9866` |
 | `data/code/verl_rl/online_full_humaneval_plus/official_humaneval_plus_val.parquet` | code evaluation | 164 | `e317c71511c7b6b3df98ef88bf409644bc000e11a0621a57cdc944ccb82a9fab` | `evalplus/evalplus@26d6d00bb1fd0fa37f39c99d5290da67891d1c5e` |
 
-`metadata/publication_inventory.json` records byte sizes, source revisions,
-transformations, licenses, evaluator source pins, and the assets that were
-deliberately excluded. `metadata/checksums.sha256` verifies every published
-file except itself.
+The proposed `metadata/publication_inventory.json` records byte sizes, source
+revisions, transformations, licenses, evaluator source pins, and the assets
+that would be excluded. Its proposed `metadata/checksums.sha256` verifies every
+candidate file except itself. Neither file is a live download manifest.
 
 ## Deliberately excluded
 
@@ -63,25 +46,12 @@ an authorized private handoff, then place them at the expected relative paths
 listed in `metadata/publication_inventory.json`. A complete Math-7 formal run
 still requires all seven approved local evaluation files.
 
-## Download and verify
+## Publication status
 
-Pin the repository revision supplied by the experiment manifest rather than
-downloading a floating `main`:
-
-```bash
-DATASET_ROOT=/absolute/path/to/huggingface/dataset/EnsembleLLM-data
-hf download beichenhang/EnsembleLLM-data \
-  --repo-type dataset \
-  --revision REPLACE_WITH_VERIFIED_COMMIT \
-  --local-dir "$DATASET_ROOT"
-
-cd "$DATASET_ROOT"
-sha256sum -c metadata/checksums.sha256
-```
-
-The Meituan/Hope launcher treats this checkout as `DATASET_ROOT`. Models and
-runtime state belong in separate `MODEL_ROOT` and `STATE_ROOT` directories; no
-symlink back to another user's storage is required.
+No live Hugging Face target is assigned to this subset. For the complete
+private handoff, exact revision, proxy admission, download, and checksum
+instructions, use
+`docs/joint_training/guides/rebuttal_rlvr_hf_dataset_handoff.md`.
 
 ## Format and modifications
 

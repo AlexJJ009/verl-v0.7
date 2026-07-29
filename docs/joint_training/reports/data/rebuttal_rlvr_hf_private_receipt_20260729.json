@@ -1,0 +1,105 @@
+{
+  "schema_version": 2,
+  "receipt_kind": "hf_dataset_private_handoff_reverified",
+  "verified_at": "2026-07-29T11:19:28.232208+00:00",
+  "repository": {
+    "repo_id": "AlexGeek/RLdataset",
+    "repo_type": "dataset",
+    "url": "https://huggingface.co/datasets/AlexGeek/RLdataset",
+    "head": "da622cf077ca3f0eaf0ebc55dd4e115d0ebc0b9c",
+    "private": true,
+    "gated": false,
+    "file_count": 17,
+    "logical_bytes": 30282521,
+    "main_commit_count": 1
+  },
+  "bundle": {
+    "payload_file_count": 13,
+    "payload_row_count": 22860,
+    "payload_bytes": 30269214,
+    "inventory_sha256": "b5b646a28b2e6bf8a6f531f986d921fbc20e5dc7c454453c3c7ce12a2674aa5a",
+    "checksum_manifest_sha256": "5e35eab998946be30857425525641b72bc7a1937376f7b797b45d47e71a73a59",
+    "current_head_all_17_files_verified": true,
+    "source_bundle_all_13_payloads_verified": true
+  },
+  "network_route": {
+    "schema_version": 2,
+    "endpoint": "https://huggingface.co",
+    "proxy_url": "http://127.0.0.1:7890",
+    "route_group": "大流量",
+    "route_group_type": "Selector",
+    "runtime_group_type": "select",
+    "selected_leaf_sha256": "c4fa7d417b7345cfd20b3edb2e2111d8cbb7085ed343c16005ad68ad1f681da2",
+    "selected_namespace": "BW",
+    "selected_region": "Hong Kong",
+    "selected_residential": false,
+    "selected_protocol": "anytls",
+    "controller_protocol": "AnyTLS",
+    "selector_projection_verified": true,
+    "runtime_group_identity_verified": true,
+    "runtime_proxy_identity_verified": true,
+    "request_boundary_admission_verified": true,
+    "redirect_hostname_admission_verified": true,
+    "connection_hosts_verified": [
+      "huggingface.co"
+    ],
+    "shared_selector_mid_request_switch_risk_disclosed": true,
+    "guarded_download_verified": true
+  },
+  "pre_recreate_legacy_revisions": [
+    {
+      "revision": "04668b0284dbef3f5aad51bf570a46416d09287d",
+      "api": "not_found",
+      "resolve": "not_found"
+    },
+    {
+      "revision": "df19d512f4306aee8c3abce0387f968b09a5b234",
+      "api": "not_found",
+      "resolve": "not_found"
+    },
+    {
+      "revision": "bf278c1214db9ea8d3b26e41fb33dca1520a9b07",
+      "api": "not_found",
+      "resolve": "not_found"
+    },
+    {
+      "revision": "989d5c978c46fb2b2c5c7b242f0b53e95e91ddd2",
+      "api": "not_found",
+      "resolve": "not_found"
+    }
+  ],
+  "retained_post_recreate_revisions": [
+    {
+      "revision": "685c0fcb81f225158f83dacd8ae99c647010bed0",
+      "classification": "hf_bootstrap_only",
+      "files": [
+        ".gitattributes"
+      ]
+    },
+    {
+      "revision": "e0d4f9ea24081e654c33d522ba6b4eed1a82c5a3",
+      "classification": "exact_reviewed_bundle",
+      "file_count": 17,
+      "inventory_sha256": "b5b646a28b2e6bf8a6f531f986d921fbc20e5dc7c454453c3c7ce12a2674aa5a",
+      "checksum_manifest_sha256": "5e35eab998946be30857425525641b72bc7a1937376f7b797b45d47e71a73a59"
+    }
+  ],
+  "automatic_convert_ref": {
+    "ref": "refs/convert/parquet",
+    "target_commit": "70f194360a421b036709efe81d4288363f7bb30d",
+    "commit_count": 1,
+    "file_count": 13,
+    "reviewed_payload_lfs_objects": 12,
+    "unknown_or_legacy_objects": 0
+  },
+  "publication": {
+    "private_handoff_complete": true,
+    "public_transition_complete": false,
+    "public_transition_status": "unsupported_requires_new_public_reviewed_bundle"
+  },
+  "local_evidence_sha256": {
+    "private_publish_receipt": "dcfea23d0db9a59d3714803259bf377197e094ee15e2cf93f02e719a7c3fc680",
+    "completed_read_only_preflight": "5ec3fc19253d52d3ed7e9448908806a1db5bc7d211dc75d5a213aadff575eae2",
+    "guarded_download_receipt": "cd0bdd251c9d3b112150cb83c21fa14b32a17e21708740cf0b259ecbff88f6b4"
+  }
+}
