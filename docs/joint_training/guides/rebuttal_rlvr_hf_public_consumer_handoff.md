@@ -5,25 +5,27 @@
 Target repository:
 [`AlexGeek/RLdataset`](https://huggingface.co/datasets/AlexGeek/RLdataset).
 
-The live audit on 2026-07-29 found:
+The public release gate completed on 2026-07-30 (Asia/Tokyo):
 
 ```text
-visibility: private
+visibility: public
 gated: false
-main: da622cf077ca3f0eaf0ebc55dd4e115d0ebc0b9c
-anonymous access: HTTP 401
+main: b1c264a92ace36dace52babdda651e415d9e9f82
+preserved parent: da622cf077ca3f0eaf0ebc55dd4e115d0ebc0b9c
+anonymous download and validator: PASS
 ```
 
-That revision is not a public release and must not be sent to an anonymous
-consumer. Replace the status and revision in this guide only after a new bundle
-has been uploaded privately, byte-verified, changed to public, and downloaded
-successfully without credentials.
+Use the immutable public revision
+`b1c264a92ace36dace52babdda651e415d9e9f82`. A credential-free download of
+all 18 files passed the bundled validator at that revision. The prior private
+revision remains reachable as the direct parent, so the repository history was
+preserved rather than rewritten.
 
-The full bundle has 13 Parquet payloads. Five have a documented public
-redistribution basis; eight still need an explicit publication decision from
-the repository owner. See
+The repository owner approved public release of the full 13-payload collection
+on 2026-07-29. The dataset card cites each upstream source and records the
+license or terms declared by that source. See
 `docs/joint_training/reports/data/rebuttal_rlvr_full_dataset_README.md` for the
-exact boundary.
+source table.
 
 ## Consumer network contract
 
@@ -42,13 +44,23 @@ recipe repository: https://github.com/AlexJJ009/verl-recipe.git
 branch:            codex/rebuttal-rlvr (both repositories)
 ```
 
-Clone the superproject and initialize its pinned recipe submodule:
+The final handoff supplies `CODE_REVISION` and `RECIPE_GITLINK`. Clone the
+superproject, detach at that exact commit, and initialize the recipe gitlink:
 
 ```bash
-git clone --branch codex/rebuttal-rlvr \
+export CODE_REVISION=REPLACE_WITH_DELIVERED_SUPERPROJECT_COMMIT
+export RECIPE_GITLINK=REPLACE_WITH_DELIVERED_RECIPE_GITLINK
+
+git clone --no-checkout \
   https://github.com/AlexJJ009/verl-v0.7.git \
   verl-rebuttal-rlvr
+git -C verl-rebuttal-rlvr fetch origin "$CODE_REVISION"
+git -C verl-rebuttal-rlvr checkout --detach "$CODE_REVISION"
 git -C verl-rebuttal-rlvr submodule update --init --recursive
+
+test "$(git -C verl-rebuttal-rlvr rev-parse HEAD)" = "$CODE_REVISION"
+test "$(git -C verl-rebuttal-rlvr ls-tree HEAD recipe | awk '{print $3}')" = "$RECIPE_GITLINK"
+test "$(git -C verl-rebuttal-rlvr/recipe rev-parse HEAD)" = "$RECIPE_GITLINK"
 ```
 
 The final handoff message must provide the delivered superproject commit and
@@ -105,7 +117,7 @@ python -m pip install \
 
 hf download AlexGeek/RLdataset \
   --repo-type dataset \
-  --revision REPLACE_WITH_VERIFIED_PUBLIC_COMMIT \
+  --revision b1c264a92ace36dace52babdda651e415d9e9f82 \
   --local-dir "$DATASET_ROOT"
 
 python3 "$DATASET_ROOT/validate_dataset.py" \
@@ -143,6 +155,10 @@ Math-7 contains exactly AIME-2025, MATH-500, AMC23, AQuA, GSM8K, MAWPS, and
 SVAMP. Code-4 contains exactly HumanEval+, MBPP+, LiveCodeBench release_v5, and
 BigCodeBench. Evaluator source checkouts and the LiveCodeBench SQLite evaluator
 index are not dataset payloads.
+
+These are the actual Parquet files consumed by the launchers. The Hugging Face
+publication copies them byte-for-byte and does not introduce a second format
+conversion.
 
 ## Release gate for the handoff message
 
@@ -193,8 +209,6 @@ env \
   --receipt "$ANON_SCRATCH/validation-receipt.json"
 ```
 
-The full `18 / 13 / 22,860` contract and the current README describe one exact
-publication set. If the owner chooses the five-payload subset, rebuild the
-README, inventory, checksums, validator-bound allowlist, expected counts, and
-immutable revision together. Removing eight files from the full candidate is
-not a valid release procedure.
+The full `18 / 13 / 22,860` contract and the current README describe the exact
+approved publication set. The immutable commit supplied in the handoff must
+match that complete contract.

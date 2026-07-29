@@ -3,13 +3,12 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
-from pathlib import Path
 import shutil
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
@@ -397,10 +396,7 @@ def test_cli_rejects_anonymous_option(tmp_path: Path, monkeypatch: pytest.Monkey
 
 def test_checked_in_private_receipt_pins_guarded_download_and_blocks_public() -> None:
     receipt = json.loads(
-        (
-            REPO_ROOT
-            / "docs/joint_training/reports/data/rebuttal_rlvr_hf_private_receipt_20260729.json"
-        ).read_text()
+        (REPO_ROOT / "docs/joint_training/reports/data/rebuttal_rlvr_hf_private_receipt_20260729.json").read_text()
     )
     assert receipt["repository"]["head"] == DOWNLOAD.VERIFIED_DATASET_COMMIT
     assert receipt["repository"]["private"] is True
@@ -425,10 +421,8 @@ def test_checked_in_private_receipt_pins_guarded_download_and_blocks_public() ->
     assert receipt["publication"]["public_transition_complete"] is False
 
 
-def test_handoff_keeps_v3_private_and_requires_a_separate_v4_downloader() -> None:
-    guide = (
-        REPO_ROOT / "docs/joint_training/guides/rebuttal_rlvr_hf_dataset_handoff.md"
-    ).read_text()
+def test_handoff_keeps_v3_guarded_downloader_separate_from_public_v4_cli() -> None:
+    guide = (REPO_ROOT / "docs/joint_training/guides/rebuttal_rlvr_hf_dataset_handoff.md").read_text()
     assert "scripts/download_rebuttal_rlvr_hf_dataset.py" in guide
     assert f"--revision {DOWNLOAD.VERIFIED_DATASET_COMMIT}" in guide
     assert "An authorized consumer can use the guarded wrapper now" in guide
@@ -436,14 +430,14 @@ def test_handoff_keeps_v3_private_and_requires_a_separate_v4_downloader() -> Non
     assert 'HF_HOME="$HF_AUTH_HOME" hf auth login' not in guide
     assert "without making an unguarded\n`hf auth login` API call" in guide
     assert "--anonymous" not in guide
-    assert "separate downloader" in guide
+    assert "standard credential-free `hf download`" in guide
+    assert "`validate_dataset.py`" in guide
+    assert "remains private-v3-only" in guide
     assert "private_handoff_only" in guide
 
 
 def test_meituan_checkout_requires_both_immutable_source_pins() -> None:
-    guide = (
-        REPO_ROOT / "docs/joint_training/guides/meituan_rlvr_image_build.md"
-    ).read_text()
+    guide = (REPO_ROOT / "docs/joint_training/guides/meituan_rlvr_image_build.md").read_text()
     assert "${EXPECTED_REPO_COMMIT:?" in guide
     assert "${EXPECTED_RECIPE_COMMIT:?" in guide
     assert 'checkout --detach "$EXPECTED_REPO_COMMIT"' in guide

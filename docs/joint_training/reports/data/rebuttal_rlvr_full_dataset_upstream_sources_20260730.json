@@ -1,0 +1,138 @@
+{
+  "schema_version": 1,
+  "reviewed_at": "2026-07-30",
+  "collection_license": "other",
+  "policy": "Each payload retains the attribution, license, and source terms declared by its upstream dataset. No single license is assigned to the multi-source collection.",
+  "sources": [
+    {
+      "dataset": "Hendrycks MATH RLVR train",
+      "source_id": "ck46/hendrycks_math",
+      "source_revision": "0e71a2aaa3c196023c96b67f2960fca36631ae2b",
+      "source_url": "https://huggingface.co/datasets/ck46/hendrycks_math/tree/0e71a2aaa3c196023c96b67f2960fca36631ae2b",
+      "canonical_url": "https://github.com/hendrycks/math",
+      "upstream_license": "MIT (canonical MATH repository)",
+      "citation_url": "https://arxiv.org/abs/2103.03874",
+      "modifications": "Converted 7,500 training rows to the verl prompt/reward schema and applied two documented empty-box answer fixes. The published payload is the exact runtime Parquet."
+    },
+    {
+      "dataset": "AIME-2025",
+      "source_id": "MathArena/aime_2025",
+      "source_revision": "c94da77eb22bbd6439e62a323bec18493a421302",
+      "source_url": "https://huggingface.co/datasets/MathArena/aime_2025/tree/c94da77eb22bbd6439e62a323bec18493a421302",
+      "canonical_url": "https://maa.org/student-programs/amc/",
+      "upstream_license": "CC-BY-NC-SA-4.0 declared by the MathArena mirror; MAA source terms also apply",
+      "citation_url": "https://maa.org/student-programs/amc/",
+      "modifications": "Converted 30 AIME I/II problems to the project evaluation schema and added the project system prompt. The published payload is the exact runtime Parquet."
+    },
+    {
+      "dataset": "MATH-500",
+      "source_id": "HuggingFaceH4/MATH-500",
+      "source_revision": "6e4ed1a2a79af7d8630a6b768ec859cb5af4d3be",
+      "source_url": "https://huggingface.co/datasets/HuggingFaceH4/MATH-500/tree/6e4ed1a2a79af7d8630a6b768ec859cb5af4d3be",
+      "canonical_url": "https://github.com/openai/prm800k#math-splits",
+      "upstream_license": "MIT (MATH and PRM800K canonical repositories)",
+      "citation_url": "https://arxiv.org/abs/2305.20050",
+      "modifications": "Converted the 500-row held-out split to the project evaluation schema and added the project system prompt. The published payload is the exact runtime Parquet."
+    },
+    {
+      "dataset": "AMC23",
+      "source_id": "zwhe99/amc23",
+      "source_revision": "f9810c0439cd3c670ec885d328a2f06a87f3694a",
+      "source_url": "https://huggingface.co/datasets/zwhe99/amc23/tree/f9810c0439cd3c670ec885d328a2f06a87f3694a",
+      "canonical_url": "https://maa.org/student-programs/amc/",
+      "upstream_license": "No dataset license stated by the mirror; MAA and linked AoPS source terms apply",
+      "citation_url": "https://maa.org/student-programs/amc/",
+      "modifications": "Converted 40 AMC 12A/12B problems to the project evaluation schema and added the project system prompt. The published payload is the exact runtime Parquet."
+    },
+    {
+      "dataset": "AQUA",
+      "source_id": "deepmind/aqua_rat",
+      "source_revision": "33301c6a050c96af81f63cad5562cb5363e88971",
+      "source_url": "https://huggingface.co/datasets/deepmind/aqua_rat/tree/33301c6a050c96af81f63cad5562cb5363e88971",
+      "canonical_url": "https://github.com/google-deepmind/AQuA",
+      "upstream_license": "Apache-2.0",
+      "citation_url": "https://aclanthology.org/P17-1015/",
+      "modifications": "Converted the 254-row test split to the project evaluation schema and added the project system prompt. The published payload is the exact runtime Parquet."
+    },
+    {
+      "dataset": "GSM8K",
+      "source_id": "openai/gsm8k",
+      "source_revision": "740312add88f781978c0658806c59bc2815b9866",
+      "source_url": "https://huggingface.co/datasets/openai/gsm8k/tree/740312add88f781978c0658806c59bc2815b9866",
+      "canonical_url": "https://github.com/openai/grade-school-math",
+      "upstream_license": "MIT",
+      "citation_url": "https://arxiv.org/abs/2110.14168",
+      "modifications": "Converted the 1,319-row test split to the project evaluation schema and added the project system prompt. The published payload is the exact runtime Parquet."
+    },
+    {
+      "dataset": "MAWPS",
+      "source_id": "mwpt5/MAWPS",
+      "source_revision": "5769dc9a31ea36eaeaab1f1e0aa1a54b6c08d804",
+      "source_url": "https://huggingface.co/datasets/mwpt5/MAWPS/tree/5769dc9a31ea36eaeaab1f1e0aa1a54b6c08d804",
+      "canonical_url": "https://github.com/sroy9/mawps",
+      "upstream_license": "No dataset license stated by the mirror or canonical repository",
+      "citation_url": "https://aclanthology.org/N16-1136/",
+      "modifications": "Converted 355 problems to the project evaluation schema and added the project system prompt. The published payload is the exact runtime Parquet."
+    },
+    {
+      "dataset": "SVAMP",
+      "source_id": "ChilleD/SVAMP",
+      "source_revision": "5e0bf1e5e7c0e9c4bc39180d224f41f3f801b7ef",
+      "source_url": "https://huggingface.co/datasets/ChilleD/SVAMP/tree/5e0bf1e5e7c0e9c4bc39180d224f41f3f801b7ef",
+      "canonical_url": "https://github.com/arkilpatel/SVAMP",
+      "upstream_license": "MIT declared by SVAMP; its stated provenance includes ASDiv-A (CC-BY-NC-4.0) and MAWPS",
+      "citation_url": "https://aclanthology.org/2021.naacl-main.168/",
+      "modifications": "Converted 300 problems to the project evaluation schema and added the project system prompt. The published payload is the exact runtime Parquet."
+    },
+    {
+      "dataset": "KodCode-Light-RL-10K author-signature-v2",
+      "source_id": "KodCode/KodCode-Light-RL-10K",
+      "source_revision": "dcf78a8bbba9a613b596ce993c4921a38687dfcc",
+      "source_url": "https://huggingface.co/datasets/KodCode/KodCode-Light-RL-10K/tree/dcf78a8bbba9a613b596ce993c4921a38687dfcc",
+      "canonical_url": "https://huggingface.co/datasets/KodCode/KodCode-Light-RL-10K",
+      "upstream_license": "CC-BY-NC-4.0",
+      "citation_url": "https://arxiv.org/abs/2503.02951",
+      "modifications": "Converted 10,000 rows to the verl prompt/reward schema and applied the author-signature-v2 prompt template. The published payload is the exact runtime Parquet and retains upstream prompts, solutions, and tests."
+    },
+    {
+      "dataset": "HumanEval+",
+      "source_id": "evalplus/humanevalplus_release",
+      "source_revision": "v0.1.10",
+      "source_url": "https://github.com/evalplus/humanevalplus_release/releases/tag/v0.1.10",
+      "canonical_url": "https://huggingface.co/datasets/evalplus/humanevalplus",
+      "upstream_license": "Apache-2.0 for EvalPlus additions; MIT for original HumanEval material",
+      "citation_url": "https://openreview.net/forum?id=1qvx610Cu7",
+      "modifications": "Converted 164 tasks, canonical solutions, and base/plus inputs to the project validation schema. The published payload is the exact runtime Parquet."
+    },
+    {
+      "dataset": "MBPP+",
+      "source_id": "evalplus/mbppplus_release",
+      "source_revision": "v0.2.0",
+      "source_url": "https://github.com/evalplus/mbppplus_release/releases/tag/v0.2.0",
+      "canonical_url": "https://huggingface.co/datasets/evalplus/mbppplus",
+      "upstream_license": "Apache-2.0",
+      "citation_url": "https://openreview.net/forum?id=1qvx610Cu7",
+      "modifications": "Converted 378 tasks, canonical solutions, and base/plus inputs to the project validation schema. The published payload is the exact runtime Parquet."
+    },
+    {
+      "dataset": "LiveCodeBench release_v5",
+      "source_id": "livecodebench/code_generation_lite",
+      "source_revision": "0fe84c3912ea0c4d4a78037083943e8f0c4dd505",
+      "source_url": "https://huggingface.co/datasets/livecodebench/code_generation_lite/tree/0fe84c3912ea0c4d4a78037083943e8f0c4dd505",
+      "canonical_url": "https://livecodebench.github.io/",
+      "upstream_license": "The upstream dataset card states only 'cc' without a specific Creative Commons variant; source-platform terms also apply",
+      "citation_url": "https://arxiv.org/abs/2403.07974",
+      "modifications": "Converted the 880 release_v5 problem statements, starter code, and platform task IDs to the project validation schema. Hidden evaluator I/O is not included. The published payload is the exact runtime Parquet."
+    },
+    {
+      "dataset": "BigCodeBench",
+      "source_id": "bigcode/bigcodebench",
+      "source_revision": "v0.1.4",
+      "source_url": "https://huggingface.co/datasets/bigcode/bigcodebench",
+      "canonical_url": "https://bigcode-bench.github.io/",
+      "upstream_license": "Apache-2.0 declared by the upstream dataset card",
+      "citation_url": "https://arxiv.org/abs/2406.15877",
+      "modifications": "Converted the 1,140-task full v0.1.4 set, including prompts and tests, to the project validation schema. The published payload is the exact runtime Parquet."
+    }
+  ]
+}

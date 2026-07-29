@@ -23,7 +23,7 @@ There is no executable Code-7 contract in this project. Do not turn smoke
 subsets, evaluator caches, or multiple metrics over one benchmark file into
 extra datasets.
 
-The current private handoff used two stages:
+The earlier private handoff used two stages:
 
 1. atomically replace HEAD while the repository is private, then verify every
    uploaded byte;
@@ -31,32 +31,33 @@ The current private handoff used two stages:
    and classify any Hugging Face-retained post-recreate bootstrap/upload SHA by
    its exact content;
 
-Both stages are complete. The resulting revision is permanently treated as a
-`private_handoff_only` artifact. Its README and inventory explicitly prohibit
-public redistribution, and the publisher exposes no public-mutation API or
-`--public-transition` option. A successful private upload is not permission to
-make the repository public.
+Both historical stages are complete. On 2026-07-29 the owner then approved a
+new full-13 public release with a different policy: preserve the repository's
+current history, append the v4 bundle to the reviewed private HEAD using
+`parent_commit`, verify the appended commit while private, and only then change
+visibility. The public-release path must not delete/recreate the repository or
+call `super_squash_history`. That publication completed on 2026-07-30
+(Asia/Tokyo) at `b1c264a92ace36dace52babdda651e415d9e9f82`.
 
-Making this repository public later is a new publication, not a visibility
-toggle on the current commit. It requires a v4 public-reviewed bundle with new
-README/inventory/checksum pins, removal of every private-only payload, private
-upload and byte verification, and proof that every revision/ref containing the
-current restricted bundle is unreachable before repository visibility changes.
+The 13 payloads in v4 are the exact Parquet files consumed by the project's
+training and evaluation workflows. The publication builder copies their bytes
+and SHA-256 values; it does not create a separate publication format.
 
-## Live target audit
+## Verified public release
 
-The post-rebuild read-only audit on 2026-07-29 observed:
+The authenticated and credential-free audits after publication observed:
 
 | Field | Value |
 |---|---|
 | repository | `AlexGeek/RLdataset` |
-| audited HEAD | `da622cf077ca3f0eaf0ebc55dd4e115d0ebc0b9c` |
-| visibility | private |
+| public HEAD | `b1c264a92ace36dace52babdda651e415d9e9f82` |
+| preserved parent | `da622cf077ca3f0eaf0ebc55dd4e115d0ebc0b9c` |
+| visibility | public |
 | gated | false |
-| files | 17 |
-| logical bytes | 30,282,521 |
+| files | 18 |
 | payloads / rows | 13 / 22,860 |
-| commits on `main` | one root commit |
+| commits on `main` | exactly `[b1c264a..., da622cf...]` |
+| anonymous download and validator | PASS |
 | automatic convert ref | `refs/convert/parquet` at one root commit `70f194360a421b036709efe81d4288363f7bb30d` |
 | other branches/tags/PR refs | none |
 | write admission | verified for the isolated upload credential |
@@ -65,9 +66,10 @@ Do not copy a token into Git, shell history, tmux logs, receipts, or this guide.
 The publisher uses the credential already stored in the selected `HF_HOME`.
 
 An ordinary `delete_patterns="*"` commit removes old files from the new HEAD
-but does not remove old revisions. This repository therefore used the
+but does not remove old revisions. The earlier private migration used the
 delete/recreate fallback while private, followed by a byte-verified upload and
-`HfApi.super_squash_history(branch="main")`.
+`HfApi.super_squash_history(branch="main")`. This is historical context only;
+the approved v4 publication preserves the current repository and history.
 
 The four pre-recreate legacy revisions are now unreachable through both the Hub
 API and `/resolve/`:
@@ -126,8 +128,9 @@ The read-only verifier and downloader pin both metadata files:
 The inventory's
 `observed_parent_commit=df19d512f4306aee8c3abce0387f968b09a5b234` is an immutable build-time
 observation from before delete/recreate. It is not a current parent or download
-revision; use `da622cf077ca3f0eaf0ebc55dd4e115d0ebc0b9c` for consumers and the
-private receipt for current state.
+revision. Use `da622cf077ca3f0eaf0ebc55dd4e115d0ebc0b9c` only for authorized
+private-v3 verification; public consumers must use the later v4 commit that
+passes anonymous verification.
 
 The candidate contains exactly 13 payloads, plus `.gitattributes`, `README.md`,
 and the two metadata files. `metadata/checksums.sha256` covers every file except
@@ -162,9 +165,10 @@ The large LiveCodeBench SQLite evaluator index and evaluator source checkouts
 are not dataset payloads. Evaluator source stays pinned in the training/evaluator
 images; full BigCodeBench evaluation remains in its Python 3.10 evaluator image.
 
-## Mandatory network route
+## Internal publisher/private-migration network route
 
-Every Hub API, upload, resolve probe, and download must use:
+On this publishing host only, every Hub API, upload, resolve probe, and download
+must use:
 
 ```text
 HF_ENDPOINT=https://huggingface.co
@@ -240,8 +244,8 @@ instead of substituting a floating `main`.
 ## Stages 1 and 2: private upload, verification, and history purge
 
 The current upload and history cleanup are already complete. **Do not rerun the
-upload command for the same bundle.** The immutable data commit for consumers
-is:
+upload command for the same bundle.** The immutable commit for authorized
+private-v3 verification is:
 
 ```text
 da622cf077ca3f0eaf0ebc55dd4e115d0ebc0b9c
@@ -254,63 +258,73 @@ has exactly one root commit. `publish_receipt.json` does not exist because the
 public transition has not run. The sanitized, checked-in private receipt is
 `docs/joint_training/reports/data/rebuttal_rlvr_hf_private_receipt_20260729.json`.
 
-## Completed-state mutation is disabled
+## Private-v3 completed-state mutation is disabled
 
 The upload and history-rewrite implementation used for the completed migration
 has been removed from the current operational script. Its CLI rejects
 `--apply`, `--reconcile`, `--expected-parent`, and repository-visibility
 options. Git history preserves the old recovery implementation for forensic
 reference, but it must not be run against the completed `da622cf...` state.
-Any future mutation requires a new reviewed change with a new immutable bundle
-and a fresh destructive-action review.
+The separate v4 publisher described below is the only approved mutation path.
 
-## Future public publication: rebuild v4 first
+## Full-13 public publication: completed v4 bundle
 
-Do not change repository visibility for the current revision. The checked-in
-publisher has no `--public-transition` argument and no code path that can set
-`private=False` for this v3 `private_handoff_only` bundle.
+The v3 `private_handoff_only` guarded publisher remains private-only. The
+separate v4 publisher was the only approved path used for the public
+transition.
 
-The prepared full-scope v4 review candidate is:
+The new executable v4 publisher is
+`scripts/publish_rebuttal_rlvr_full_dataset_v4.py`; its anonymous verifier is
+`scripts/verify_rebuttal_rlvr_public_release.py`. They are bound to the v4
+bundle hashes below and implement the preserve-history state machine. They have
+passed local static and fake-state tests and completed the remote publication
+and anonymous verification.
+
+The repository owner approved publication of all 13 payloads on 2026-07-29.
+The final pre-upload v4 bundle is:
 
 ```text
-/data-1/tmp/verl_agent_scratch/rlvr_full_upload_candidate_20260729_v4r1
-publication_status=private_candidate_pending_owner_decision
+/data-1/tmp/verl_agent_scratch/rlvr_full_public_release_20260730_v4r3
+publication_status=owner_approved_for_public_release
 files=18
 payloads=13
 rows=22860
-metadata/publication_inventory.json=a76ae309b593b28a72a8fb5d8e54a337facb5e854dad59ae2e0c55587a54b914
-metadata/checksums.sha256=b0f285fb04ec92f9bc6c7a274d974d6f09009bc76e2283e4ba2f3f03fff630b9
+metadata/publication_inventory.json=fe90ad41b1abbf08c3bbd17f9638954ba9b15b0dcf916b3edcfa62d24b95d130
+metadata/checksums.sha256=26cc2d7395e3aceb1f71ea44e150e3a458d285591766c9ad688c44efa604d394
 ```
 
-It adds the consumer README and `validate_dataset.py`, removes host paths from
-the published inventory, and passes exact tree, SHA-256, row-count, Arrow
-schema, and all-row semantic validation. It has not been uploaded and is not a
-public-release approval. Rebuild it again if either checked-in source file
-changes.
+It replaces the private-only README with the public consumer README, adds
+`validate_dataset.py`, removes host paths from the published inventory, and
+passes exact tree, SHA-256, row-count, Arrow
+schema, and all-row semantic validation. The README cites every upstream
+dataset and records its declared license or terms. The exact bundle was uploaded
+at `b1c264a92ace36dace52babdda651e415d9e9f82`. Do not rebuild or republish it
+for the existing release; regenerate all pins and use a new commit if any
+README, validator, decision receipt, source record, or builder input changes.
 
-A future public release in `AlexGeek/RLdataset` must be implemented as a new v4
-publication change with all of the following evidence:
+The v4 release state machine is:
 
-1. a new README, inventory, and checksum manifest marked `public_reviewed`, with
-   a documented redistribution basis for every included payload;
-2. a new bundle that contains no pending-rights payload and a new set of pinned
-   metadata hashes in the publisher/downloader;
-3. a destructive-action review before removing/recreating or purging the
-   existing private repository history;
-4. private upload of v4 through the admitted Hong Kong non-residential
-   `大流量` route, followed by exact byte, ref, and history verification;
-5. API and `/resolve/` proof that `da622cf077ca3f0eaf0ebc55dd4e115d0ebc0b9c`,
-   `e0d4f9ea24081e654c33d522ba6b4eed1a82c5a3`, its conversion ref, and every
-   other revision containing private-only bytes are no longer reachable;
-6. a new, separately reviewed public-transition implementation bound to the v4
-   commit and inventory; only that implementation may call
-   `update_repo_settings(private=False, gated=False)`;
-7. a fresh anonymous download into an empty directory, with all v4 hashes
-   verified through the same route gate.
+1. verify the exact current private HEAD, its 17 files, ordered history, and
+   refs;
+2. call `create_commit(revision="main", parent_commit=da622cf...)` with the
+   exact 18-file v4 allowlist and no delete operation;
+3. verify the new private HEAD, every byte, and history
+   `[new_public_commit, da622cf...]`;
+4. set `private=false, gated=false` without changing HEAD;
+5. verify the same commit authenticated and then download it anonymously into
+   an empty credential-free directory;
+6. run the bundled validator and write the immutable public receipt.
 
-Reusing `da622cf...`, its README/inventory, or its private receipt for a public
-transition is a hard failure. The archival five-payload public-subset design is
-not itself a live v4 bundle or publication approval.
+All six phases passed. The checked-in sanitized receipt is
+`docs/joint_training/reports/data/rebuttal_rlvr_hf_public_receipt_20260730.json`.
+The operator receipt remains outside Git because it contains local paths and
+publisher-side network-routing evidence that public consumers do not need.
+
+Any failure before visibility changes leaves the repository private. A failure
+in authenticated or anonymous public verification triggers a return to
+`private=true` followed by the same full tree/history verification. The
+publisher contains no `delete_repo`, `create_repo`, `super_squash_history`, or
+force-history path.
 
 ## Historical private staging-host mapping (do not send to consumers)
 
@@ -477,10 +491,11 @@ colleague's host does not expose the same controller contract, transfer the
 already verified flat directory and receipt through the approved internal
 channel; do not disable the route gate.
 
-The current v3 downloader has no anonymous mode and always rejects public
-visibility. A future public v4 must ship a separate downloader with a new
-commit, inventory, checksum pins, and anonymous-only credential contract; do
-not add a boolean anonymous branch back into the v3 entrypoint.
+The current v3 guarded downloader has no anonymous mode and always rejects
+public visibility; it remains private-v3-only. Public v4 consumers use the
+standard credential-free `hf download` command and then run the bundled
+`validate_dataset.py`, as documented in
+`rebuttal_rlvr_hf_public_consumer_handoff.md`.
 
 ## Repository source
 

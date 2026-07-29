@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "decision_id": "rebuttal-rlvr-full13-public-20260729",
+  "decided_at": "2026-07-29",
+  "decision_authority": "AlexGeek/RLdataset repository owner",
+  "target_repository": {
+    "repo_id": "AlexGeek/RLdataset",
+    "repo_type": "dataset",
+    "visibility": "public",
+    "gated": false
+  },
+  "decision": "publish_full_13_payload_collection",
+  "scope": {
+    "payload_files": 13,
+    "payload_rows": 22860,
+    "math_training_files": 1,
+    "math_evaluation_files": 7,
+    "code_training_files": 1,
+    "code_evaluation_files": 4
+  },
+  "owner_rationale": [
+    "The upstream datasets were already publicly accessible.",
+    "The release README cites each upstream dataset and records the upstream license or terms that apply to that payload.",
+    "The repository publishes the exact Parquet files consumed by the training and evaluation workflows; publication does not introduce another format conversion.",
+    "The complete Math-7 and Code-4 workflow requires the full collection rather than the five-payload subset."
+  ],
+  "owner_statement_evidence": {
+    "statement_verbatim": "我觉得这几个都可以公开。因为数据集不是我们自己构建的，我们只是把它改了一下格式，数据本来就是公开的，最多是有git历史在里面。",
+    "evidence_type": "repository_owner_statement",
+    "independently_verified": false
+  },
+  "attribution_and_license_policy": {
+    "status": "publish_with_per_source_attribution_and_upstream_terms",
+    "collection_license": "other",
+    "policy": "Cite every upstream dataset and preserve its declared license or terms instead of assigning one blanket license to this multi-source collection."
+  },
+  "format_policy": {
+    "publication_format_conversion": false,
+    "policy": "Upload the exact training and evaluation Parquet bytes used by the project."
+  },
+  "history_policy": {
+    "policy": "preserve_existing_history",
+    "mutation": "append one compare-and-swap commit to the reviewed private main HEAD; do not delete, recreate, squash, or rewrite the repository"
+  },
+  "artifact_binding": {
+    "source_inventory_sha256": "b5b646a28b2e6bf8a6f531f986d921fbc20e5dc7c454453c3c7ce12a2674aa5a",
+    "source_manifest_sha256": "5e35eab998946be30857425525641b72bc7a1937376f7b797b45d47e71a73a59",
+    "payload_files": 13,
+    "payload_rows": 22860,
+    "payload_bytes": 30269214
+  },
+  "acknowledgements": [
+    "The repository owner approves public release of the complete 13-payload collection.",
+    "The README and publication inventory must preserve per-source attribution and upstream license or terms.",
+    "The publication bundle must preserve the exact payload SHA-256 values used by the project.",
+    "Existing repository history must be preserved."
+  ],
+  "release_requirements": [
+    "Upload and verify the approved bundle while the repository remains private.",
+    "Use the reviewed private HEAD as create_commit parent_commit and preserve the complete existing history.",
+    "Do not call delete_repo, create_repo, super_squash_history, or any force-history operation.",
+    "Verify private=false and gated=false after the visibility transition.",
+    "Download the immutable public revision without credentials into an empty directory and pass the bundled validator.",
+    "Record the immutable public revision and verification receipt in the code repository."
+  ]
+}

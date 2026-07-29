@@ -181,11 +181,43 @@ def test_public_consumer_docs_do_not_export_this_hosts_network_or_storage_policy
         assert "Mihomo" not in document
         assert "/mnt/dolphinfs" not in document
         assert "Dockerfile" not in document
-    assert "REPLACE_WITH_VERIFIED_PUBLIC_COMMIT" in guide
+    assert "b1c264a92ace36dace52babdda651e415d9e9f82" in guide
+    assert "REPLACE_WITH_VERIFIED_PUBLIC_COMMIT" not in guide
     assert "DATASET_REVISION" in readme
     assert "floating `main`" in readme
     assert "sibling layout is convenient but optional" in readme
     assert "This is a recommendation, not a constraint" in guide
+
+
+def test_sanitized_public_receipt_pins_verified_release_without_host_details() -> None:
+    receipt_path = (
+        REPO_ROOT
+        / "docs/joint_training/reports/data/rebuttal_rlvr_hf_public_receipt_20260730.json"
+    )
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    assert receipt["repository"] == {
+        "gated": False,
+        "head": "b1c264a92ace36dace52babdda651e415d9e9f82",
+        "history": [
+            "b1c264a92ace36dace52babdda651e415d9e9f82",
+            "da622cf077ca3f0eaf0ebc55dd4e115d0ebc0b9c",
+        ],
+        "id": "AlexGeek/RLdataset",
+        "preserved_parent": "da622cf077ca3f0eaf0ebc55dd4e115d0ebc0b9c",
+        "private": False,
+        "type": "dataset",
+        "url": "https://huggingface.co/datasets/AlexGeek/RLdataset",
+    }
+    assert receipt["bundle"]["file_count"] == 18
+    assert receipt["bundle"]["payload_count"] == 13
+    assert receipt["bundle"]["payload_rows"] == 22860
+    assert receipt["verification"]["anonymous"]["ok"] is True
+    assert receipt["verification"]["anonymous"]["credential_mode"] == "credential_free_fresh_home"
+    serialized = json.dumps(receipt, sort_keys=True)
+    assert "/data-1" not in serialized
+    assert "/mnt/dolphinfs" not in serialized
+    assert "Hong Kong" not in serialized
+    assert "大流量" not in serialized
 
 
 def test_full_dataset_readme_matches_reviewed_payload_paths_and_hashes() -> None:
@@ -203,15 +235,66 @@ def test_full_dataset_readme_matches_reviewed_payload_paths_and_hashes() -> None
         assert f"`{asset['sha256']}`" in readme
 
 
+def test_full_dataset_readme_cites_every_upstream_source_and_license() -> None:
+    readme = (REPO_ROOT / "docs/joint_training/reports/data/rebuttal_rlvr_full_dataset_README.md").read_text(
+        encoding="utf-8"
+    )
+    source_catalog = json.loads(
+        (
+            REPO_ROOT / "docs/joint_training/reports/data/rebuttal_rlvr_full_dataset_upstream_sources_20260730.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert source_catalog["collection_license"] == "other"
+    assert len(source_catalog["sources"]) == 13
+    for source in source_catalog["sources"]:
+        assert source["source_url"] in readme
+        assert source["upstream_license"]
+        assert source["citation_url"] in readme
+
+
 def test_full_candidate_is_portable_and_validator_bound_when_materialized() -> None:
-    candidate = Path("/data-1/tmp/verl_agent_scratch/rlvr_full_upload_candidate_20260729_v4r1")
+    candidate = Path("/data-1/tmp/verl_agent_scratch/rlvr_full_public_release_20260730_v4r3")
     if not candidate.is_dir():
-        pytest.skip("operational v4 full candidate is not materialized on this host")
+        pytest.skip("operational v4 full release is not materialized on this host")
     inventory = json.loads((candidate / "metadata/publication_inventory.json").read_text(encoding="utf-8"))
-    assert inventory["publication_status"] == "private_candidate_pending_owner_decision"
+    assert inventory["publication_status"] == "owner_approved_for_public_release"
+    assert inventory["publication_decision"]["decision"] == "publish_full_13_payload_collection"
+    assert inventory["attribution_and_license"]["owner_decision_id"] == "rebuttal-rlvr-full13-public-20260729"
+    assert inventory["packaging"] == {
+        "file_format": "parquet",
+        "payload_copy_mode": "byte_for_byte_from_reviewed_runtime_files",
+        "payload_sha256_preserved": True,
+        "publication_format_conversion": False,
+    }
     assert inventory["validator"]["path"] == "validate_dataset.py"
     assert len(inventory["assets"]) == 13
     serialized = json.dumps(inventory, sort_keys=True)
     assert "/data-1" not in serialized
     assert "/data-2" not in serialized
     assert VALIDATOR.validate(candidate)["file_count"] == 18
+
+
+def test_full13_publication_decision_matches_exact_payload_contract() -> None:
+    decision = json.loads(
+        (
+            REPO_ROOT / "docs/joint_training/reports/data/rebuttal_rlvr_full_dataset_publication_decision_20260729.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert decision["decision"] == "publish_full_13_payload_collection"
+    assert decision["target_repository"] == {
+        "repo_id": "AlexGeek/RLdataset",
+        "repo_type": "dataset",
+        "visibility": "public",
+        "gated": False,
+    }
+    assert decision["scope"] == {
+        "payload_files": 13,
+        "payload_rows": 22860,
+        "math_training_files": 1,
+        "math_evaluation_files": 7,
+        "code_training_files": 1,
+        "code_evaluation_files": 4,
+    }
+    assert decision["format_policy"]["publication_format_conversion"] is False
+    assert decision["history_policy"]["policy"] == "preserve_existing_history"
+    assert decision["attribution_and_license_policy"]["collection_license"] == "other"
