@@ -1,0 +1,36 @@
+[base]
+afo.app.name = standard-grpo-REPLACE_ME
+type = ml-easy-job
+
+[resource]
+usergroup = REPLACE_WITH_USERGROUP
+queue = REPLACE_WITH_QUEUE
+
+[roles]
+workers = 1
+worker.memory = 1920000
+worker.vcore = 128
+worker.gcoresh20-141g = 8
+worker.script = bash jupyter.sh
+
+[docker]
+afo.docker.image.name = REPLACE_WITH_IMAGE
+
+[data]
+afo.data.prefetch = false
+
+[failover]
+afo.app.support.engine.failover = true
+
+[others]
+client.git.revision.publish=false
+afo.app.env.YARN_CONTAINER_RUNTIME_DOCKER_SHM_SIZE_BYTES = 549755813888
+with_requirements = false
+afo.role.worker.task.attempt.max.retry = 1
+
+# Required, exact-target values supplied per submission. Keep real endpoints
+# and account configuration outside Git.
+afo.app.env.EXPERIMENT = REPLACE_WITH_EXPERIMENT
+afo.app.env.LGX = REPLACE_WITH_PRIVATE_DOLPHINFS_ROOT
+afo.app.env.REPO_SUBPATH = REPLACE_WITH_STAGED_REPO_SUBPATH
+afo.app.env.GRPO_INPUT_MANIFEST = REPLACE_WITH_IMMUTABLE_INPUT_MANIFEST
