@@ -132,3 +132,9 @@ def test_8gpu_entry_uses_eight_tp1_sample_shards(task, expected_max_num_seqs):
     assert config["max_num_seqs"] == expected_max_num_seqs
     assert config["max_num_batched_tokens"] == "8192"
     assert config["enforce_eager"] == "false"
+
+
+def test_8gpu_entry_accepts_only_tmux_or_explicit_scheduler_management():
+    script = Path("recipe/on_policy_wdl_sft/offline_eval/run_qwen3_1p7b_passk_8gpu.sh").read_text()
+    assert '"${EVAL_SCHEDULER_MANAGED:-0}" != 1' in script
+    assert "inside tmux or an admitted scheduler-managed worker" in script
