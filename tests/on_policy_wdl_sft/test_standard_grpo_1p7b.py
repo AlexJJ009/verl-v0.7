@@ -84,6 +84,14 @@ def test_common_launcher_forwards_standard_grpo_actor_contract():
     assert "actor_rollout_ref.actor.grad_clip=500.0" not in launcher
 
 
+def test_math_stage1_entry_fails_closed_on_provenance_hashes():
+    launcher = (ROOT / "recipe/on_policy_wdl_sft/standard_grpo/run_qwen3_1p7b_standard_grpo.sh").read_text()
+    assert "MATH_STAGE1_MODEL_PROVENANCE_PATH" in launcher
+    assert "Math S1-P0 model hash mismatch in provenance receipt" in launcher
+    assert "Math S1-P0 source joint hash mismatch" in launcher
+    assert 'GRPO_PREFLIGHT_ONLY:-0' in launcher
+
+
 def test_grpo_loss_mask_includes_every_non_padding_response_token():
     # Conceptual response positions: <think>, reasoning, </think>, <answer>, pad.
     data = SimpleNamespace(
