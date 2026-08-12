@@ -103,7 +103,7 @@ from implementation; it deletes no test or test assertion.
 - **F-M1-R05 — AC-06 in-root move is neither represented nor tested.**
   `/data-1/tmp/verl_agent_scratch/feishu-research-hub-sync/local-hub/tests/feature_stories/test_fs06_remote_structure_changes.py:29-35`
   labels a test “rename and in-root move,” but its fixture uses
-  `parent_token="fixture-research-hub"`, exactly the `managed_root` passed at
+  `parent_token` set to `fixture-research-hub`, exactly the `managed_root` passed at
   line 32. `reconcile_inventory` then only updates `title` and writes the same
   parent token (`src/hubctl/sync.py:146-152`). `RemoteDocument` has no child
   location/name field beyond `title` and parent (`src/hubctl/models.py:18-27`).

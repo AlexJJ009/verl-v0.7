@@ -42,11 +42,13 @@ Export necessary API keys for experiment tracking:
 
 .. code-block:: bash
 
-   # For Weights & Biases tracking
-   export WANDB_API_KEY="your-wandb-api-key"
-   
+   # Read secrets interactively instead of writing them into shell history.
+   read -rsp "Weights & Biases API key: " WANDB_API_KEY && echo
+   export WANDB_API_KEY
+
    # For HuggingFace gated models (if needed)
-   export HF_TOKEN="your-huggingface-token"
+   read -rsp "HuggingFace token: " HF_TOKEN && echo
+   export HF_TOKEN
 
 Examples
 --------
