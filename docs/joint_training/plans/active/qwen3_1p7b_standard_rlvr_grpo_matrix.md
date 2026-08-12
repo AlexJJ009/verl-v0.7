@@ -94,10 +94,12 @@ A，但 C 与 GRPO 的排序未知；这正是该矩阵需要实测的问题。
 - 参考 `run_2g_base.sh`、`run_2g_sft.sh` 与现有 `run_2g_math_*.sh`；
 - `algorithm.adv_estimator=grpo`；
 - `policy_loss.loss_mode=vanilla`；
+- 原始 GRPO 的 sequence-level aggregation：`loss_agg_mode=seq-mean-token-mean`；
 - group size / rollout `N=8`；
 - `norm_adv_by_std_in_grpo=true`；
 - symmetric PPO clip：low/high 均为 `0.2`；
 - actor PPO epochs `1`；
+- actor gradient clip `1.0`；
 - `algorithm.use_kl_in_reward=false`，避免把 KL 混入 reward/advantage；
 - actor loss 中启用固定 reference-policy KL：`use_kl_loss=true`、`kl_loss_coef=0.001`、
   `kl_loss_type=low_var_kl`；reference 是每条 GRPO run 的初始化 checkpoint；
@@ -109,9 +111,10 @@ A，但 C 与 GRPO 的排序未知；这正是该矩阵需要实测的问题。
 本轮唯一 group-size 主设置。group-size ablation 后置，不与第一轮方法有效性验证混跑。
 
 这里必须区分三个 batch 概念：每 step 是 `64` 个 prompt；每 prompt 生成 `N=8` 个 response，
-所以 reward/policy batch 是 `512` 条 trajectory；actor 的 global PPO mini-batch 也固定为 `512`，
-与当前 1.7B on-policy 合同一致。预算比较以 prompt、generated response、token 和 GPU-hours 同时
-记录，不能只写一个含混的 “batch size”。
+所以 reward/policy batch 是 `512` 条 trajectory。VERL 的 `ppo_mini_batch_size` 外部配置单位是
+prompt group，因此固定为 `64`；worker 内部乘以 `N=8` 后对应完整的 `512` 条 trajectory，
+每个 outer step 执行一次 actor optimizer update。预算比较以 prompt、generated response、token 和
+GPU-hours 同时记录，不能只写一个含混的 “batch size”。
 
 代码审计确认旧 `run_2g_*` 存在 resolved-config 漂移：注释和索引称 no-IS/no-KL，实际 common
 默认 `ROLLOUT_IS=token` 且 KL 关闭。新 1.7B 入口已显式冻结 `ROLLOUT_IS=null` 和上述 actor-KL
@@ -172,8 +175,11 @@ answer token。历史 “CoT token 没进入 SFT loss mask” 的事故不能原
 
 - `Stage1 + GRPO`：60 step，3,840 prompts，30,720 generated responses；
 - `Cold Start + GRPO`：连续 100 step，6,400 prompts，51,200 generated responses；
-- 每 5 step validation；`Stage1 + GRPO` 保护 P20/P40/P45/P50/P60；
-- `Cold Start + GRPO` 保护 P20/P40/P60/P80/P100，其中 P40 只是同一 run 的 checkpoint；
+- 每 5 step validation；`Stage1 + GRPO` 保护 P20/P40/P60；
+- `Cold Start + GRPO` 保护 P40/P60/P80/P100，其中 P40 是同一 run 的 Stage1 数据边界；
+- checkpoint retention 固定为“阶段关键点 + best/latest”：latest 保留 optimizer 以支持连续
+  saturation sweep，较早的 protected/best checkpoint 只保留 model weights；best/latest 与关键点
+  重合时去重。不得默认保留每 5 step 的全部 full checkpoint；
 - 第一轮先完整跑到 60/100，不用在线分数做 winner-only early stop；
 - 随后的 saturation sweep 与 A/C/D0 使用同一 P80/P100/P120、20-step chunk 和 P180 hard-cap 规则。
 

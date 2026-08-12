@@ -11,6 +11,20 @@ and collaborators can load run mechanics only when they need them.
 
 Times are local server time (`Asia/Shanghai`, CST).
 
+## Qwen3-1.7B Standard GRPO Baselines
+
+| Script | Purpose | Created | Last used | Status / notes |
+|---|---|---:|---:|---|
+| `recipe/on_policy_wdl_sft/standard_grpo/run_qwen3_1p7b_standard_grpo.sh` | Shared fail-closed Math/Code canonical GRPO launcher. | 2026-08-11 | 2026-08-12 Slurm jobs 37/38 | Freezes canonical GRPO loss aggregation, prompt mini-batch 64, grad clip 1.0, `lr=5e-7`, group N=8, explicit thinking, actor KL 0.001 and `rollout_is=null`. Retention is phase anchors plus best/latest; only latest retains optimizer state. |
+| `recipe/on_policy_wdl_sft/standard_grpo/run_math_stage1_grpo.sh` | Friendly Math Stage1 + GRPO 60-step entry. | 2026-08-11 | 2026-08-12 staged-config review | Consumes the frozen 3,840-row stage2->stage3 shard from a verified S1-P0 HF model; the locally restored S1-P0 candidate has a source-joint-bound SHA-256 provenance receipt and still requires admitted relay staging before a remote launch. |
+| `recipe/on_policy_wdl_sft/standard_grpo/run_math_cold_start_grpo.sh` | Friendly Math Cold Start + GRPO continuous 100-step entry. | 2026-08-11 | 2026-08-12 Slurm job 37 complete | Starts from selected Math CS0 step20, keeps P40 in the same optimizer run, consumes the ordered 6,400-row shard, and retains P40/P60/P80/P100 plus deduplicated best/latest. |
+| `recipe/on_policy_wdl_sft/standard_grpo/run_code_stage1_grpo.sh` | Friendly Code Stage1 + GRPO 60-step entry. | 2026-08-11 | 2026-08-12 Slurm job 38 running | Starts from completed beta=0 Code Stage1 Model2 and consumes the matched 3,840-row shard; retains P20/P40/P60 plus deduplicated best/latest. |
+| `recipe/on_policy_wdl_sft/standard_grpo/run_code_cold_start_grpo.sh` | Friendly Code Cold Start + GRPO continuous 100-step entry. | 2026-08-11 | config-only review | Starts from selected Code CS0 step20, saves P40 in the same optimizer run, and keeps the 1024/8192 context contract. |
+| `recipe/on_policy_wdl_sft/standard_grpo/prepare_qwen3_1p7b_grpo_data.py` | Build and verify the ordered 6,400-row Cold Start + GRPO train parquet. | 2026-08-11 | 2026-08-11 verified Math and Code | Enforces 2,560+1,280+2,560 rows, non-overlapping source indices, stage order, global `grpo_order`, SHA-256 and exactly 100 steps at prompt batch 64. |
+| `recipe/on_policy_wdl_sft/standard_grpo/meituan/jupyter.sh` | Fail-fast AFO family adapter for the four Math/Code GRPO entries. | 2026-08-11 | shell/config review only | Requires a staged immutable input manifest, resolves task/pipeline inputs, forces scheduler-managed admission and hands off to the same local wrapper. |
+| `recipe/on_policy_wdl_sft/standard_grpo/meituan/env.sh` | Credential-free dolphinfs/path adapter for Standard GRPO. | 2026-08-11 | shell/config review only | Requires private `LGX` at submission time, keeps temp files container-local, persistent artifacts under a derived root, and forces `WANDB_MODE=offline`. |
+| `platform/hope_standard_grpo/{jupyter.sh,run.hope}` | AFO dispatcher and credential-free submission template. | 2026-08-11 | shell/config review only | Supports the four friendly experiment names; real queue/image/account/endpoints remain outside Git. |
+
 ## Code Task On-Policy WDL-SFT
 
 | Script | Purpose | Created | Last used | Status / notes |

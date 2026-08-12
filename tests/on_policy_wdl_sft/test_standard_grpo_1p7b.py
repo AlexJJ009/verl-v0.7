@@ -47,10 +47,11 @@ def test_friendly_entries_resolve_frozen_standard_grpo_contract(wrapper, task, p
     assert config["train_prompt_bsz"] == "64"
     assert config["rollout_n"] == "8"
     assert config["responses_per_step"] == "512"
-    assert config["ppo_mini_batch_size"] == "512"
+    assert config["ppo_mini_batch_size"] == "64"
     assert config["learning_rate"] == "5e-7"
+    assert config["actor_grad_clip"] == "1.0"
     assert config["loss_mode"] == "vanilla"
-    assert config["loss_agg_mode"] == "token-mean"
+    assert config["loss_agg_mode"] == "seq-mean-token-mean"
     assert config["norm_adv_by_std_in_grpo"] == "True"
     assert config["use_kl_in_reward"] == "False"
     assert config["use_kl_loss"] == "True"
@@ -60,6 +61,27 @@ def test_friendly_entries_resolve_frozen_standard_grpo_contract(wrapper, task, p
     assert config["rollout_is"] == "null"
     assert config["enable_thinking"] == "True"
     assert config["data_shuffle"] == "False"
+    assert config["protected_ckpt_strip_optimizer"] == "True"
+    if pipeline == "stage1_grpo":
+        assert config["protected_ckpt_steps"] == "[20,40,60]"
+    else:
+        assert config["protected_ckpt_steps"] == "[40,60,80,100]"
+
+
+@pytest.mark.parametrize("learning_rate", ["5e-7", "1e-6"])
+def test_learning_rate_sensitivity_uses_the_same_math_entry(learning_rate):
+    config = config_only("run_math_stage1_grpo.sh", LR=learning_rate)
+    assert config["learning_rate"] == learning_rate
+    assert config["total_training_steps"] == "60"
+    assert config["protected_ckpt_steps"] == "[20,40,60]"
+
+
+def test_common_launcher_forwards_standard_grpo_actor_contract():
+    launcher = (ROOT / "recipe/on_policy_wdl_sft/ablation_single_model/_common_ablation.sh").read_text()
+    assert "actor_rollout_ref.actor.ppo_mini_batch_size=${train_prompt_mini_bsz}" in launcher
+    assert "actor_rollout_ref.actor.grad_clip=${actor_grad_clip}" in launcher
+    assert "actor_rollout_ref.actor.loss_agg_mode=${loss_agg_mode}" in launcher
+    assert "actor_rollout_ref.actor.grad_clip=500.0" not in launcher
 
 
 def test_grpo_loss_mask_includes_every_non_padding_response_token():
@@ -90,7 +112,7 @@ def test_grpo_loss_mask_includes_every_non_padding_response_token():
         log_prob=log_prob,
         advantages=torch.ones_like(log_prob),
         response_mask=response_mask,
-        loss_agg_mode="token-mean",
+        loss_agg_mode="seq-mean-token-mean",
         config=config,
     )
     loss.backward()
