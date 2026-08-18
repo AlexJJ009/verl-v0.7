@@ -48,7 +48,18 @@ def hf_tokenizer(name_or_path, correct_pad_token=True, correct_gemma2=True, **kw
         transformers.PreTrainedTokenizer: The pretrained tokenizer.
 
     """
-    from transformers import AutoTokenizer
+    from transformers import AutoConfig, AutoTokenizer
+
+    if "fix_mistral_regex" not in kwargs:
+        try:
+            model_type = AutoConfig.from_pretrained(
+                name_or_path,
+                trust_remote_code=kwargs.get("trust_remote_code", False),
+            ).model_type
+        except (OSError, ValueError):
+            model_type = None
+        if model_type and model_type not in {"mistral", "mistral3", "voxtral", "ministral", "pixtral"}:
+            kwargs["fix_mistral_regex"] = False
 
     if correct_gemma2 and isinstance(name_or_path, str) and "gemma-2-2b-it" in name_or_path:
         # the EOS token in gemma2 is ambiguious, which may worsen RL performance.

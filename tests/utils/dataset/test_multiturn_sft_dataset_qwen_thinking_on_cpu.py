@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pandas as pd
+import pytest
 import torch
 
 from verl.utils.dataset.multiturn_sft_dataset import MultiTurnSFTDataset
@@ -124,3 +125,26 @@ def test_whole_message_tokenization_handles_qwen_context_sensitive_multi_turn(tm
     assert supervised_text.count("<|im_end|>") == 2
     assert "First question" not in supervised_text
     assert "Second question" not in supervised_text
+
+
+def test_no_padding_honors_error_truncation(tmp_path: Path):
+    messages = [
+        {"role": "user", "content": "question"},
+        {"role": "assistant", "content": "<think>" + "reasoning " * 50 + "</think><answer>done</answer>"},
+    ]
+    data_file = tmp_path / "too_long.parquet"
+    pd.DataFrame({"messages": [messages]}).to_parquet(data_file)
+    dataset = MultiTurnSFTDataset(
+        parquet_files=str(data_file),
+        tokenizer=FakeQwenThinkingTokenizer(),
+        config={
+            "messages_key": "messages",
+            "max_length": 20,
+            "pad_mode": "no_padding",
+            "truncation": "error",
+            "tokenize_whole_message": True,
+        },
+    )
+
+    with pytest.raises(ValueError, match="larger than max_length"):
+        dataset[0]

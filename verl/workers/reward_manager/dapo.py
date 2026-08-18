@@ -93,7 +93,16 @@ class DAPORewardManager(AbstractRewardManager):
 
             data_source = data_item.non_tensor_batch[self.reward_fn_key]
 
-            extra_info = data_item.non_tensor_batch.get("extra_info", {})
+            # Reward functions need native completion evidence.  Text decoding
+            # removes EOS, and response length alone cannot distinguish an EOS
+            # emitted exactly at the generation limit from a length stop.
+            extra_info = dict(data_item.non_tensor_batch.get("extra_info", {}))
+            extra_info["valid_response_length"] = int(valid_response_length.item())
+            extra_info["max_resp_len"] = int(response_ids.shape[-1])
+            eos_token_id = self.tokenizer.eos_token_id
+            extra_info["response_eos_present"] = bool(
+                eos_token_id is not None and torch.any(valid_response_ids == eos_token_id).item()
+            )
 
             rollout_reward_scores = data_item.non_tensor_batch.get("reward_scores", {})
 

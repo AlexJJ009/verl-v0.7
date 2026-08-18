@@ -25,7 +25,10 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 ALLOWLIST = ROOT / "tests/special_sanity/sft_input_ids_mismatch_allowlist.json"
-MATH_LAUNCHER = ROOT / "recipe/on_policy_wdl_sft/format_cold_start/run_sft_math_qwen3_1p7b_format.sh"
+COLD_START_LAUNCHERS = (
+    ROOT / "recipe/on_policy_wdl_sft/format_cold_start/run_sft_math_qwen3_1p7b_format.sh",
+    ROOT / "recipe/on_policy_wdl_sft/format_cold_start/run_sft_code_qwen3_1p7b_kodcode_format.sh",
+)
 V3_COLD = ROOT / "recipe/on_policy_wdl_sft/experiment_manifest/math_qwen3_1p7b_cold_start_cotmask_v3.yaml"
 INVALIDATED = (
     ROOT / "recipe/on_policy_wdl_sft/experiment_manifest/math_qwen3_1p7b_cold_start.yaml",
@@ -68,10 +71,11 @@ def check(root: Path = ROOT) -> list[str]:
         if observed[path] != allowed[path]:
             failures.append(f"allowlisted mismatch override changed and requires re-audit: {path}")
 
-    launcher_text = (root / MATH_LAUNCHER.relative_to(ROOT)).read_text()
-    for required in ('"data.tokenize_whole_message=True"', '"data.ignore_input_ids_mismatch=False"'):
-        if required not in launcher_text:
-            failures.append(f"math cold-start launcher missing {required}")
+    for launcher in COLD_START_LAUNCHERS:
+        launcher_text = (root / launcher.relative_to(ROOT)).read_text()
+        for required in ('"data.tokenize_whole_message=True"', '"data.ignore_input_ids_mismatch=False"'):
+            if required not in launcher_text:
+                failures.append(f"cold-start launcher missing {required}: {launcher.relative_to(ROOT)}")
 
     cold = yaml.safe_load((root / V3_COLD.relative_to(ROOT)).read_text())
     if cold["execution"].get("requires_whole_message_loss_mask") is not True:

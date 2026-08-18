@@ -34,9 +34,12 @@ def build_policy_tree(tmp_path: Path):
     allowlist = tmp_path / "tests/special_sanity/sft_input_ids_mismatch_allowlist.json"
     allowlist.parent.mkdir(parents=True)
     allowlist.write_text(json.dumps({"schema_version": 1, "entries": []}))
-    launcher = tmp_path / "recipe/on_policy_wdl_sft/format_cold_start/run_sft_math_qwen3_1p7b_format.sh"
-    launcher.parent.mkdir(parents=True)
-    launcher.write_text('"data.tokenize_whole_message=True"\n"data.ignore_input_ids_mismatch=False"\n')
+    launcher_root = tmp_path / "recipe/on_policy_wdl_sft/format_cold_start"
+    launcher_root.mkdir(parents=True)
+    for name in ("run_sft_math_qwen3_1p7b_format.sh", "run_sft_code_qwen3_1p7b_kodcode_format.sh"):
+        (launcher_root / name).write_text(
+            '"data.tokenize_whole_message=True"\n"data.ignore_input_ids_mismatch=False"\n'
+        )
     manifest_root = tmp_path / "recipe/on_policy_wdl_sft/experiment_manifest"
     write_manifest(
         manifest_root / "math_qwen3_1p7b_cold_start_cotmask_v3.yaml",

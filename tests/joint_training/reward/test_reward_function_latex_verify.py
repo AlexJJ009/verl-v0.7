@@ -36,6 +36,10 @@ from custom_reward_function_latex_verify import (
 )
 
 
+def formatted_math(answer: str, reasoning: str = "Compute the requested value.") -> str:
+    return f"<think>{reasoning}</think><answer>{answer}</answer>"
+
+
 # ===========================================================================
 # Section 1: verify_with_latex — LaTeX semantic matching
 # ===========================================================================
@@ -123,7 +127,7 @@ class TestComputeScoreLatexVerify:
     def test_correct_answer_with_eos(self):
         result = compute_score_latex_verify(
             data_source="gsm8k",
-            solution_str="Let me think... The answer is \\boxed{42}.",
+            solution_str=formatted_math("\\boxed{42}"),
             ground_truth="42",
             extra_info={"valid_response_length": 50, "max_resp_len": 1024},
         )
@@ -132,10 +136,35 @@ class TestComputeScoreLatexVerify:
         assert result["has_eos"] is True
         assert result["pred"] == "42"
 
+    def test_correct_answer_only_response_is_negative(self):
+        result = compute_score_latex_verify(
+            data_source="gsm8k",
+            solution_str="<answer>\\boxed{42}</answer>",
+            ground_truth="42",
+        )
+        assert result["answer_correct"] is True
+        assert result["score"] == -1.0
+        assert result["acc"] is False
+        assert result["think_nonempty"] is False
+        assert result["format_contract_success"] is False
+
+    @pytest.mark.parametrize(
+        "solution",
+        [
+            "<think></think><answer>\\boxed{42}</answer>",
+            "<think>reasoning<answer>\\boxed{42}</answer>",
+            "<answer>\\boxed{42}</answer><think>reasoning</think>",
+        ],
+    )
+    def test_empty_unclosed_or_misordered_think_is_negative(self, solution):
+        result = compute_score_latex_verify("gsm8k", solution, "42")
+        assert result["score"] == -1.0
+        assert result["format_contract_success"] is False
+
     def test_wrong_answer_with_eos(self):
         result = compute_score_latex_verify(
             data_source="gsm8k",
-            solution_str="The answer is \\boxed{7}.",
+            solution_str=formatted_math("\\boxed{7}"),
             ground_truth="42",
             extra_info={"valid_response_length": 30, "max_resp_len": 1024},
         )
@@ -147,7 +176,7 @@ class TestComputeScoreLatexVerify:
         """Response truncated (no EOS) → reward = -1.0 even if answer is correct."""
         result = compute_score_latex_verify(
             data_source="gsm8k",
-            solution_str="The answer is \\boxed{42}.",
+            solution_str=formatted_math("\\boxed{42}"),
             ground_truth="42",
             extra_info={"valid_response_length": 1024, "max_resp_len": 1024},
         )
@@ -158,7 +187,7 @@ class TestComputeScoreLatexVerify:
     def test_no_boxed_answer(self):
         result = compute_score_latex_verify(
             data_source="gsm8k",
-            solution_str="I think the answer is 42.",
+            solution_str=formatted_math("42"),
             ground_truth="42",
             extra_info={"valid_response_length": 30, "max_resp_len": 1024},
         )
@@ -169,7 +198,7 @@ class TestComputeScoreLatexVerify:
         """When extra_info is None, assume EOS is present."""
         result = compute_score_latex_verify(
             data_source="gsm8k",
-            solution_str="\\boxed{42}",
+            solution_str=formatted_math("\\boxed{42}"),
             ground_truth="42",
         )
         assert result["has_eos"] is True
@@ -178,7 +207,7 @@ class TestComputeScoreLatexVerify:
     def test_fraction_semantic_match(self):
         result = compute_score_latex_verify(
             data_source="math",
-            solution_str="Therefore \\boxed{\\frac{3}{6}}.",
+            solution_str=formatted_math("\\boxed{\\frac{3}{6}}"),
             ground_truth="0.5",
             extra_info={"valid_response_length": 40, "max_resp_len": 1024},
         )
@@ -189,7 +218,7 @@ class TestComputeScoreLatexVerify:
         """Verify all expected keys are present in the result dict."""
         result = compute_score_latex_verify(
             data_source="gsm8k",
-            solution_str="\\boxed{1}",
+            solution_str=formatted_math("\\boxed{1}"),
             ground_truth="1",
         )
         expected_keys = {
@@ -199,7 +228,9 @@ class TestComputeScoreLatexVerify:
             "has_eos",
             "truncated",
             "think_complete",
+            "think_nonempty",
             "answer_complete",
+            "format_ordered",
             "boxed_extraction_success",
             "reward_grader_success",
             "format_contract_success",
@@ -211,7 +242,7 @@ class TestComputeScoreLatexVerify:
     def test_verification_method_is_populated(self):
         result = compute_score_latex_verify(
             data_source="gsm8k",
-            solution_str="\\boxed{42}",
+            solution_str=formatted_math("\\boxed{42}"),
             ground_truth="42",
         )
         assert result["verification_method"] in {
@@ -231,7 +262,7 @@ class TestComputeScoreLatexVerify:
 
         result = compute_score_latex_verify(
             data_source="gsm8k",
-            solution_str="anything",
+            solution_str=formatted_math("\\boxed{42}"),
             ground_truth="42",
         )
 
@@ -255,7 +286,7 @@ class TestComputeScoreLatexVerify:
 
         result = compute_score_latex_verify(
             data_source="gsm8k",
-            solution_str="The answer is \\boxed{42}.",
+            solution_str=formatted_math("\\boxed{42}"),
             ground_truth="42",
         )
 
@@ -268,7 +299,7 @@ class TestComputeScoreLatexVerify:
         the function should fall back to string matching."""
         result = compute_score_latex_verify(
             data_source="gsm8k",
-            solution_str="\\boxed{hello}",
+            solution_str=formatted_math("\\boxed{hello}"),
             ground_truth="hello",
             extra_info={"valid_response_length": 20, "max_resp_len": 1024},
         )
@@ -294,7 +325,7 @@ class TestEdgeCases:
         """Edge case: empty ground truth should not crash."""
         result = compute_score_latex_verify(
             data_source="gsm8k",
-            solution_str="\\boxed{42}",
+            solution_str=formatted_math("\\boxed{42}"),
             ground_truth="",
         )
         assert isinstance(result["score"], float)
@@ -302,15 +333,13 @@ class TestEdgeCases:
     def test_unicode_in_answer(self):
         result = compute_score_latex_verify(
             data_source="gsm8k",
-            solution_str="\\boxed{π}",
+            solution_str=formatted_math("\\boxed{π}"),
             ground_truth="π",
         )
         assert isinstance(result["score"], float)
 
     def test_multiline_response(self):
-        solution = """Step 1: We compute 6 * 7 = 42.
-Step 2: Therefore the answer is \\boxed{42}.
-"""
+        solution = formatted_math("\\boxed{42}", "Step 1: We compute 6 * 7 = 42.")
         result = compute_score_latex_verify(
             data_source="gsm8k",
             solution_str=solution,
@@ -321,7 +350,7 @@ Step 2: Therefore the answer is \\boxed{42}.
 
     def test_thinking_tags_with_boxed(self):
         """Simulate a model response with <think>...</think> tags."""
-        solution = "<think>Let me work through this. 6*7=42.</think>\n\nThe answer is \\boxed{42}."
+        solution = formatted_math("\\boxed{42}", "Let me work through this. 6*7=42.")
         result = compute_score_latex_verify(
             data_source="gsm8k",
             solution_str=solution,
@@ -334,7 +363,7 @@ Step 2: Therefore the answer is \\boxed{42}.
         boxed content so \\boxed{7} conflicts with ground_truth=42, causing
         the verifier to reject. This is intended: the reward function penalizes
         self-contradictory answers."""
-        solution = "First attempt: \\boxed{7}. Wait, let me recalculate... \\boxed{42}."
+        solution = formatted_math("First attempt: \\boxed{7}. Final: \\boxed{42}.")
         result = compute_score_latex_verify(
             data_source="gsm8k",
             solution_str=solution,
@@ -344,7 +373,7 @@ Step 2: Therefore the answer is \\boxed{42}.
 
     def test_multiple_boxed_same_answer(self):
         """Multiple boxed with the SAME answer — should be correct."""
-        solution = "We get \\boxed{42}. Confirmed: \\boxed{42}."
+        solution = formatted_math("We get \\boxed{42}. Confirmed: \\boxed{42}.")
         result = compute_score_latex_verify(
             data_source="gsm8k",
             solution_str=solution,

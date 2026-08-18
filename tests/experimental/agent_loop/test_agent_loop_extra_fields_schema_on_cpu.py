@@ -29,6 +29,7 @@ from verl.experimental.agent_loop.agent_loop import (
     AgentLoopWorker,
     DictConfigWrap,
     _InternalAgentLoopOutput,
+    _normalize_agent_loop_output_schema,
 )
 from verl.experimental.agent_loop.single_turn_agent_loop import SingleTurnAgentLoop
 from verl.experimental.fully_async_policy.agent_loop.partial_single_turn_agent_loop import PartialSingleTurnAgentLoop
@@ -276,6 +277,65 @@ def test_agent_loop_extra_fields_schema_stable_for_training_concat_on_cpu():
         assert merged.non_tensor_batch["tool_rewards"][1] == []
 
     asyncio.run(_run())
+
+
+def test_agent_loop_manager_normalizes_reward_extra_schema_across_worker_chunks_on_cpu():
+    """Async reward workers may emit different reward_extra_info keys per chunk.
+
+    AgentLoopWorker._postprocess normalizes keys within a worker chunk, but
+    AgentLoopManager must also normalize across chunks before DataProto.concat.
+    """
+
+    def make_chunk(non_tensors: dict[str, list[object]], reward_extra_keys: list[str]) -> DataProto:
+        batch_size = len(next(iter(non_tensors.values())))
+        responses = torch.ones((batch_size, 4), dtype=torch.long)
+        return DataProto.from_dict(
+            tensors={
+                "responses": responses,
+                "rm_scores": torch.zeros((batch_size, 4), dtype=torch.float32),
+            },
+            non_tensors=non_tensors,
+            meta_info={
+                "metrics": [{"generate_sequences": 1.0, "tool_calls": 0.0, "num_preempted": 0}],
+                "reward_extra_keys": reward_extra_keys,
+            },
+        )
+
+    chunk_a = make_chunk(
+        {
+            "__num_turns__": [2],
+            "score": [1.0],
+            "acc": [1.0],
+        },
+        ["score", "acc"],
+    )
+    chunk_b = make_chunk(
+        {
+            "__num_turns__": [2],
+            "score": [-1.0],
+            "acc": [0.0],
+            "code_reward_timeout": [1],
+            "code_reward_status": ["timeout"],
+        },
+        ["score", "acc", "code_reward_timeout", "code_reward_status"],
+    )
+
+    with pytest.raises(AssertionError):
+        DataProto.concat([chunk_a, chunk_b])
+
+    _normalize_agent_loop_output_schema([chunk_a, chunk_b])
+    merged = DataProto.concat([chunk_a, chunk_b])
+
+    assert merged.meta_info["reward_extra_keys"] == [
+        "acc",
+        "code_reward_status",
+        "code_reward_timeout",
+        "score",
+    ]
+    assert merged.non_tensor_batch["code_reward_timeout"].tolist() == [0, 1]
+    assert merged.non_tensor_batch["code_reward_status"].tolist() == ["missing", "timeout"]
+    assert merged.non_tensor_batch["score"].tolist() == [1.0, -1.0]
+    assert merged.non_tensor_batch["acc"].tolist() == [1.0, 0.0]
 
 
 def test_agent_loops_normalize_batch_encoding_chat_templates_to_token_ids():

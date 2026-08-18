@@ -523,11 +523,20 @@ class MultiTurnSFTDataset(Dataset):
                 res["multi_modal_inputs"] = multi_modal_inputs
             return res
         elif self.pad_mode == DatasetPadMode.NO_PADDING:
-            # truncate input_ids if it is longer than max_length
+            # Apply the same explicit truncation policy as right-padded mode.
             if len(input_ids) > self.max_length:
-                input_ids = input_ids[: self.max_length]
-                loss_mask = loss_mask[: self.max_length]
-                position_ids = position_ids[..., : self.max_length]
+                if self.truncation == "left":
+                    input_ids = input_ids[-self.max_length :]
+                    loss_mask = loss_mask[-self.max_length :]
+                    position_ids = position_ids[..., -self.max_length :]
+                elif self.truncation == "right":
+                    input_ids = input_ids[: self.max_length]
+                    loss_mask = loss_mask[: self.max_length]
+                    position_ids = position_ids[..., : self.max_length]
+                elif self.truncation == "error":
+                    raise ValueError(f"sequence_length={len(input_ids)} is larger than max_length={self.max_length}")
+                else:
+                    raise ValueError(f"Unknown truncation method {self.truncation}")
 
             # return nested tensor with out padding
             res = {

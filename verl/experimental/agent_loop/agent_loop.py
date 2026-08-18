@@ -59,6 +59,7 @@ def _default_reward_extra_value(key: str) -> Any:
         "acc": 0.0,
         "code_reward_status": "missing",
         "code_reward_extraction_fail": 0,
+        "code_reward_format_error": 0,
         "code_reward_compile_error": 0,
         "code_reward_runtime_error": 0,
         "code_reward_timeout": 0,
@@ -70,8 +71,83 @@ def _default_reward_extra_value(key: str) -> Any:
         "verification_method": "",
         "official_aligned": False,
         "code_reward_sandbox": "",
+        "think_nonempty": False,
+        "think_complete": False,
+        "answer_complete": False,
+        "format_ordered": False,
+        "has_eos": False,
+        "truncated": False,
+        "extraction_success": False,
+        "format_contract_success": False,
+        "answer_correct": False,
     }
     return code_reward_defaults.get(key, "")
+
+
+def _default_agent_loop_non_tensor_value(key: str, reward_extra_keys: set[str]) -> Any:
+    if key in reward_extra_keys:
+        return _default_reward_extra_value(key)
+    return None
+
+
+def _make_default_non_tensor_array(
+    *,
+    key: str,
+    length: int,
+    template: np.ndarray | None,
+    reward_extra_keys: set[str],
+) -> np.ndarray:
+    default_value = _default_agent_loop_non_tensor_value(key, reward_extra_keys)
+    if template is not None:
+        shape = (length,) + tuple(template.shape[1:])
+        if default_value is not None and template.dtype != object:
+            try:
+                return np.full(shape, default_value, dtype=template.dtype)
+            except (TypeError, ValueError):
+                pass
+
+    default_array = np.empty((length,), dtype=object)
+    default_array[:] = [default_value] * length
+    return default_array
+
+
+def _normalize_agent_loop_output_schema(outputs: list[DataProto]) -> None:
+    """Normalize non-tensor schemas across async agent-loop worker chunks.
+
+    AgentLoopWorker._postprocess normalizes reward_extra_info within one worker
+    chunk. In async rollout, each worker chunk may still observe a different
+    subset of reward extra keys, for example only timeout/error samples include
+    code-specific diagnostics. DataProto.concat intentionally asserts on
+    mismatched non_tensor_batch keys, so AgentLoopManager must make the chunk
+    schemas identical before concatenating.
+    """
+    if not outputs:
+        return
+
+    all_non_tensor_keys: set[str] = set()
+    reward_extra_keys: set[str] = set()
+    templates: dict[str, np.ndarray] = {}
+    for output in outputs:
+        all_non_tensor_keys.update(output.non_tensor_batch.keys())
+        reward_extra_keys.update(output.meta_info.get("reward_extra_keys", []))
+        for key, value in output.non_tensor_batch.items():
+            if key not in templates and isinstance(value, np.ndarray):
+                templates[key] = value
+
+    if not all_non_tensor_keys:
+        return
+
+    for output in outputs:
+        missing_keys = all_non_tensor_keys - set(output.non_tensor_batch.keys())
+        for key in missing_keys:
+            output.non_tensor_batch[key] = _make_default_non_tensor_array(
+                key=key,
+                length=len(output),
+                template=templates.get(key),
+                reward_extra_keys=reward_extra_keys,
+            )
+        if reward_extra_keys:
+            output.meta_info["reward_extra_keys"] = sorted(reward_extra_keys)
 
 
 class AsyncLLMServerManager:
@@ -983,6 +1059,7 @@ class AgentLoopManager:
                 for worker, chunk in zip(self.agent_loop_workers, chunkes, strict=True)
             ]
         )
+        _normalize_agent_loop_output_schema(outputs)
         output = DataProto.concat(outputs)
 
         # calculate performance metrics

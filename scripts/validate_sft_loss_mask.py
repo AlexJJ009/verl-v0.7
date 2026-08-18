@@ -63,7 +63,8 @@ def validate(args: argparse.Namespace) -> dict:
     rows = []
     for index in range(len(dataset)):
         item = dataset[index]
-        supervised_text = tokenizer.decode(item["input_ids"][item["loss_mask"].bool()])
+        supervised_ids = item["input_ids"][item["loss_mask"].bool()].tolist()
+        supervised_text = tokenizer.decode(supervised_ids)
         messages = dataset.messages[index]
         assistant_messages = [message for message in messages if message["role"] == "assistant"]
         if not assistant_messages:
@@ -81,7 +82,11 @@ def validate(args: argparse.Namespace) -> dict:
                 if message["role"] in {"system", "user"}
             ),
             "all_reasoning_present": all(
-                reasoning_body(message["content"]) in supervised_text for message in assistant_messages
+                tokenizer.decode(
+                    tokenizer.encode(reasoning_body(message["content"]), add_special_tokens=False)
+                ).strip()
+                in supervised_text
+                for message in assistant_messages
             ),
         }
         failed_checks = sorted(name for name, passed in checks.items() if not passed)
@@ -98,7 +103,7 @@ def validate(args: argparse.Namespace) -> dict:
 
     return {
         "schema_version": 1,
-        "ok": not failures and len(dataset) == args.samples,
+        "ok": not failures and (args.samples == -1 or len(dataset) == args.samples),
         "model": str(args.model),
         "dataset": str(args.dataset),
         "dataset_sha256": sha256(args.dataset),
@@ -127,8 +132,8 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    if args.samples <= 0:
-        raise ValueError("--samples must be positive")
+    if args.samples == 0 or args.samples < -1:
+        raise ValueError("--samples must be -1 (all rows) or positive")
     if not args.model.exists():
         raise FileNotFoundError(args.model)
     if not args.dataset.is_file():

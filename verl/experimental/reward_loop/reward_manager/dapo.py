@@ -17,6 +17,8 @@ import inspect
 import logging
 import time
 
+import torch
+
 from verl import DataProto
 from verl.experimental.reward_loop.reward_manager import register
 from verl.experimental.reward_loop.reward_manager.base import RewardManagerBase
@@ -153,7 +155,13 @@ class DAPORewardManager(RewardManagerBase):
 
         data_source = data_item.non_tensor_batch["data_source"]
         ground_truth = data_item.non_tensor_batch["reward_model"]["ground_truth"]
-        extra_info = data_item.non_tensor_batch.get("extra_info", {})
+        extra_info = dict(data_item.non_tensor_batch.get("extra_info", {}))
+        extra_info["valid_response_length"] = int(valid_response_length.item())
+        extra_info["max_resp_len"] = int(response_length)
+        eos_token_id = self.tokenizer.eos_token_id
+        extra_info["response_eos_present"] = bool(
+            eos_token_id is not None and torch.any(valid_response_ids == eos_token_id).item()
+        )
 
         response_str = await self.loop.run_in_executor(
             None, lambda: self.tokenizer.decode(valid_response_ids, skip_special_tokens=True)

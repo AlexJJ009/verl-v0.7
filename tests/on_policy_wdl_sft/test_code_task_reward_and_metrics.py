@@ -23,7 +23,7 @@ from verl.trainer.ppo.metric_utils import process_validation_metrics
 
 
 def wrap_code(code: str) -> str:
-    return f"<answer>\n```python\n{code}\n```\n</answer>"
+    return f"<think>Use the specified inputs and return the required result.</think>\n<answer>\n```python\n{code}\n```\n</answer>"
 
 
 class TestCodeTaskRewardAndMetrics(unittest.TestCase):
@@ -78,6 +78,50 @@ class TestCodeTaskRewardAndMetrics(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertEqual(result.source, "strict:no_answer")
 
+    def test_correct_answer_only_code_is_negative(self):
+        gt = {
+            "verification_method": "stdin_stdout_exec",
+            "tests": [{"input": "2 3\n", "output": "5\n"}],
+        }
+        result = compute_score_code_official_aligned(
+            "deepcoder_preview_train",
+            "<answer>\n```python\na, b = map(int, input().split())\nprint(a + b)\n```\n</answer>",
+            gt,
+        )
+        self.assertEqual(result["score"], -1.0)
+        self.assertEqual(result["code_reward_status"], "format_error")
+        self.assertFalse(result["think_nonempty"])
+        self.assertFalse(result["format_contract_success"])
+
+    def test_empty_or_unclosed_think_is_negative(self):
+        gt = {
+            "verification_method": "stdin_stdout_exec",
+            "tests": [{"input": "", "output": "OK\n"}],
+        }
+        for response in (
+            "<think></think><answer>\n```python\nprint('OK')\n```\n</answer>",
+            "<think>reasoning<answer>\n```python\nprint('OK')\n```\n</answer>",
+        ):
+            result = compute_score_code_official_aligned("deepcoder_preview_train", response, gt)
+            self.assertEqual(result["score"], -1.0)
+            self.assertFalse(result["format_contract_success"])
+
+    def test_truncated_correct_code_is_negative(self):
+        gt = {
+            "verification_method": "stdin_stdout_exec",
+            "tests": [{"input": "", "output": "OK\n"}],
+        }
+        result = compute_score_code_official_aligned(
+            "deepcoder_preview_train",
+            wrap_code("print('OK')"),
+            gt,
+            extra_info={"valid_response_length": 128, "max_resp_len": 128},
+        )
+        self.assertEqual(result["score"], -1.0)
+        self.assertFalse(result["has_eos"])
+        self.assertTrue(result["truncated"])
+        self.assertFalse(result["format_contract_success"])
+
         relaxed = extract_code("```python\ndef f():\n    return 1\n```", strict_answer=False)
         self.assertTrue(relaxed.ok)
         self.assertEqual(relaxed.source, "full:fenced_python")
@@ -113,6 +157,36 @@ class TestCodeTaskRewardAndMetrics(unittest.TestCase):
         self.assertEqual(leak["code_reward_status"], "wrong_answer")
         self.assertEqual(leak["score"], -1.0)
         self.assertEqual(leak["acc"], 0.0)
+
+    def test_kodcode_firejail_ignores_bloated_parent_environment(self):
+        if not os.path.exists("/usr/bin/firejail"):
+            self.skipTest("firejail is not installed")
+
+        gt = {
+            "verification_method": "kodcode_exec",
+            "test": "from solution import *\n\n"
+            "def test_add():\n"
+            "    assert add(2, 3) == 5\n",
+        }
+        injected_keys = [f"KODCODE_TEST_ENV_{index}" for index in range(300)]
+        previous = {key: os.environ.get(key) for key in injected_keys}
+        try:
+            os.environ.update({key: "x" for key in injected_keys})
+            result = compute_score_code_official_aligned(
+                "kodcode_light_rl_10k",
+                wrap_code("def add(a, b):\n    return a + b"),
+                gt,
+            )
+        finally:
+            for key, value in previous.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
+
+        self.assertEqual(result["code_reward_status"], "pass")
+        self.assertEqual(result["score"], 1.0)
+        self.assertEqual(result["code_reward_sandbox"], "firejail")
 
     def test_code_core_acc_exposes_distinct_mean_pass_and_std_at_k(self):
         result = process_validation_metrics(
@@ -153,7 +227,7 @@ class TestCodeTaskRewardAndMetrics(unittest.TestCase):
         self.assertEqual(wrong["score"], -1.0)
 
         marker = f"codex_deepcoder_orphan_{uuid.uuid4().hex}"
-        child = f"import os, time; os.setsid(); open('/data-1/tmp/{marker}', 'w').write('alive'); time.sleep(120)"
+        child = f"import os, time; os.setsid(); open('/tmp/{marker}', 'w').write('alive'); time.sleep(120)"
         code = (
             "import subprocess, sys\n"
             f"subprocess.Popen([sys.executable, '-c', {child!r}])\n"
