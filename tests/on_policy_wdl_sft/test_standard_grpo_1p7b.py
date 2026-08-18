@@ -12,6 +12,7 @@ from omegaconf import OmegaConf
 
 from verl.trainer.ppo.core_algos import compute_policy_loss_vanilla
 from verl.trainer.ppo.ray_trainer import compute_response_mask
+from verl.workers.config.rollout import RolloutConfig
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -126,6 +127,11 @@ def test_common_launcher_forwards_standard_grpo_actor_contract():
     assert "actor_rollout_ref.actor.grad_clip=${actor_grad_clip}" in launcher
     assert "actor_rollout_ref.actor.loss_agg_mode=${loss_agg_mode}" in launcher
     assert "actor_rollout_ref.actor.grad_clip=500.0" not in launcher
+
+
+def test_rollout_config_accepts_the_reproducibility_seed_forwarded_by_launcher():
+    config = RolloutConfig(name="vllm", seed=7)
+    assert config.seed == 7
 
 
 def test_math_stage1_entry_fails_closed_on_provenance_hashes():

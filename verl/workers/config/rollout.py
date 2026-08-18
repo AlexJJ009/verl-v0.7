@@ -139,6 +139,10 @@ class RolloutConfig(BaseConfig):
     name: Optional[str] = MISSING
     mode: str = "async"
 
+    # Base seed for rollout-engine initialization. Async vLLM offsets this by
+    # replica rank so engines are reproducible without sharing one RNG stream.
+    seed: int = 0
+
     temperature: float = 1.0
     top_k: int = -1
     top_p: float = 1.0
