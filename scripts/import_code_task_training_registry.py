@@ -36,7 +36,7 @@ DB = os.environ.get("EXPERIMENT_REGISTRY_DB", "/data-1/experiment_registry/exper
 WANDB_ROOT = Path(os.environ.get("WANDB_ROOT", "/data-1/wandb_runs")).resolve()
 PROJECT_NAME = "verl:feature/on-policy-wdl-sft"
 BRANCH = "feature/on-policy-wdl-sft"
-IMPORTER = "import_code_task_training_registry_v1"
+IMPORTER = "import_code_task_training_registry_v2"
 RELEASE_GATE_SCRIPT = REPO / "scripts/training_result_release_gate.py"
 BASE_MODEL_INSTRUCT2507 = "/data-1/.cache/huggingface/hub/models--Qwen--Qwen3-4B-Instruct-2507/snapshots/cdbee75f17c01a7cc42f958dc650907174af0554"
 
@@ -87,6 +87,57 @@ def git_commit() -> str | None:
 
 
 def infer_run(run_name: str) -> dict[str, Any]:
+    acd0 = re.match(r"CODE-WDL-ACD0-P60-ARM-(A|C|D0)-QWEN3-1P7B_", run_name)
+    if acd0:
+        arm = acd0.group(1)
+        arm_meta = {
+            "A": {
+                "label": "single_model_continuation",
+                "fusion_mode": "single_model",
+                "fusion_lambda": None,
+                "model1_updates": False,
+                "model2_updates": True,
+            },
+            "C": {
+                "label": "mixture_weak_logit_treatment",
+                "fusion_mode": "mixture",
+                "fusion_lambda": 0.8,
+                "model1_updates": True,
+                "model2_updates": True,
+            },
+            "D0": {
+                "label": "matched_scale_no_weak_control",
+                "fusion_mode": "strong_scaled",
+                "fusion_lambda": 0.8,
+                "model1_updates": False,
+                "model2_updates": True,
+            },
+        }[arm]
+        suffix = slug(run_name)
+        return {
+            "beta": 0.0,
+            "beta_label": "beta0",
+            "stage": "acd0_p60",
+            "handoff": 60,
+            "dataset": "kodcode_author_signature_v2",
+            "init": "qwen3-1.7b",
+            "ctx": "response8k-model9216",
+            "fraction": None,
+            "arm": arm,
+            "arm_label": arm_meta["label"],
+            "fusion_mode": arm_meta["fusion_mode"],
+            "fusion_lambda": arm_meta["fusion_lambda"],
+            "model1_updates": arm_meta["model1_updates"],
+            "model2_updates": arm_meta["model2_updates"],
+            "learning_rate": 1e-6,
+            "max_prompt_length": 1024,
+            "max_response_length": 8192,
+            "val_n": 3,
+            "primary_metric_view": "model2",
+            "experiment_key": f"verl.on_policy_wdl_sft.code.acd0_p60.qwen3_1p7b.beta0.arm_{arm.lower()}.{suffix}",
+            "display_name": f"ACD0 P60 Code Qwen3-1.7B beta0 arm {arm} {run_name}",
+        }
+
     beta = None
     beta_label = "unknown"
     if "BETA05" in run_name:
@@ -121,6 +172,17 @@ def infer_run(run_name: str) -> dict[str, Any]:
         "init": init,
         "ctx": ctx,
         "fraction": fraction,
+        "arm": None,
+        "arm_label": None,
+        "fusion_mode": None,
+        "fusion_lambda": None,
+        "model1_updates": None,
+        "model2_updates": None,
+        "learning_rate": 5e-7,
+        "max_prompt_length": 1024,
+        "max_response_length": 4096,
+        "val_n": 1,
+        "primary_metric_view": None,
         "experiment_key": f"verl.on_policy_wdl_sft.code.{dataset}.{init}.{ctx}.{stage}.{beta_label}.{suffix}",
         "display_name": f"{stage.upper()} {dataset} {init} {ctx} {beta_label} {run_name}",
     }
@@ -150,7 +212,19 @@ def find_validation_path(run_name: str, step: int) -> Path | None:
         p = root / run_name / f"{step}.jsonl"
         if p.exists():
             return p
+    acd0_root = Path("/data-2/model_weights/code_task/qwen3_1p7b_wdl_acd0_p60/logs/validation")
+    for view in ("model2", "model1"):
+        p = acd0_root / run_name / view / f"{step}.jsonl"
+        if p.exists():
+            return p
     return None
+
+
+def metric_key(info: dict[str, Any], source: str, metric: str) -> str:
+    view = info.get("primary_metric_view")
+    if view:
+        return f"val-core/{view}/{source}/acc/{metric}"
+    return f"val-core/{source}/acc/{metric}"
 
 
 def find_wandb_run(run_name: str, run_prefix: str | None) -> str | None:
@@ -185,13 +259,14 @@ def import_run(args: argparse.Namespace) -> int:
     commit = git_commit()
     run_prefix = args.run_prefix or run_name.rsplit("_", 1)[0]
 
-    best_he_step, best_he = best_metric(rows, "val-core/HumanEval+/acc/pass@1")
-    best_mbpp_step, best_mbpp = best_metric(rows, "val-core/MBPP+/acc/pass@1")
-    best_lcb_step, best_lcb = best_metric(rows, "val-core/LiveCodeBench/acc/pass@1")
+    primary_eval_metric = "mean@3" if info["val_n"] == 3 else "pass@1"
+    best_he_step, best_he = best_metric(rows, metric_key(info, "HumanEval+", primary_eval_metric))
+    best_mbpp_step, best_mbpp = best_metric(rows, metric_key(info, "MBPP+", primary_eval_metric))
+    best_lcb_step, best_lcb = best_metric(rows, metric_key(info, "LiveCodeBench", primary_eval_metric))
     final_metrics = {
-        "HumanEval+": metric_at(rows, final_eval_step, "val-core/HumanEval+/acc/pass@1"),
-        "MBPP+": metric_at(rows, final_eval_step, "val-core/MBPP+/acc/pass@1"),
-        "LiveCodeBench": metric_at(rows, final_eval_step, "val-core/LiveCodeBench/acc/pass@1"),
+        "HumanEval+": metric_at(rows, final_eval_step, metric_key(info, "HumanEval+", primary_eval_metric)),
+        "MBPP+": metric_at(rows, final_eval_step, metric_key(info, "MBPP+", primary_eval_metric)),
+        "LiveCodeBench": metric_at(rows, final_eval_step, metric_key(info, "LiveCodeBench", primary_eval_metric)),
     }
     final_train = next((r.get("data", {}) for r in reversed(rows) if "wdl_sft/correct_ratio" in r.get("data", {})), {})
     best_ckpt_path = checkpoint_dir / "best_checkpoint.json"
@@ -223,9 +298,16 @@ def import_run(args: argparse.Namespace) -> int:
                     "run_name": run_name,
                     "run_prefix": run_prefix,
                     "stage": info["stage"],
+                    "arm": info["arm"],
+                    "arm_label": info["arm_label"],
+                    "fusion_mode": info["fusion_mode"],
+                    "fusion_lambda": info["fusion_lambda"],
+                    "model1_updates": info["model1_updates"],
+                    "model2_updates": info["model2_updates"],
                     "handoff_step": info["handoff"],
                     "final_step": final_step,
                     "final_eval_step": final_eval_step,
+                    "primary_eval_metric": primary_eval_metric,
                     "best_checkpoint": best_ckpt,
                     "git_branch": BRANCH,
                     "git_commit": commit,
@@ -236,6 +318,8 @@ def import_run(args: argparse.Namespace) -> int:
         )
         for tag in ["code_task", info["dataset"], info["stage"], info["beta_label"], "auto_release_hook"]:
             add_tag(conn, "experiment", exp_id, tag)
+        if info["arm"]:
+            add_tag(conn, "experiment", exp_id, f"arm_{str(info['arm']).lower()}")
 
         dataset_id = upsert_dataset(
             conn,
@@ -267,14 +351,20 @@ def import_run(args: argparse.Namespace) -> int:
         hyperparams = {
             "loss_mode": "wdl_sft",
             "beta": info["beta"],
-            "learning_rate": 5e-7,
+            "learning_rate": info["learning_rate"],
             "rollout_n": 8,
-            "max_response_length": 4096,
-            "max_prompt_length": 1024,
-            "val_n": 1,
+            "max_response_length": info["max_response_length"],
+            "max_prompt_length": info["max_prompt_length"],
+            "val_n": info["val_n"],
             "val_temperature": 0.2,
             "val_top_p": 0.95,
             "online_validation": ["HumanEval+", "MBPP+", "LiveCodeBench"],
+            "arm": info["arm"],
+            "fusion_mode": info["fusion_mode"],
+            "fusion_lambda": info["fusion_lambda"],
+            "model1_updates": info["model1_updates"],
+            "model2_updates": info["model2_updates"],
+            "primary_eval_metric": primary_eval_metric,
         }
         conn.execute(
             """
@@ -284,13 +374,16 @@ def import_run(args: argparse.Namespace) -> int:
               max_length, weight_decay, lr_scheduler, distributed_backend, distributed_config_json, hyperparams_json,
               num_gpus, total_steps, raw_summary_path, wandb_run, git_branch, git_commit, extra_json, notes
             )
-            values (?, ?, ?, ?, 'on_policy_wdl_sft', 'verl', '0.7-local', ?, 5e-7, 64, 1, 512, 4096, 0.1,
+            values (?, ?, ?, ?, 'on_policy_wdl_sft', 'verl', '0.7-local', ?, ?, 64, 1, 512, ?, 0.1,
                     'constant_with_warmup', 'fsdp+ray+vllm', ?, ?, 8, ?, ?, ?, ?, ?, ?, ?)
             on conflict(training_run_key) do update set
               experiment_id=excluded.experiment_id,
               output_model_id=excluded.output_model_id,
               train_dataset_id=excluded.train_dataset_id,
               beta=excluded.beta,
+              learning_rate=excluded.learning_rate,
+              max_length=excluded.max_length,
+              hyperparams_json=excluded.hyperparams_json,
               total_steps=excluded.total_steps,
               raw_summary_path=excluded.raw_summary_path,
               wandb_run=excluded.wandb_run,
@@ -305,6 +398,8 @@ def import_run(args: argparse.Namespace) -> int:
                 model_id,
                 dataset_id,
                 info["beta"],
+                info["learning_rate"],
+                info["max_response_length"],
                 json.dumps({"backend": "fsdp+ray+vllm", "num_gpus": 8}, ensure_ascii=False),
                 json.dumps(hyperparams, ensure_ascii=False),
                 final_step,
