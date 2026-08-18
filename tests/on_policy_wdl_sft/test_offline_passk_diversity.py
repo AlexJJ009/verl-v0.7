@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from recipe.joint_training.merge_passk_shards import _validate_contracts, merge_code
+from recipe.joint_training.merge_passk_shards import _validate_contracts, _validate_coverage, merge_code
 from recipe.joint_training.offline_eval import render_chat_prompt, stable_prompt_id
 
 
@@ -94,6 +94,23 @@ def test_code_shards_reject_duplicate_or_missing_sample_index(tmp_path):
         merge_code([path], tmp_path / "out.jsonl", expected_n=2)
 
 
+def test_math_coverage_keeps_duplicate_prompt_text_as_distinct_dataset_rows():
+    rows = []
+    for dataset_row_index in (293, 294):
+        for sample_index in range(4):
+            rows.append(
+                {
+                    "dataset_path": "/datasets/mawps.parquet",
+                    "dataset_row_index": dataset_row_index,
+                    "prompt_id": "same-content-hash",
+                    "sample_index": sample_index,
+                    "data_source": "mwpt5/MAWPS",
+                }
+            )
+    coverage = _validate_coverage(rows, expected_n=4)
+    assert coverage == {"prompt_count": 2, "response_count": 8, "expected_n": 4}
+
+
 def test_contract_requires_thinking_and_matching_decode_params(tmp_path):
     first = tmp_path / "first.json"
     second = tmp_path / "second.json"
@@ -138,3 +155,8 @@ def test_8gpu_entry_accepts_only_tmux_or_explicit_scheduler_management():
     script = Path("recipe/on_policy_wdl_sft/offline_eval/run_qwen3_1p7b_passk_8gpu.sh").read_text()
     assert '"${EVAL_SCHEDULER_MANAGED:-0}" != 1' in script
     assert "inside tmux or an admitted scheduler-managed worker" in script
+
+
+def test_8gpu_entry_uses_spawn_for_vllm_engine_processes():
+    script = Path("recipe/on_policy_wdl_sft/offline_eval/run_qwen3_1p7b_passk_8gpu.sh").read_text()
+    assert "VLLM_WORKER_MULTIPROC_METHOD=${VLLM_WORKER_MULTIPROC_METHOD:-spawn}" in script
