@@ -48,7 +48,10 @@ def test_friendly_entries_resolve_frozen_standard_grpo_contract(wrapper, task, p
     assert config["rollout_n"] == "8"
     assert config["responses_per_step"] == "512"
     assert config["ppo_mini_batch_size"] == "64"
-    assert config["learning_rate"] == "5e-7"
+    assert config["learning_rate"] == "1e-6"
+    assert config["ppo_epochs"] == "1"
+    assert config["training_seed"] == "1"
+    assert config["resume_mode"] == "disable"
     assert config["actor_grad_clip"] == "1.0"
     assert config["loss_mode"] == "vanilla"
     assert config["loss_agg_mode"] == "seq-mean-token-mean"
@@ -61,11 +64,27 @@ def test_friendly_entries_resolve_frozen_standard_grpo_contract(wrapper, task, p
     assert config["rollout_is"] == "null"
     assert config["enable_thinking"] == "True"
     assert config["data_shuffle"] == "False"
+    expected_reward = {
+        "math": (
+            str(ROOT / "recipe/joint_training/custom_reward_function_latex_verify.py"),
+            "compute_score_latex_verify",
+        ),
+        "code": (
+            str(ROOT / "recipe/on_policy_wdl_sft/code_task/official_aligned_reward.py"),
+            "compute_score_code_official_aligned",
+        ),
+    }
+    assert (config["custom_reward_fn_path"], config["custom_reward_fn_name"]) == expected_reward[task]
     assert config["protected_ckpt_strip_optimizer"] == "True"
+    expected_best_metric = {
+        "math": "val-core/math7_macro/acc/mean@3",
+        "code": "val-core/code3_macro/acc/mean@3",
+    }
+    assert config["best_ckpt_metric_key"] == expected_best_metric[task]
     if pipeline == "stage1_grpo":
-        assert config["protected_ckpt_steps"] == "[20,40,60]"
+        assert config["protected_ckpt_steps"] == "[20]"
     else:
-        assert config["protected_ckpt_steps"] == "[40,60,80,100]"
+        assert config["protected_ckpt_steps"] == "[40,60]"
 
 
 @pytest.mark.parametrize("learning_rate", ["5e-7", "1e-6"])
@@ -73,12 +92,37 @@ def test_learning_rate_sensitivity_uses_the_same_math_entry(learning_rate):
     config = config_only("run_math_stage1_grpo.sh", LR=learning_rate)
     assert config["learning_rate"] == learning_rate
     assert config["total_training_steps"] == "60"
-    assert config["protected_ckpt_steps"] == "[20,40,60]"
+    assert config["protected_ckpt_steps"] == "[20]"
+
+
+def test_c_wdl_p60_then_grpo_is_one_fresh_100_step_post_stage_run():
+    config = config_only(
+        "run_math_c_wdl_p60_then_grpo.sh",
+        INIT_MODEL_PATH="/models/c_p60_model2",
+        DATASET_ROOT="/datasets/math_stage123",
+    )
+    assert config["pipeline"] == "c_wdl_p60_grpo"
+    assert config["init_model_path"] == "/models/c_p60_model2"
+    assert config["train_file"] == "/datasets/math_stage123/stage1_control_stage2_then_stage3.parquet"
+    assert config["total_training_steps"] == "100"
+    assert config["learning_rate"] == "1e-6"
+    assert config["protected_ckpt_steps"] == "[20,40,60,80]"
+    assert config["resume_mode"] == "disable"
+    assert config["total_epochs"] == "2"
+
+    wrapper = (GRPO_DIR / "run_math_c_wdl_p60_then_grpo.sh").read_text()
+    assert "TOTAL_TRAINING_STEPS=98" not in wrapper
+    assert wrapper.count('exec bash "${COMMON}" "$@"') == 1
 
 
 def test_common_launcher_forwards_standard_grpo_actor_contract():
     launcher = (ROOT / "recipe/on_policy_wdl_sft/ablation_single_model/_common_ablation.sh").read_text()
     assert "actor_rollout_ref.actor.ppo_mini_batch_size=${train_prompt_mini_bsz}" in launcher
+    assert "actor_rollout_ref.actor.ppo_epochs=${ppo_epochs}" in launcher
+    assert "actor_rollout_ref.actor.data_loader_seed=${training_seed}" in launcher
+    assert "+actor_rollout_ref.rollout.seed=${rollout_seed}" in launcher
+    assert "data.seed=${training_seed}" in launcher
+    assert "trainer.resume_mode=${resume_mode}" in launcher
     assert "actor_rollout_ref.actor.grad_clip=${actor_grad_clip}" in launcher
     assert "actor_rollout_ref.actor.loss_agg_mode=${loss_agg_mode}" in launcher
     assert "actor_rollout_ref.actor.grad_clip=500.0" not in launcher
@@ -90,6 +134,45 @@ def test_math_stage1_entry_fails_closed_on_provenance_hashes():
     assert "Math S1-P0 model hash mismatch in provenance receipt" in launcher
     assert "Math S1-P0 source joint hash mismatch" in launcher
     assert 'GRPO_PREFLIGHT_ONLY:-0' in launcher
+
+
+def test_math_grpo_formal_launch_is_gated_by_strict_reward_contract():
+    launcher = (ROOT / "recipe/on_policy_wdl_sft/standard_grpo/run_qwen3_1p7b_standard_grpo.sh").read_text()
+    assert 'joint_training/custom_reward_function_latex_verify.py' in launcher
+    assert 'scripts/check_math_reward_contract.py' in launcher
+    assert '--reward-path "${CUSTOM_REWARD_FN_PATH}"' in launcher
+    assert 'grpo_retrain_admission.py' in launcher
+    assert '--runtime-image-digest "${GRPO_RUNTIME_IMAGE_DIGEST}"' in launcher
+    assert '--receipt "${GRPO_ADMISSION_RECEIPT}"' in launcher
+
+
+@pytest.mark.parametrize(
+    ("override", "value", "message"),
+    [
+        ("LOSS_AGG_MODE", "token-mean", "LOSS_AGG_MODE=seq-mean-token-mean"),
+        ("ACTOR_GRAD_CLIP", "500.0", "ACTOR_GRAD_CLIP=1.0"),
+        ("ROLLOUT_IS", "token", "ROLLOUT_IS=null"),
+        ("TRAIN_PROMPT_MINI_BSZ", "512", "TRAIN_PROMPT_MINI_BSZ=64"),
+        ("PPO_EPOCHS", "2", "PPO_EPOCHS=1"),
+        ("RESUME_MODE", "auto", "RESUME_MODE=disable"),
+    ],
+)
+def test_config_only_rejects_noncanonical_grpo_overrides(override, value, message):
+    env = {
+        **os.environ,
+        "GRPO_CONFIG_ONLY": "1",
+        "STAGE1_MODEL_PATH": "/models/stage1",
+        override: value,
+    }
+    result = subprocess.run(
+        ["bash", str(GRPO_DIR / "run_math_stage1_grpo.sh")],
+        cwd=ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 2
+    assert message in result.stderr
 
 
 def test_grpo_loss_mask_includes_every_non_padding_response_token():
