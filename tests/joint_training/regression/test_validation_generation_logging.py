@@ -121,6 +121,29 @@ def test_dump_generations_writes_stable_uid(tmp_path):
     assert row["data_source"] == "HumanEval+"
 
 
+def test_dump_generations_serializes_numpy_reward_metadata(tmp_path):
+    trainer = RayPPOTrainer.__new__(RayPPOTrainer)
+    trainer.global_steps = 1
+    trainer._dump_generations(
+        inputs=["prompt"],
+        outputs=["response"],
+        gts=[{"expected": np.int64(1)}],
+        scores=[np.float32(-1.0)],
+        reward_extra_infos_dict={
+            "format_contract_success": [np.bool_(False)],
+            "nested": [{"runtime_ok": np.bool_(True)}],
+        },
+        dump_path=str(tmp_path),
+    )
+    import json
+
+    row = json.loads((tmp_path / "1.jsonl").read_text())
+    assert row["score"] == -1.0
+    assert row["gts"] == {"expected": 1}
+    assert row["format_contract_success"] is False
+    assert row["nested"] == {"runtime_ok": True}
+
+
 def test_source_uid_survives_repeat_pad_and_unpad_in_order():
     proto = DataProto.from_dict(
         tensors={"dummy": torch.tensor([[1], [2], [3]])},

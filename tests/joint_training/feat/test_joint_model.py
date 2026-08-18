@@ -63,6 +63,18 @@ class TestQwenJointConfig:
         config = QwenJointConfig(fusion_lambda=0.3)
         assert config.fusion_lambda == 0.3
 
+    def test_matched_scale_control_config(self):
+        from verl.models.joint_model.configuration_joint_qwen3 import QwenJointConfig
+
+        config = QwenJointConfig(fusion_lambda=0.8, fusion_mode="strong_scaled")
+        assert config.fusion_mode == "strong_scaled"
+
+    def test_invalid_fusion_mode_fails_closed(self):
+        from verl.models.joint_model.configuration_joint_qwen3 import QwenJointConfig
+
+        with pytest.raises(ValueError, match="fusion_mode"):
+            QwenJointConfig(fusion_mode="unknown")
+
     def test_config_inherits_qwen3(self):
         """Config should inherit Qwen3 config attributes."""
         config = _make_small_joint_config()
@@ -161,6 +173,22 @@ class TestQwenJointForwardPass:
             expected = 0.7 * out0.logits + 0.3 * out1.logits
             torch.testing.assert_close(fused.logits, expected, rtol=1e-4, atol=1e-4)
 
+    def test_strong_scaled_control_matches_lambda_times_model2(self):
+        from verl.models.joint_model.configuration_joint_qwen3 import QwenJointConfig
+        from verl.models.joint_model.modeling_joint_qwen3 import QwenJointForCausalLM
+
+        config = _make_small_joint_config(fusion_lambda=0.8)
+        config.fusion_mode = "strong_scaled"
+        model = QwenJointForCausalLM(config)
+        model.eval()
+        input_ids = torch.randint(0, 1000, (1, 4))
+        attention_mask = torch.ones(1, 4, dtype=torch.long)
+
+        with torch.no_grad():
+            model2 = model.sub_models[1](input_ids=input_ids, attention_mask=attention_mask)
+            control = model(input_ids=input_ids, attention_mask=attention_mask)
+        torch.testing.assert_close(control.logits, 0.8 * model2.logits, rtol=1e-4, atol=1e-4)
+
     def test_forward_with_labels_returns_loss(self, model_and_inputs):
         """When labels are provided, forward should return a loss."""
         model, input_ids, attention_mask = model_and_inputs
@@ -227,6 +255,20 @@ class TestGradientFlow:
         assert grad_norm_1 > grad_norm_0, (
             f"model2 grad norm ({grad_norm_1}) should be > model1 grad norm ({grad_norm_0})"
         )
+
+    def test_strong_scaled_control_has_zero_model1_gradient(self):
+        from verl.models.joint_model.modeling_joint_qwen3 import QwenJointForCausalLM
+
+        config = _make_small_joint_config(fusion_lambda=0.8)
+        config.fusion_mode = "strong_scaled"
+        model = QwenJointForCausalLM(config)
+        input_ids = torch.randint(0, 1000, (2, 4))
+        labels = torch.randint(0, 1000, (2, 4))
+        output = model(input_ids=input_ids, attention_mask=torch.ones_like(input_ids), labels=labels)
+        output.loss.backward()
+
+        assert all(parameter.grad is None for parameter in model.sub_models[0].parameters())
+        assert any(parameter.grad is not None for parameter in model.sub_models[1].parameters())
 
 
 class TestParameterFreezing:

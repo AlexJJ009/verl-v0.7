@@ -1,8 +1,10 @@
 """QwenJointForCausalLM: Joint training model with logit fusion.
 
 Two Qwen3ForCausalLM sub-models perform independent forward passes.
-Their logits are fused: logits = (1 - λ) * logits_0 + λ * logits_1
-Gradients flow to both models weighted by (1-λ) and λ respectively.
+In the default ``mixture`` mode their logits are fused as
+``(1 - λ) * logits_0 + λ * logits_1``.  ``strong_scaled`` is the
+matched-scale no-weak control ``λ * logits_1`` used by the Math WDL causal
+experiment; it intentionally leaves model1 out of the active objective.
 
 For evaluation, pass eval_only=True to get only model2's logits.
 """
@@ -43,7 +45,9 @@ class QwenJointForCausalLM(PreTrainedModel, GenerationMixin):
             [Qwen3ForCausalLM(config) for _ in range(config.num_sub_models)]
         )
         self.fusion_lambda = config.fusion_lambda
+        self.fusion_mode = getattr(config, "fusion_mode", "mixture")
         self.last_logit_disagreement: float | None = None
+        self.last_logit_diagnostics: dict[str, float] | None = None
 
         if config.freeze_model1:
             for param in self.sub_models[0].parameters():
@@ -84,8 +88,9 @@ class QwenJointForCausalLM(PreTrainedModel, GenerationMixin):
                 **kwargs,
             )
 
-        outputs_list = []
-        for sub_model in self.sub_models:
+        outputs_list = [None] * len(self.sub_models)
+        for submodel_index in range(len(self.sub_models)):
+            sub_model = self.sub_models[submodel_index]
             out = sub_model(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
@@ -98,35 +103,75 @@ class QwenJointForCausalLM(PreTrainedModel, GenerationMixin):
                 logits_to_keep=logits_to_keep,
                 **kwargs,
             )
-            outputs_list.append(out)
+            outputs_list[submodel_index] = out
 
         lam = self.fusion_lambda
-        if lam == 0:
+        if self.fusion_mode == "strong_scaled":
+            logits = outputs_list[1].logits * lam
+        elif lam == 0:
             logits = outputs_list[0].logits
         elif lam == 1:
             logits = outputs_list[1].logits
         else:
             # Avoid materializing multiple full-vocab temporaries at once.
-            logits = outputs_list[0].logits.mul(1 - lam)
+            logits = outputs_list[0].logits * (1 - lam)
             logits.add_(outputs_list[1].logits, alpha=lam)
 
-        # Compute submodel logit disagreement (mean absolute diff of softmax probs)
-        # Chunked along token dim to avoid OOM on large vocab (151k) models.
-        # Softmax is per-token along vocab dim, so chunking is mathematically exact.
-        with torch.no_grad():
-            logits0 = outputs_list[0].logits
-            logits1 = outputs_list[1].logits
-            orig_shape = logits0.shape  # (bs, seq, vocab)
-            flat0 = logits0.reshape(-1, orig_shape[-1])
-            flat1 = logits1.reshape(-1, orig_shape[-1])
-            n_tokens = flat0.shape[0]
-            _CHUNK = 256  # peak ≈ 256 * 151936 * 4 * 3 ≈ 440 MiB
-            total_diff = 0.0
-            for i in range(0, n_tokens, _CHUNK):
-                p0 = torch.softmax(flat0[i:i + _CHUNK].float(), dim=-1)
-                p1 = torch.softmax(flat1[i:i + _CHUNK].float(), dim=-1)
-                total_diff += (p0 - p1).abs().sum().item()
-            self.last_logit_disagreement = total_diff / (n_tokens * orig_shape[-1])
+        # Compute the expensive full-vocabulary diagnostics only when callers
+        # explicitly request submodel logits. Ordinary forwards avoid the
+        # second pair of softmaxes.
+        self.last_logit_disagreement = None
+        self.last_logit_diagnostics = None
+        if return_submodel_logits:
+            with torch.no_grad():
+                logits0 = outputs_list[0].logits
+                logits1 = outputs_list[1].logits
+                orig_shape = logits0.shape  # (bs, seq, vocab)
+                flat0 = logits0.reshape(-1, orig_shape[-1])
+                flat1 = logits1.reshape(-1, orig_shape[-1])
+                # A deterministic token sample keeps these diagnostics useful
+                # without adding hundreds of MiB to every training microbatch.
+                max_diagnostic_tokens = 8
+                if flat0.shape[0] > max_diagnostic_tokens:
+                    token_indices = torch.linspace(
+                        0,
+                        flat0.shape[0] - 1,
+                        steps=max_diagnostic_tokens,
+                        device=flat0.device,
+                    ).round().long()
+                    flat0 = flat0.index_select(0, token_indices)
+                    flat1 = flat1.index_select(0, token_indices)
+                n_tokens = flat0.shape[0]
+                _CHUNK = 8
+                total_l1 = 0.0
+                total_js = 0.0
+                top1_equal = 0
+                for i in range(0, n_tokens, _CHUNK):
+                    p0 = torch.softmax(flat0[i:i + _CHUNK].float(), dim=-1)
+                    p1 = torch.softmax(flat1[i:i + _CHUNK].float(), dim=-1)
+                    midpoint = 0.5 * (p0 + p1)
+                    total_l1 += (p0 - p1).abs().sum().item()
+                    total_js += (
+                        0.5
+                        * torch.sum(
+                            p0
+                            * (torch.log(p0.clamp_min(1e-12)) - torch.log(midpoint.clamp_min(1e-12))),
+                            dim=-1,
+                        )
+                        + 0.5
+                        * torch.sum(
+                            p1
+                            * (torch.log(p1.clamp_min(1e-12)) - torch.log(midpoint.clamp_min(1e-12))),
+                            dim=-1,
+                        )
+                    ).sum().item()
+                    top1_equal += (p0.argmax(dim=-1) == p1.argmax(dim=-1)).sum().item()
+                self.last_logit_disagreement = total_l1 / (n_tokens * orig_shape[-1])
+                self.last_logit_diagnostics = {
+                    "submodel_total_variation": 0.5 * total_l1 / n_tokens,
+                    "submodel_js_divergence": total_js / n_tokens,
+                    "submodel_top1_agreement": top1_equal / n_tokens,
+                }
 
         loss = None
         if labels is not None:
@@ -142,7 +187,11 @@ class QwenJointForCausalLM(PreTrainedModel, GenerationMixin):
             past_key_values=outputs_list[1].past_key_values,
             hidden_states=outputs_list[1].hidden_states,
             attentions=outputs_list[1].attentions,
-            submodel_logits=tuple(out.logits for out in outputs_list) if return_submodel_logits else None,
+            submodel_logits=(
+                tuple(out.logits if out is not None else None for out in outputs_list)
+                if return_submodel_logits
+                else None
+            ),
         )
         return result
 

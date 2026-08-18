@@ -149,6 +149,8 @@ def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> dict[str,
     non_aborted_response_length = response_length[non_aborted_mask]
     if non_aborted_response_length.numel() > 0:
         non_aborted_response_length_mean = torch.mean(non_aborted_response_length).detach().item()
+        non_aborted_response_length_p50 = torch.quantile(non_aborted_response_length.float(), 0.50).detach().item()
+        non_aborted_response_length_p95 = torch.quantile(non_aborted_response_length.float(), 0.95).detach().item()
         non_aborted_response_length_max = torch.max(non_aborted_response_length).detach().item()
         non_aborted_response_length_min = torch.min(non_aborted_response_length).detach().item()
         non_aborted_response_length_clip_ratio = (
@@ -188,6 +190,8 @@ def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> dict[str,
         ),
         # response length
         "response_length/mean": torch.mean(response_length).detach().item(),
+        "response_length/p50": torch.quantile(response_length.float(), 0.50).detach().item(),
+        "response_length/p95": torch.quantile(response_length.float(), 0.95).detach().item(),
         "response_length/max": torch.max(response_length).detach().item(),
         "response_length/min": torch.min(response_length).detach().item(),
         "response_length/clip_ratio": torch.mean(torch.eq(response_length, max_response_length).float())
@@ -196,6 +200,8 @@ def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> dict[str,
         # response length (non-aborted only)
         # These statistics exclude aborted samples to avoid skew from zeros
         "response_length_non_aborted/mean": non_aborted_response_length_mean,
+        "response_length_non_aborted/p50": non_aborted_response_length_p50,
+        "response_length_non_aborted/p95": non_aborted_response_length_p95,
         "response_length_non_aborted/max": non_aborted_response_length_max,
         "response_length_non_aborted/min": non_aborted_response_length_min,
         "response_length_non_aborted/clip_ratio": non_aborted_response_length_clip_ratio,

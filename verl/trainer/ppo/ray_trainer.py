@@ -220,6 +220,34 @@ def apply_wdl_sft_reward_label_advantages(
         metrics["wdl_sft/n_incorrect"] = n_incorrect
         metrics["wdl_sft/correct_ratio"] = n_correct / max(n_total, 1)
 
+        positive_mask = reward_labels > 0
+        response_mask = batch.batch["response_mask"]
+        metrics["wdl_sft/positive_supervised_response_count"] = int(positive_mask.sum().item())
+        metrics["wdl_sft/positive_supervised_token_count"] = int(
+            response_mask[positive_mask].sum().item()
+        )
+
+        if "uid" not in batch.non_tensor_batch:
+            raise ValueError("WDL-SFT telemetry requires uid to compute prompt-group composition")
+        uids = batch.non_tensor_batch["uid"]
+        if len(uids) != n_total:
+            raise ValueError(f"uid length {len(uids)} does not match batch size {n_total}")
+        id2indices: dict[Any, list[int]] = defaultdict(list)
+        for row_idx, uid in enumerate(uids):
+            id2indices[uid].append(row_idx)
+        all_incorrect = mixed = all_correct = 0
+        for indices in id2indices.values():
+            group_rewards = reward_labels[indices]
+            group_positive = group_rewards > 0
+            group_negative = group_rewards < 0
+            all_correct += int(bool(group_positive.all().item()))
+            all_incorrect += int(bool(group_negative.all().item()))
+            mixed += int(bool(group_positive.any().item() and group_negative.any().item()))
+        group_count = max(len(id2indices), 1)
+        metrics["wdl_sft/all_incorrect_group_ratio"] = all_incorrect / group_count
+        metrics["wdl_sft/mixed_group_ratio"] = mixed / group_count
+        metrics["wdl_sft/all_correct_group_ratio"] = all_correct / group_count
+
     batch.batch["advantages"] = reward_labels.unsqueeze(-1).expand_as(batch.batch["response_mask"]).clone()
     return batch
 
@@ -300,6 +328,10 @@ def _normalize_validation_generation_value(value: Any) -> Any:
         return value.detach().cpu().item()
     if isinstance(value, np.ndarray) and value.ndim == 0:
         return value.item()
+    if isinstance(value, dict):
+        return {key: _normalize_validation_generation_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_normalize_validation_generation_value(item) for item in value]
     return value
 
 
@@ -785,7 +817,7 @@ class RayPPOTrainer:
 
         lines = []
         for i in range(n):
-            entry = {k: v[i] for k, v in base_data.items()}
+            entry = {k: _normalize_validation_generation_value(v[i]) for k, v in base_data.items()}
             lines.append(json.dumps(entry, ensure_ascii=False))
 
         with open(filename, "w") as f:

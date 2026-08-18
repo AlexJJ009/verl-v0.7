@@ -18,6 +18,7 @@ Single Process Actor
 """
 
 import logging
+import math
 import os
 
 import torch
@@ -501,16 +502,32 @@ class DataParallelPPOActor(BasePPOActor):
         if isinstance(grad_norm, DTensor):
             grad_norm = grad_norm.full_tensor()
 
+        grad_norm_finite = bool(torch.isfinite(grad_norm).item())
+        optimizer_step_applied = 1.0
         # if grad_norm is not finite, skip the update
         if self.scaler is not None:
+            scale_before = float(self.scaler.get_scale())
             self.scaler.step(self.actor_optimizer)
             self.scaler.update()
+            # GradScaler lowers its scale when it skips optimizer.step() because
+            # non-finite gradients were found.
+            optimizer_step_applied = float(float(self.scaler.get_scale()) >= scale_before)
         else:
-            if not torch.isfinite(grad_norm):
+            if not grad_norm_finite:
                 print(f"WARN: rank {torch.distributed.get_rank()} grad_norm is not finite: {grad_norm}")
                 self.actor_optimizer.zero_grad()
+                optimizer_step_applied = 0.0
             else:
                 self.actor_optimizer.step()
+
+        joint_grad_metrics.update(
+            {
+                "actor/grad_clip_event": float(
+                    grad_norm_finite and grad_norm.detach().item() > float(self.config.grad_clip)
+                ),
+                "actor/optimizer_step_applied": optimizer_step_applied,
+            }
+        )
 
         # Clear cached weight scales for QAT (weights changed)
         if getattr(self.actor_module, "_qat_fuse_enabled", False):
@@ -545,7 +562,7 @@ class DataParallelPPOActor(BasePPOActor):
         model2_share = norm2 / (norm_total + 1e-8)
 
         # Cosine similarity between flattened gradients
-        cos_sim = self._compute_joint_grad_cosine_similarity(model1, model2)
+        cos_sim = self._compute_joint_grad_cosine_similarity(model1, model2, process_group=process_group)
 
         return {
             "jointTraining/model1_grad_norm": norm1,
@@ -583,21 +600,31 @@ class DataParallelPPOActor(BasePPOActor):
         return metrics
 
     @staticmethod
-    def _compute_joint_grad_cosine_similarity(model1: nn.Module, model2: nn.Module) -> float:
-        """Compute cosine similarity between flattened gradients of two sub-models."""
-        grads1 = [p.grad.detach().flatten() for p in model1.parameters() if p.grad is not None]
-        grads2 = [p.grad.detach().flatten() for p in model2.parameters() if p.grad is not None]
-        if not grads1 or not grads2:
+    def _compute_joint_grad_cosine_similarity(model1: nn.Module, model2: nn.Module, process_group=None) -> float:
+        """Compute a sharding-aware cosine without materializing flattened models."""
+        accumulator = None
+        for parameter1, parameter2 in zip(model1.parameters(), model2.parameters(), strict=True):
+            grad1 = parameter1.grad
+            grad2 = parameter2.grad
+            if grad1 is None or grad2 is None:
+                continue
+            if grad1.shape != grad2.shape:
+                return 0.0
+            if accumulator is None:
+                accumulator = torch.zeros(3, dtype=torch.float64, device=grad1.device)
+            grad1_fp32 = grad1.detach().float()
+            grad2_fp32 = grad2.detach().float()
+            accumulator[0] += torch.sum(grad1_fp32 * grad2_fp32, dtype=torch.float64)
+            accumulator[1] += torch.sum(grad1_fp32.square(), dtype=torch.float64)
+            accumulator[2] += torch.sum(grad2_fp32.square(), dtype=torch.float64)
+        if accumulator is None:
             return 0.0
-        flat1 = torch.cat(grads1).to(torch.float32)
-        flat2 = torch.cat(grads2).to(torch.float32)
-        if flat1.shape != flat2.shape:
+        if torch.distributed.is_available() and torch.distributed.is_initialized():
+            torch.distributed.all_reduce(accumulator, group=process_group)
+        denominator = torch.sqrt(accumulator[1] * accumulator[2])
+        if denominator.item() < 1e-12:
             return 0.0
-        dot = torch.dot(flat1, flat2)
-        norms = flat1.norm() * flat2.norm()
-        if norms.item() < 1e-12:
-            return 0.0
-        return torch.clamp(dot / norms, min=-1.0, max=1.0).item()
+        return torch.clamp(accumulator[0] / denominator, min=-1.0, max=1.0).item()
 
     @GPUMemoryLogger(role="dp actor", logger=logger)
     def compute_log_prob(self, data: DataProto, calculate_entropy: bool = False) -> dict[str, torch.Tensor]:
@@ -812,6 +839,11 @@ class DataParallelPPOActor(BasePPOActor):
                     logit_disagreement = getattr(unwrapped, "last_logit_disagreement", None)
                     if logit_disagreement is not None:
                         micro_batch_metrics["jointTraining/submodel_logit_disagreement"] = logit_disagreement
+                    logit_diagnostics = getattr(unwrapped, "last_logit_diagnostics", None)
+                    if logit_diagnostics:
+                        for metric_name, metric_value in logit_diagnostics.items():
+                            if math.isfinite(float(metric_value)):
+                                micro_batch_metrics[f"jointTraining/{metric_name}"] = metric_value
 
                     # for fully_async_policy
                     if hasattr(self.config, "use_rollout_log_probs") and self.config.use_rollout_log_probs:
@@ -846,6 +878,16 @@ class DataParallelPPOActor(BasePPOActor):
                     micro_batch_metrics.update(pg_metrics)
 
                     if track_joint_submodel_losses:
+                        missing_submodel_outputs = [
+                            self._submodel_logprob_key(index)
+                            for index in range(2)
+                            if self._submodel_logprob_key(index) not in outputs
+                        ]
+                        if missing_submodel_outputs:
+                            raise RuntimeError(
+                                "track_joint_submodel_losses requires both submodel forward paths; "
+                                f"missing={missing_submodel_outputs}"
+                            )
                         micro_batch_metrics.update(
                             self._compute_joint_submodel_loss_metrics(
                                 outputs=outputs,
@@ -853,6 +895,38 @@ class DataParallelPPOActor(BasePPOActor):
                                 advantages=advantages,
                             )
                         )
+                        with torch.no_grad():
+                            model1_log_prob = outputs[self._submodel_logprob_key(0)]
+                            model2_log_prob = outputs[self._submodel_logprob_key(1)]
+                            fused_vs_model2 = log_prob - model2_log_prob
+                            model1_vs_model2 = model1_log_prob - model2_log_prob
+                            valid_mask = response_mask.bool()
+                            positive_mask = (advantages[:, :1] > 0) & valid_mask
+                            negative_mask = (advantages[:, :1] < 0) & valid_mask
+
+                            def _masked_scalar(values: torch.Tensor, mask: torch.Tensor) -> float:
+                                selected = values.masked_select(mask)
+                                return selected.mean().item() if selected.numel() else 0.0
+
+                            micro_batch_metrics.update(
+                                {
+                                    "jointTraining/fused_vs_model2_chosen_token_logprob_delta_mean": _masked_scalar(
+                                        fused_vs_model2, valid_mask
+                                    ),
+                                    "jointTraining/fused_vs_model2_chosen_token_logprob_abs_mean": _masked_scalar(
+                                        fused_vs_model2.abs(), valid_mask
+                                    ),
+                                    "jointTraining/model1_vs_model2_chosen_token_logprob_delta_mean": _masked_scalar(
+                                        model1_vs_model2, valid_mask
+                                    ),
+                                    "jointTraining/fused_vs_model2_positive_token_logprob_delta_mean": _masked_scalar(
+                                        fused_vs_model2, positive_mask
+                                    ),
+                                    "jointTraining/fused_vs_model2_negative_token_logprob_delta_mean": _masked_scalar(
+                                        fused_vs_model2, negative_mask
+                                    ),
+                                }
+                            )
 
                     # Skip if using bypass_mode loss (metrics already computed in pg_metrics)
                     rollout_log_prob = model_inputs.get("rollout_log_probs", None)

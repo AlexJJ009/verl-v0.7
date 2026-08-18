@@ -62,6 +62,7 @@ def prepare_joint_weights(
     base_model_path: str,
     output_path: str,
     fusion_lambda: float = 0.5,
+    fusion_mode: str = "mixture",
     freeze_model1: bool = False,
     model2_path: str | None = None,
 ):
@@ -131,7 +132,10 @@ def prepare_joint_weights(
         "AutoConfig": "configuration_joint_qwen3.QwenJointConfig",
         "AutoModelForCausalLM": "modeling_joint_qwen3.QwenJointForCausalLM",
     }
+    if fusion_mode not in {"mixture", "strong_scaled"}:
+        raise ValueError(f"unsupported fusion_mode: {fusion_mode}")
     config_dict["fusion_lambda"] = fusion_lambda
+    config_dict["fusion_mode"] = fusion_mode
     config_dict["freeze_model1"] = freeze_model1
     config_dict["num_sub_models"] = 2
     config_dict["joint_model_sources"] = {
@@ -162,6 +166,7 @@ def prepare_joint_weights(
     print(f"  model1: {base_model_path}")
     print(f"  model2: {model2_path or base_model_path} {'(cloned)' if model2_path is None else ''}")
     print(f"  fusion_lambda: {fusion_lambda}")
+    print(f"  fusion_mode: {fusion_mode}")
     print(f"  freeze_model1: {freeze_model1}")
 
 
@@ -178,6 +183,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--output_path", type=str, default=".cache/huggingface/QwenJoint-1.7B")
     parser.add_argument("--fusion_lambda", type=float, default=0.5)
+    parser.add_argument("--fusion_mode", choices=("mixture", "strong_scaled"), default="mixture")
     parser.add_argument("--freeze_model1", action="store_true")
     args = parser.parse_args()
 
@@ -185,6 +191,7 @@ if __name__ == "__main__":
         base_model_path=args.base_model_path,
         output_path=args.output_path,
         fusion_lambda=args.fusion_lambda,
+        fusion_mode=args.fusion_mode,
         freeze_model1=args.freeze_model1,
         model2_path=args.model2_path,
     )

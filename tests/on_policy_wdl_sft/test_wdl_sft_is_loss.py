@@ -375,6 +375,25 @@ class TestTrainerRewardLabelOverride:
         assert torch.allclose(batch.batch["advantages"], before)
         assert metrics == {}
 
+    def test_wdl_group_composition_and_positive_token_telemetry(self):
+        rewards = torch.tensor([1.0, 1.0, -1.0, -1.0, 1.0, -1.0])
+        batch = _make_reward_batch(rewards, T=4)
+        batch.non_tensor_batch["uid"] = np.array(
+            ["all-correct", "all-correct", "all-incorrect", "all-incorrect", "mixed", "mixed"],
+            dtype=object,
+        )
+        batch.batch["response_mask"][0, -1] = 0
+        batch.batch["advantages"] = torch.zeros_like(batch.batch["response_mask"])
+        metrics = {}
+
+        apply_wdl_sft_reward_label_advantages(batch, "wdl_sft", metrics)
+
+        assert metrics["wdl_sft/all_correct_group_ratio"] == pytest.approx(1 / 3)
+        assert metrics["wdl_sft/all_incorrect_group_ratio"] == pytest.approx(1 / 3)
+        assert metrics["wdl_sft/mixed_group_ratio"] == pytest.approx(1 / 3)
+        assert metrics["wdl_sft/positive_supervised_response_count"] == 3
+        assert metrics["wdl_sft/positive_supervised_token_count"] == 11
+
     def test_wdl_sft_is_all_correct_keeps_positive_signal_after_grpo(self):
         T = 4
         reward_labels = torch.ones(4)
