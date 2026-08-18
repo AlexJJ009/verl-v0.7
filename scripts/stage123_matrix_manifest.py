@@ -31,6 +31,8 @@ def load(path: Path) -> dict:
     manifest = json.loads(rendered)
     for key in (
         "experiment_id",
+        "status",
+        "launch_allowed",
         "resource_profile",
         "semantics",
         "paths",
@@ -52,6 +54,10 @@ def load(path: Path) -> dict:
 
 
 def validate(manifest: dict) -> None:
+    launch_allowed = manifest.get("launch_allowed") is True
+    status = str(manifest.get("status", ""))
+    if not launch_allowed and not any(marker in status for marker in ("invalidated", "blocked")):
+        raise ValueError("non-launchable code Stage123 matrix must record a blocked or invalidated status")
     runs = sorted(manifest["runs"], key=lambda run: run["order"])
     manifest["runs"] = runs
     ids = [run["id"] for run in runs]
@@ -77,8 +83,18 @@ def validate(manifest: dict) -> None:
             missing_model1 = sorted(required_model1 - source.keys())
             if missing_model1:
                 raise ValueError(f"{run['id']}: missing Model1 identity fields: {missing_model1}")
-            if "format_cold_start_fraction/qwen3-1p7b-kodcode-format-sft-frac25" not in source["model1_path"]:
-                raise ValueError(f"{run['id']}: Model1 must be the FRAC25 format Cold Start model")
+            legacy_fragment = "format_cold_start_fraction/qwen3-1p7b-kodcode-format-sft-frac25"
+            cot_v3_fragment = "format_cold_start_fraction_cot_v3/qwen3-1p7b-kodcode-format-sft-frac25"
+            uses_cot_v3 = cot_v3_fragment in source["model1_path"]
+            if launch_allowed or "blocked" in status:
+                allowed_fragment = cot_v3_fragment
+            else:
+                allowed_fragment = legacy_fragment
+            if allowed_fragment not in source["model1_path"]:
+                qualifier = "CoT-v3 " if launch_allowed or "blocked" in status else "legacy invalidated "
+                raise ValueError(f"{run['id']}: Model1 must be the FRAC25 {qualifier}Cold Start model")
+            if uses_cot_v3 and "invalidated_answer_only" in status:
+                raise ValueError(f"{run['id']}: CoT-v3 Model1 cannot use answer-only invalidated status")
             for field in required_model1 - {"model1_path", "model1_provenance_path"}:
                 if len(source[field]) != 64:
                     raise ValueError(f"{run['id']}: invalid {field}")
@@ -92,8 +108,10 @@ def validate(manifest: dict) -> None:
         "n": 3,
         "temperature": 0.2,
         "top_p": 0.95,
+        "top_k": -1,
         "do_sample": True,
-        "primary_metric": "val-core/model2/HumanEval+/acc/mean@3",
+        "single_primary_metric": "val-core/code3_macro/acc/mean@3",
+        "joint_primary_metric": "val-core/model2/code3_macro/acc/mean@3",
         "secondary_metrics": ["acc/pass@3", "acc/std@3"],
     }:
         raise ValueError("matrix validation protocol drift")

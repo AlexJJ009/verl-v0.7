@@ -40,6 +40,11 @@ def main() -> None:
         default=Path("/data-2/model_weights/math_task/qwen3_1p7b_cold_start_v1"),
     )
     parser.add_argument("--review-note", required=True)
+    parser.add_argument(
+        "--allow-below-format-threshold",
+        action="store_true",
+        help="Allow an explicitly reviewed candidate that did not reach the pre-registered format threshold.",
+    )
     args = parser.parse_args()
     candidates_path = args.artifact_root / "cold_start_candidates.json"
     candidates = json.loads(candidates_path.read_text())["candidates"]
@@ -47,11 +52,14 @@ def main() -> None:
     if len(matches) != 1:
         raise ValueError(f"step {args.step} is not a unique evaluated candidate")
     candidate = matches[0]
-    if not candidate["passed_format_gate"]:
+    format_gate_override = not candidate["passed_format_gate"]
+    if format_gate_override and not args.allow_below_format_threshold:
         raise ValueError("selected candidate did not pass the pre-registered format gate")
     payload = {
         "schema_version": 1,
         "selected_step": args.step,
+        "selection_policy": "manual_format_gate_override" if format_gate_override else "earliest_format_gate_pass",
+        "format_gate_override": format_gate_override,
         "review_note": args.review_note,
         "candidate": candidate,
         "identity": model_identity(Path(candidate["model_path"])),

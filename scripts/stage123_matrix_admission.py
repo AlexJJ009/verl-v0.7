@@ -74,9 +74,9 @@ def stage2_model1_identity(manifest: dict[str, Any]) -> dict[str, str]:
 
 def verify_model1(identity: dict[str, str]) -> None:
     model_path = Path(identity["model1_path"]).resolve()
-    required_suffix = "format_cold_start_fraction/qwen3-1p7b-kodcode-format-sft-frac25"
+    required_suffix = "format_cold_start_fraction_cot_v3/qwen3-1p7b-kodcode-format-sft-frac25"
     if required_suffix not in str(model_path):
-        raise SystemExit("Model1 is not the FRAC25 format Cold Start model")
+        raise SystemExit("Model1 is not the FRAC25 CoT-v3 format Cold Start model")
     for filename, field in MODEL1_FILE_FIELDS.items():
         path = model_path / filename
         if not path.is_file() or file_sha256(path) != identity[field]:

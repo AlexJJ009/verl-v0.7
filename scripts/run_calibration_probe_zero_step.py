@@ -192,7 +192,14 @@ def split_workload(root: Path) -> dict[str, Path]:
 def phase_environment(rendered: dict[str, Any], phase: str, repetition: int, output: Path, splits: dict[str, Path]) -> dict[str, str]:
     runs = {item["phase"]: item for item in rendered["runs"]}
     stage2_sources = {item["role"]: item for item in rendered["calibration_workloads"]["stage2"]["model_sources"]}
-    stage1_source = json.loads((Path(stage2_sources["model2"]["path"]) / "stage1_source.json").read_text())
+    model2_source = Path(stage2_sources["model2"]["path"])
+    model2_provenance_path = Path(stage2_sources["model2"].get("provenance", {}).get("path", ""))
+    if not model2_provenance_path.is_file():
+        model2_provenance_path = model2_source / "stage1_source.json"
+    stage1_source = json.loads(model2_provenance_path.read_text())
+    source_checkpoint = stage1_source.get("source_checkpoint", "")
+    source_run_prefix = stage1_source.get("stage1_run_prefix") or stage1_source.get("run", {}).get("id", "probe-stage1")
+    source_handoff_step = stage1_source.get("handoff_step") or stage1_source.get("run", {}).get("final_step", 40)
     stage3_workload = rendered["calibration_workloads"]["stage3"]
     stage3_source = stage3_workload["model_sources"][0]
     stage3_model = Path(stage3_source["path"])
@@ -222,10 +229,11 @@ def phase_environment(rendered: dict[str, Any], phase: str, repetition: int, out
         "CALIBRATION_RAY_HEAD_PORT": "22000",
         "CALIBRATION_TCPSTORE_PORT_MIN": "35000",
         "CALIBRATION_TCPSTORE_PORT_MAX": "35999",
-        "CALIBRATION_STAGE1_CKPT_DIR": stage1_source["source_checkpoint"],
+        "CALIBRATION_STAGE1_CKPT_DIR": source_checkpoint,
         "CALIBRATION_STAGE1_MODEL2": stage2_sources["model2"]["path"],
-        "CALIBRATION_STAGE1_RUN_PREFIX": stage1_source["stage1_run_prefix"],
-        "CALIBRATION_STAGE1_HANDOFF_STEP": str(stage1_source["handoff_step"]),
+        "CALIBRATION_STAGE1_MODEL2_PROVENANCE": str(model2_provenance_path),
+        "CALIBRATION_STAGE1_RUN_PREFIX": source_run_prefix,
+        "CALIBRATION_STAGE1_HANDOFF_STEP": str(source_handoff_step),
         "CALIBRATION_TRAIN_FILE": runs[phase]["train_file"],
         "STAGE1_INIT_MODEL_PATH": rendered["paths"]["stage1_init_model"],
         "STAGE1_INIT_PROVENANCE_PATH": rendered["paths"]["stage1_init_provenance"],

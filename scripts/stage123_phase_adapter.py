@@ -107,16 +107,20 @@ def common_environment(manifest_path: Path, manifest: dict, run: dict) -> dict[s
     )
     validation = manifest.get("validation", {})
     if validation:
+        primary_metric = (
+            validation.get("joint_primary_metric")
+            if run["phase"] == "stage2"
+            else validation.get("single_primary_metric")
+        ) or validation.get("primary_metric", "val-core/HumanEval+/acc/pass@1")
         environment.update(
             {
                 "VAL_N": str(validation.get("n", 1)),
                 "STAGE123_EXPECTED_VAL_N": str(validation.get("n", 1)),
                 "VAL_TEMPERATURE": str(validation.get("temperature", 0.2)),
                 "VAL_TOP_P": str(validation.get("top_p", 0.95)),
+                "TOP_K": str(validation.get("top_k", -1)),
                 "VAL_DO_SAMPLE": str(validation.get("do_sample", True)),
-                "BEST_CKPT_METRIC_KEY": validation.get(
-                    "primary_metric", "val-core/HumanEval+/acc/pass@1"
-                ),
+                "BEST_CKPT_METRIC_KEY": primary_metric,
             }
         )
     return environment
@@ -179,7 +183,6 @@ def stage_environment(manifest: dict, run: dict, environment: dict[str, str]) ->
                 }
             )
     elif phase == "stage3":
-        environment["BEST_CKPT_METRIC_KEY"] = "val-core/HumanEval+/acc/mean@3"
         submodel = source.get("submodel", "model2")
         if submodel not in {"model1", "model2"}:
             raise ValueError(f"unsupported Stage3 source submodel: {submodel}")
@@ -204,7 +207,7 @@ def execute_wrapper(manifest_path: Path, manifest: dict, run: dict, *, dry_run: 
     environment = stage_environment(manifest, run, common_environment(manifest_path, manifest, run))
     command = ["bash", str(WRAPPERS[run["phase"]])]
     if dry_run:
-        print(json.dumps({"command": command, "environment": {key: environment[key] for key in sorted(environment) if key.startswith("STAGE123_") or key.startswith("SUBMODEL_KL_") or key.startswith("EXPECTED_MODEL1_") or key in {"RUN_PREFIX", "INIT_MODEL_PATH", "BASE_MODEL_PATH", "STAGE1_CKPT_DIR", "STAGE2_HANDOFF_STEP", "MERGED_MODEL2_DIR", "STAGE2_SUBMODEL", "STAGE2_MODEL_PATH", "STAGE2_MODEL2_PATH", "STAGE2_PROVENANCE_FILE", "JOINT_VALIDATION_VIEWS", "VAL_N", "VAL_TEMPERATURE", "VAL_TOP_P", "VAL_DO_SAMPLE", "BEST_CKPT_METRIC_KEY", "CODE_TRAIN_FILE", "TOTAL_TRAINING_STEPS", "LR", "LR_WARMUP_STEPS", "TRACK_JOINT_SUBMODEL_LOSSES", "BASE_CKPT_DIR", "LOG_DIR", "VERL_FILE_LOGGER_ROOT", "VALIDATION_DATA_DIR", "WANDB_DIR", "WANDB_MODE", "RAY_TMPDIR"}}}, sort_keys=True))
+        print(json.dumps({"command": command, "environment": {key: environment[key] for key in sorted(environment) if key.startswith("STAGE123_") or key.startswith("SUBMODEL_KL_") or key.startswith("EXPECTED_MODEL1_") or key in {"RUN_PREFIX", "INIT_MODEL_PATH", "BASE_MODEL_PATH", "STAGE1_CKPT_DIR", "STAGE2_HANDOFF_STEP", "MERGED_MODEL2_DIR", "STAGE2_SUBMODEL", "STAGE2_MODEL_PATH", "STAGE2_MODEL2_PATH", "STAGE2_PROVENANCE_FILE", "JOINT_VALIDATION_VIEWS", "VAL_N", "VAL_TEMPERATURE", "VAL_TOP_P", "TOP_K", "VAL_DO_SAMPLE", "BEST_CKPT_METRIC_KEY", "CODE_TRAIN_FILE", "TOTAL_TRAINING_STEPS", "LR", "LR_WARMUP_STEPS", "TRACK_JOINT_SUBMODEL_LOSSES", "BASE_CKPT_DIR", "LOG_DIR", "VERL_FILE_LOGGER_ROOT", "VALIDATION_DATA_DIR", "WANDB_DIR", "WANDB_MODE", "RAY_TMPDIR"}}}, sort_keys=True))
         return None, None
     existing = list(Path(manifest["paths"]["checkpoint_root"]).glob(f"{run['run_prefix']}_*"))
     if existing:

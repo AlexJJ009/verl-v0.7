@@ -27,7 +27,7 @@ EXPECTED_DECODER = {
     "VAL_TEMPERATURE": "0.2",
     "VAL_TOP_P": "0.95",
     "VAL_DO_SAMPLE": "True",
-    "VAL_N": "1",
+    "VAL_N": "3",
 }
 
 

@@ -1,5 +1,9 @@
 import importlib.util
+import hashlib
+import json
+import os
 from pathlib import Path
+import subprocess
 
 import pandas as pd
 import pytest
@@ -23,10 +27,30 @@ def load_data_module():
     return module
 
 
+def load_math7_validation_module():
+    path = ROOT / "recipe/on_policy_wdl_sft/math_task/prepare_math7_validation_data.py"
+    spec = importlib.util.spec_from_file_location("math7_validation_data", path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+def load_stage123_queue_module():
+    path = ROOT / "scripts/math_stage123_queue.py"
+    spec = importlib.util.spec_from_file_location("math_stage123_queue", path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
 def test_format_telemetry_requires_one_ordered_pair_per_tag():
     assert compute_format_telemetry("<think>x</think><answer>\\boxed{1}</answer>") == {
+        "think_nonempty": True,
         "think_complete": True,
         "answer_complete": True,
+        "format_ordered": True,
     }
 
 
@@ -46,8 +70,10 @@ def test_complete_format_contract_is_the_intersection():
     )
     assert truncated["format_contract_success"] is False
     assert compute_format_telemetry("<think>x</think><answer>missing close") == {
+        "think_nonempty": True,
         "think_complete": True,
         "answer_complete": False,
+        "format_ordered": False,
     }
 
 
@@ -103,6 +129,87 @@ def test_disjoint_split_receipt_and_control_order(tmp_path):
     assert len(control) == 60 * 64
 
 
+def test_math7_validation_schema_alignment_supports_real_concatenation(tmp_path):
+    module = load_math7_validation_module()
+    sources = []
+    for index, extra_info in enumerate(
+        [
+            {"index": "a", "level": 2},
+            {"index": 3, "answer": "x"},
+            {"index": 4, "options": ["A", "B"]},
+        ]
+    ):
+        source = tmp_path / f"source_{index}.parquet"
+        pd.DataFrame(
+            {
+                "data_source": [f"source-{index}"],
+                "ability": ["Math"],
+                "reward_model": [{"ground_truth": "1", "style": "rule"}],
+                "prompt": [[{"role": "user", "content": "1+0?"}]],
+                "split": ["test"],
+                "extra_info": [extra_info],
+            }
+        ).to_parquet(source, index=False)
+        sources.append(source)
+    normalized_paths = []
+    for source in sources:
+        output = tmp_path / module.normalized_name(source)
+        module.normalize_frame(pd.read_parquet(source)).to_parquet(output, index=False)
+        normalized_paths.append(str(output))
+    loaded = [module.datasets.load_dataset("parquet", data_files=path, split="train") for path in normalized_paths]
+    combined = module.datasets.concatenate_datasets(loaded)
+    assert len(combined) == 3
+    assert all(isinstance(value, str) for value in combined["extra_info"])
+
+
+def test_math7_validation_receipt_cannot_escape_output_root(tmp_path):
+    module = load_math7_validation_module()
+    source = tmp_path / "source.parquet"
+    pd.DataFrame(
+        {
+            "data_source": ["source"],
+            "ability": ["Math"],
+            "reward_model": [{"ground_truth": "1", "style": "rule"}],
+            "prompt": [[{"role": "user", "content": "1+0?"}]],
+            "split": ["test"],
+            "extra_info": [{"index": 1}],
+        }
+    ).to_parquet(source, index=False)
+    output_root = tmp_path / "output"
+    output_root.mkdir()
+    escaped_output = tmp_path / module.normalized_name(source)
+    module.normalize_frame(pd.read_parquet(source)).to_parquet(escaped_output, index=False)
+    digest = lambda path: hashlib.sha256(path.read_bytes()).hexdigest()
+    receipt = {
+        "schema_version": 1,
+        "sources": [str(source)],
+        "outputs": [
+            {
+                "source": str(source),
+                "source_sha256": digest(source),
+                "path": str(escaped_output),
+                "sha256": digest(escaped_output),
+                "rows": 1,
+            }
+        ],
+        "total_rows": 1,
+    }
+    (output_root / "dataset_receipt.json").write_text(json.dumps(receipt))
+    with pytest.raises(ValueError, match="output path mismatch"):
+        module.verify_receipt(output_root, sources=(source,))
+
+
+def test_math7_resource_profile_rejects_validation_file_override():
+    profile = ROOT / "recipe/on_policy_wdl_sft/math_task/qwen3_1p7b_math_stage123_resource_profile.sh"
+    result = subprocess.run(
+        ["bash", "-c", f"MATH7_VAL_FILES=stale source {profile!s}"],
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode != 0
+    assert "must match the verified Math-7 validation root" in result.stderr
+
+
 def test_manifests_freeze_full_math7_and_block_invalidated_launches():
     manifest_root = ROOT / "recipe/on_policy_wdl_sft/experiment_manifest"
     cold = yaml.safe_load((manifest_root / "math_qwen3_1p7b_cold_start_cotmask_v3.yaml").read_text())
@@ -132,3 +239,176 @@ def test_manifests_freeze_full_math7_and_block_invalidated_launches():
         launch_allowed = manifest.get("launch_allowed", manifest.get("execution", {}).get("launch_allowed"))
         assert "invalidated" in manifest["status"]
         assert launch_allowed is False
+
+
+def test_math_queue_defaults_only_to_cotmask_v3_manifests():
+    cold_queue = (ROOT / "recipe/on_policy_wdl_sft/math_task/run_math_qwen3_1p7b_cold_start_queue.sh").read_text()
+    stage_queue = (ROOT / "recipe/on_policy_wdl_sft/math_task/run_math_qwen3_1p7b_stage123_queue.sh").read_text()
+    cold_python = (ROOT / "scripts/math_cold_start_queue.py").read_text()
+    stage_python = (ROOT / "scripts/math_stage123_queue.py").read_text()
+    assert "math_qwen3_1p7b_cold_start_cotmask_v3.yaml" in cold_queue
+    assert "math_qwen3_1p7b_stage123_cotmask_v3.yaml" in stage_queue
+    assert "math_qwen3_1p7b_cold_start_cotmask_v3.yaml" in cold_python
+    assert "math_qwen3_1p7b_stage123_cotmask_v3.yaml" in stage_python
+    assert "prepare_math7_validation_data.py" in stage_queue
+    resource_profile = (ROOT / "recipe/on_policy_wdl_sft/math_task/qwen3_1p7b_math_stage123_resource_profile.sh").read_text()
+    assert "qwen3_1p7b_math7_validation_v1" in resource_profile
+    assert "_schema_aligned.parquet" in resource_profile
+
+
+def test_math_stage123_learning_rate_matches_code_stage123():
+    math_root = ROOT / "recipe/on_policy_wdl_sft/math_task"
+    code_root = ROOT / "recipe/on_policy_wdl_sft/code_task"
+    pairs = [
+        ("run_s1_math_qwen3_1p7b_stage123_common.sh", "run_s1_code_qwen3_1p7b_stage123_common.sh"),
+        ("run_s2_math_qwen3_1p7b_stage123_common.sh", "run_s2_code_qwen3_1p7b_stage123_common.sh"),
+        ("run_s3_math_qwen3_1p7b_stage123_common.sh", "run_s3_code_qwen3_1p7b_stage123_common.sh"),
+    ]
+    for math_name, code_name in pairs:
+        math_script = (math_root / math_name).read_text()
+        code_script = (code_root / code_name).read_text()
+        for setting in ("export LR=${LR:-1e-6}", "export LR_WARMUP_STEPS=${LR_WARMUP_STEPS:-0}"):
+            assert setting in math_script
+            assert setting in code_script
+    queue = (ROOT / "scripts/math_stage123_queue.py").read_text()
+    assert '"LR": "1e-6"' in queue
+    assert '"LR_WARMUP_STEPS": "0"' in queue
+    assert '"ROLLOUT_GPU_MEMORY_UTILIZATION": str(manifest["resources"]["rollout_gpu_memory_utilization"])' in queue
+    assert '"ACTOR_CALCULATE_ENTROPY": "False"' in queue
+    assert '"CALCULATE_ENTROPY": "False"' in queue
+
+
+def test_math_stage123_stage2_cache_paths_are_short_and_run_unique():
+    module = load_stage123_queue_module()
+    artifact_root = Path(
+        "/data-2/model_weights/math_task/qwen3_1p7b_stage123_cotmask_v3/launches/20260720T091917Z/artifacts"
+    )
+    paths = {
+        module.stage2_joint_cache_path(artifact_root, run_id)
+        for run_id in ("b0-stage2-nokl", "b0-stage2-m2kl", "b01-stage2-nokl", "b01-stage2-m2kl")
+    }
+    assert len(paths) == 4
+    for path in paths:
+        assert path.parent == Path("/data-1/.cache/huggingface")
+        assert len(path.name.replace("-", "_hyphen_")) <= 180
+
+
+def test_math_stage123_continuation_requires_matching_completed_provenance(tmp_path: Path):
+    module = load_stage123_queue_module()
+    runs = [
+        {"id": "stage1", "phase": "stage1", "beta": 0.0, "train_shard": "stage1", "final_step": 40},
+        {
+            "id": "stage2",
+            "phase": "stage2",
+            "beta": 0.0,
+            "source_run": "stage1",
+            "train_shard": "stage2",
+            "final_step": 20,
+            "kl": "nokl",
+        },
+    ]
+    output_model = tmp_path / "stage1-model"
+    output_model.mkdir()
+    provenance_dir = tmp_path / "stage1"
+    provenance_dir.mkdir()
+    (provenance_dir / "provenance.json").write_text(
+        json.dumps({"schema_version": 1, "run": runs[0], "outputs": {"model": str(output_model)}})
+    )
+
+    outputs, remaining = module.continuation_state({"runs": runs}, tmp_path, "stage2")
+
+    assert outputs == {"stage1": {"model": str(output_model)}}
+    assert remaining == [runs[1]]
+
+
+def test_math_stage123_checkpoint_selection_ignores_incomplete_retry_root(tmp_path, monkeypatch):
+    module = load_stage123_queue_module()
+    checkpoint_root = tmp_path / "checkpoints"
+    prefix = "MATH-B01_STAGE2_M2KL-QWEN3-1P7B-V1"
+    incomplete = checkpoint_root / f"{prefix}_100"
+    complete = checkpoint_root / f"{prefix}_200"
+    incomplete_actor = incomplete / "global_step_20" / "actor"
+    incomplete_actor.mkdir(parents=True)
+    (incomplete_actor / "fsdp_config.json").write_text(json.dumps({"world_size": 2}))
+    (incomplete_actor / "huggingface").mkdir()
+    (incomplete_actor / "huggingface/config.json").write_text("{}")
+    (incomplete_actor / "model_world_size_2_rank_0.pt").touch()
+    actor = complete / "global_step_20" / "actor"
+    actor.mkdir(parents=True)
+    (actor / "fsdp_config.json").write_text(json.dumps({"world_size": 2}))
+    (actor / "huggingface").mkdir()
+    (actor / "huggingface/config.json").write_text("{}")
+    for rank in range(2):
+        (actor / f"model_world_size_2_rank_{rank}.pt").touch()
+    started_at = min(incomplete.stat().st_mtime, complete.stat().st_mtime)
+    original_path = module.Path
+
+    def redirected_path(value):
+        if value == "/data-1/checkpoints":
+            return checkpoint_root
+        return original_path(value)
+
+    monkeypatch.setattr(module, "Path", redirected_path)
+
+    assert module.checkpoint_after(prefix, started_at, 20) == actor
+
+
+def test_math_stage123_retries_only_vllm_tcpstore_port_collisions(tmp_path, monkeypatch):
+    module = load_stage123_queue_module()
+    state = tmp_path / "attempted"
+    monkeypatch.setenv("MATH_RUN_ATTEMPT_LOG_DIR", str(tmp_path / "logs"))
+    monkeypatch.setenv("MATH_TRANSIENT_PORT_RETRIES", "1")
+    monkeypatch.setenv("MATH_TRANSIENT_PORT_RETRY_DELAY_SEC", "0")
+    command = [
+        "bash",
+        "-c",
+        (
+            f"if [ ! -e {state!s} ]; then "
+            f"touch {state!s}; "
+            "echo 'vLLMHttpServer torch.distributed.DistNetworkError TCPStore EADDRINUSE address already in use'; "
+            "exit 1; "
+            "fi; echo success"
+        ),
+    ]
+
+    module.execute(command, dict(os.environ), False, "stage2-m2kl")
+
+    assert (tmp_path / "logs/stage2-m2kl.attempt-1.log").is_file()
+    assert "success" in (tmp_path / "logs/stage2-m2kl.attempt-2.log").read_text()
+
+
+def test_math_stage123_does_not_retry_unrelated_failures(tmp_path, monkeypatch):
+    module = load_stage123_queue_module()
+    monkeypatch.setenv("MATH_RUN_ATTEMPT_LOG_DIR", str(tmp_path / "logs"))
+    monkeypatch.setenv("MATH_TRANSIENT_PORT_RETRIES", "2")
+    monkeypatch.setenv("MATH_TRANSIENT_PORT_RETRY_DELAY_SEC", "0")
+
+    with pytest.raises(subprocess.CalledProcessError):
+        module.execute(["bash", "-c", "echo CUDA OOM; exit 1"], dict(os.environ), False, "stage2-m2kl")
+
+    assert (tmp_path / "logs/stage2-m2kl.attempt-1.log").is_file()
+    assert not (tmp_path / "logs/stage2-m2kl.attempt-2.log").exists()
+
+
+def test_math_stage123_queue_passes_explicit_start_run():
+    queue = (ROOT / "recipe/on_policy_wdl_sft/math_task/run_math_qwen3_1p7b_stage123_queue.sh").read_text()
+    assert 'args+=(--start-run "$MATH_STAGE123_START_RUN")' in queue
+
+
+def test_math_and_code_stage123_disable_entropy_and_use_admitted_rollout_memory():
+    math_profile = (ROOT / "recipe/on_policy_wdl_sft/math_task/qwen3_1p7b_math_stage123_resource_profile.sh").read_text()
+    code_profile = (ROOT / "recipe/on_policy_wdl_sft/code_task/qwen3_1p7b_stage123_resource_profile.sh").read_text()
+    assert "ROLLOUT_GPU_MEMORY_UTILIZATION=${ROLLOUT_GPU_MEMORY_UTILIZATION:-0.55}" in math_profile
+    assert "ROLLOUT_GPU_MEMORY_UTILIZATION=${ROLLOUT_GPU_MEMORY_UTILIZATION:-0.35}" in code_profile
+    for profile in (math_profile, code_profile):
+        assert "ACTOR_CALCULATE_ENTROPY=${ACTOR_CALCULATE_ENTROPY:-False}" in profile
+        assert "CALCULATE_ENTROPY=${CALCULATE_ENTROPY:-False}" in profile
+    assert '"$ACTOR_CALCULATE_ENTROPY" = False' in code_profile
+    assert '"$CALCULATE_ENTROPY" = False' in code_profile
+
+    code_stage1 = (ROOT / "recipe/on_policy_wdl_sft/code_task/run_s1_code_kodcode_qwen3_1p7b_instruct_ctx8k_beta_0.sh").read_text()
+    code_stage2 = (ROOT / "recipe/on_policy_wdl_sft/code_task/run_s2_code_kodcode_qwen3_1p7b_instruct_ctx8k_p40_common.sh").read_text()
+    assert "ACTOR_CALCULATE_ENTROPY=${ACTOR_CALCULATE_ENTROPY:-False}" in code_stage1
+    assert "ROLLOUT_GPU_MEMORY_UTILIZATION=${ROLLOUT_GPU_MEMORY_UTILIZATION:-0.55}" in code_stage1
+    assert "CALCULATE_ENTROPY=${CALCULATE_ENTROPY:-False}" in code_stage2
+    assert "ROLLOUT_GPU_MEMORY_UTILIZATION=${ROLLOUT_GPU_MEMORY_UTILIZATION:-0.55}" in code_stage2

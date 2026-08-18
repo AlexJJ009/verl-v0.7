@@ -6,6 +6,8 @@ from pathlib import Path
 import subprocess
 import sys
 
+import pytest
+import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 ADAPTER = ROOT / "scripts/stage123_phase_adapter.py"
@@ -23,6 +25,8 @@ def module():
 
 
 def dry_run(run_id: str) -> dict:
+    if yaml.safe_load(MANIFEST.read_text()).get("launch_allowed") is not True:
+        pytest.skip("legacy Stage123 manifest is intentionally invalidated")
     result = subprocess.run(
         [sys.executable, str(ADAPTER), "--manifest", str(MANIFEST), "--run-id", run_id, "--dry-run"],
         check=True,
@@ -33,6 +37,8 @@ def dry_run(run_id: str) -> dict:
 
 
 def split_dry_run(run_id: str) -> dict:
+    if yaml.safe_load(SPLIT_MANIFEST.read_text()).get("launch_allowed") is not True:
+        pytest.skip("legacy split-Stage3 manifest is intentionally invalidated")
     result = subprocess.run(
         [sys.executable, str(ADAPTER), "--manifest", str(SPLIT_MANIFEST), "--run-id", run_id, "--dry-run"],
         check=True,
@@ -89,7 +95,8 @@ def test_split_matrix_has_two_kl_arms_and_two_stage3_submodel_branches() -> None
     assert no_kl["BASE_MODEL_PATH"].endswith("/qwen3-1p7b-kodcode-format-sft-frac25")
     assert no_kl["EXPECTED_MODEL1_CONFIG_SHA256"] == "a4a451865e8d45a519133031f19cda7d347813159fde1756d63e2beaf67f2288"
     assert no_kl["JOINT_VALIDATION_VIEWS"] == "[model1,model2]"
-    assert no_kl["BEST_CKPT_METRIC_KEY"] == "val-core/model2/HumanEval+/acc/mean@3"
+    assert no_kl["BEST_CKPT_METRIC_KEY"] == "val-core/model2/code3_macro/acc/mean@3"
+    assert no_kl["TOP_K"] == "-1"
     assert no_kl["SUBMODEL_KL_ENABLED"] == "false"
     assert model2_kl["SUBMODEL_KL_ENABLED"] == "true"
     assert model2_kl["SUBMODEL_KL_MODEL1_ENABLED"] == "false"
@@ -99,4 +106,4 @@ def test_split_matrix_has_two_kl_arms_and_two_stage3_submodel_branches() -> None
     assert no_kl_model1["STAGE2_MODEL_PATH"].endswith("/stage2_final_model1")
     assert no_kl_model2["STAGE2_SUBMODEL"] == "model2"
     assert no_kl_model2["STAGE2_MODEL_PATH"].endswith("/stage2_final_model2")
-    assert no_kl_model1["BEST_CKPT_METRIC_KEY"] == "val-core/HumanEval+/acc/mean@3"
+    assert no_kl_model1["BEST_CKPT_METRIC_KEY"] == "val-core/code3_macro/acc/mean@3"

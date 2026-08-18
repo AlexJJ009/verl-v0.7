@@ -75,7 +75,7 @@ def test_stage123_profile_serializes_frozen_decoder_contract(tmp_path: Path) -> 
         "VAL_TEMPERATURE": "0.2",
         "VAL_TOP_P": "0.95",
         "VAL_DO_SAMPLE": "True",
-        "VAL_N": "1",
+        "VAL_N": "3",
     }.items() <= snapshot.items()
 
 
@@ -107,7 +107,7 @@ def test_stage123_launchers_consume_profile_owned_decoder_fields() -> None:
         assert "actor_rollout_ref.rollout.val_kwargs.do_sample=${val_do_sample}" in launcher
 
 
-def test_phase_contract_audit_accepts_the_fresh_manifest() -> None:
+def test_phase_contract_audit_rejects_the_invalidated_manifest() -> None:
     result = subprocess.run(
         ["python", str(AUDIT), "--manifest", str(MANIFEST)],
         check=False,
@@ -116,8 +116,8 @@ def test_phase_contract_audit_accepts_the_fresh_manifest() -> None:
         cwd=REPO_ROOT,
     )
 
-    assert result.returncode == 0, result.stderr
-    assert '"ok": true' in result.stdout
+    assert result.returncode != 0
+    assert "FAIL: manifest render failed" in result.stderr
 
 
 def test_phase_contract_audit_rejects_a_decoder_hash_mutation(tmp_path: Path) -> None:

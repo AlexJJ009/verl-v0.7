@@ -1,0 +1,4 @@
+entrypoint: platform/hope_math_stage123/jupyter.sh
+env:
+  EXPERIMENT: arm-c
+  WANDB_MODE: offline

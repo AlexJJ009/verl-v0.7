@@ -141,7 +141,7 @@ def main() -> int:
     parser.add_argument(
         "--manifest",
         type=Path,
-        default=ROOT / "recipe/on_policy_wdl_sft/experiment_manifest/math_qwen3_1p7b_cold_start.yaml",
+        default=ROOT / "recipe/on_policy_wdl_sft/experiment_manifest/math_qwen3_1p7b_cold_start_cotmask_v3.yaml",
     )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
@@ -224,8 +224,6 @@ def main() -> int:
             if step == 0:
                 model_path = paths["raw_model"]
                 output_dir = paths["step_zero_validation"]
-                if not args.dry_run:
-                    backfill_format_contract_metric(output_dir)
             else:
                 env = dict(os.environ)
                 env.update(
@@ -258,8 +256,9 @@ def main() -> int:
                 if output_dir.exists():
                     raise FileExistsError(f"cold-start validation path already exists: {output_dir}")
 
-            if step != 0:
-                run(validation_command(manifest, model_path, output_dir), dry_run=args.dry_run)
+            if output_dir.exists() and not args.dry_run:
+                raise FileExistsError(f"cold-start validation path already exists: {output_dir}")
+            run(validation_command(manifest, model_path, output_dir), dry_run=args.dry_run)
             if args.dry_run:
                 continue
             passed, evidence = passes_thresholds(output_dir / "eval_metrics.json", manifest["admission_thresholds"])
