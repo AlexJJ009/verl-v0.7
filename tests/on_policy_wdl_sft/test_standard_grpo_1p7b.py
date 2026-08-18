@@ -144,6 +144,10 @@ def test_math_grpo_formal_launch_is_gated_by_strict_reward_contract():
     assert 'PYTHONPATH="${REPO_PYTHONPATH_ROOT:-${SCRIPT_DIR}/../../..}:${PYTHONPATH:-}"' in launcher
     assert 'grpo_retrain_admission.py' in launcher
     assert '--runtime-image-digest "${GRPO_RUNTIME_IMAGE_DIGEST}"' in launcher
+    assert '--scheduler-managed' in launcher
+    assert 'GRPO_ROOT_COMMIT' in launcher
+    assert 'GRPO_RECIPE_COMMIT' in launcher
+    assert 'GRPO_SNAPSHOT_DIGEST' in launcher
     assert '--receipt "${GRPO_ADMISSION_RECEIPT}"' in launcher
 
 

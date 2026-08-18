@@ -34,6 +34,60 @@ def require_clean(repo: Path, label: str) -> str:
     return git_output(repo, "rev-parse", "HEAD")
 
 
+def require_hex_digest(value: str, length: int, label: str) -> str:
+    if not re.fullmatch(rf"[0-9a-f]{{{length}}}", value):
+        raise ValueError(f"{label} must be a full {length}-character lowercase hex digest")
+    return value
+
+
+def resolve_source_identity(
+    *,
+    scheduler_managed: bool,
+    supplied_root_commit: str | None,
+    supplied_recipe_commit: str | None,
+    supplied_snapshot_digest: str | None,
+) -> tuple[str, str, str | None, str]:
+    """Resolve Git identity locally or from an immutable scheduler snapshot.
+
+    Slurm workspaces intentionally exclude .git. In that environment the
+    scheduler receipt binds the exact snapshot digest and the snapshot manifest
+    binds the root/recipe commits. Callers must pass all three values rather
+    than silently weakening the clean-checkout gate.
+    """
+    has_git_metadata = (ROOT / ".git").exists() and (ROOT / "recipe/.git").exists()
+    if scheduler_managed:
+        if not supplied_root_commit or not supplied_recipe_commit or not supplied_snapshot_digest:
+            raise RuntimeError(
+                "scheduler-managed admission requires root commit, recipe commit, and snapshot digest"
+            )
+        root_commit = require_hex_digest(supplied_root_commit, 40, "root commit")
+        recipe_commit = require_hex_digest(supplied_recipe_commit, 40, "recipe commit")
+        snapshot_digest = require_hex_digest(supplied_snapshot_digest, 64, "snapshot digest")
+        if has_git_metadata:
+            observed_root = require_clean(ROOT, "root")
+            observed_recipe = require_clean(ROOT / "recipe", "recipe")
+            if observed_root != root_commit or observed_recipe != recipe_commit:
+                raise RuntimeError("scheduler source commits differ from the checked-out launch candidate")
+            gitlink_commit = git_output(ROOT, "ls-tree", "HEAD", "recipe").split()[2]
+            if observed_recipe != gitlink_commit:
+                raise RuntimeError(
+                    f"recipe checkout does not match committed gitlink: checkout={observed_recipe} "
+                    f"gitlink={gitlink_commit}"
+                )
+        return root_commit, recipe_commit, snapshot_digest, "scheduler_snapshot"
+
+    if not has_git_metadata:
+        raise RuntimeError("local admission requires root and recipe Git metadata")
+    root_commit = require_clean(ROOT, "root")
+    recipe_commit = require_clean(ROOT / "recipe", "recipe")
+    gitlink_commit = git_output(ROOT, "ls-tree", "HEAD", "recipe").split()[2]
+    if recipe_commit != gitlink_commit:
+        raise RuntimeError(
+            f"recipe checkout does not match committed gitlink: checkout={recipe_commit} gitlink={gitlink_commit}"
+        )
+    return root_commit, recipe_commit, None, "local_git"
+
+
 def require_sha(path: Path, expected: str, label: str) -> str:
     if not path.is_file():
         raise FileNotFoundError(f"missing {label}: {path}")
@@ -60,6 +114,10 @@ def main() -> int:
     parser.add_argument("--runtime-image-digest", required=True)
     parser.add_argument("--expected-image-digest", required=True)
     parser.add_argument("--training-seed", type=int, required=True)
+    parser.add_argument("--scheduler-managed", action="store_true")
+    parser.add_argument("--root-commit")
+    parser.add_argument("--recipe-commit")
+    parser.add_argument("--snapshot-digest")
     parser.add_argument("--receipt", type=Path, required=True)
     args = parser.parse_args()
 
@@ -73,14 +131,12 @@ def main() -> int:
     if args.receipt.exists():
         raise FileExistsError(f"admission receipt already exists: {args.receipt}")
 
-    root_commit = require_clean(ROOT, "root")
-    recipe = ROOT / "recipe"
-    recipe_commit = require_clean(recipe, "recipe")
-    gitlink_commit = git_output(ROOT, "ls-tree", "HEAD", "recipe").split()[2]
-    if recipe_commit != gitlink_commit:
-        raise RuntimeError(
-            f"recipe checkout does not match committed gitlink: checkout={recipe_commit} gitlink={gitlink_commit}"
-        )
+    root_commit, recipe_commit, snapshot_digest, source_identity_mode = resolve_source_identity(
+        scheduler_managed=args.scheduler_managed,
+        supplied_root_commit=args.root_commit,
+        supplied_recipe_commit=args.recipe_commit,
+        supplied_snapshot_digest=args.snapshot_digest,
+    )
 
     model_file = args.model_path / "model.safetensors"
     identities = {
@@ -99,6 +155,8 @@ def main() -> int:
         "training_seed": args.training_seed,
         "root_commit": root_commit,
         "recipe_commit": recipe_commit,
+        "snapshot_digest": snapshot_digest,
+        "source_identity_mode": source_identity_mode,
         "image_digest": args.runtime_image_digest,
         "paths": {
             "model": str(args.model_path),
