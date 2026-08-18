@@ -1,0 +1,4 @@
+interface:
+  display_name: "L40S Resource Relay"
+  short_description: "内网 rsync 两跳传输、校验与清理 L40S 资源"
+  default_prompt: "Use $l40s-resource-relay to transfer a model image, checkpoint, or data directory between L40S servers through the private relay."

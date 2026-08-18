@@ -92,6 +92,9 @@ celerybeat-schedule
 
 # dotenv
 .env
+.l40s-resource-relay.env
+config/l40s-resource-relay.env
+**/l40s-resource-relay.env
 
 # virtualenv
 venv/
