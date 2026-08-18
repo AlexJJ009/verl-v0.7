@@ -6,7 +6,13 @@ This directory is the knowledge base for joint-training infrastructure in verl. 
 
 ## Current Focus
 
-**On-Policy Weak-Driven SFT** — combining logit fusion with on-policy rollout and forward/reverse SFT. See `plans/active/on_policy_wdl_sft.md` for the active plan.
+**Math-first On-Policy Weak-Driven Learning causal validation** — the active
+P60 matrix tests continuous WDL mixture C against ordinary Stage1 continuation
+A, direct strong-only D, and the matched-scale no-weak D0 control. Stage2 uses
+Model2-only rollout and a joint teacher-forced WDL objective; `strong_scaled`
+implements D0 as $0.8z_2$. See
+`plans/active/qwen3_1p7b_math_stage123.md` for the registered hypotheses,
+telemetry, and admission contract.
 
 ## Directory Structure
 

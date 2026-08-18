@@ -4,7 +4,11 @@
 - 创建日期：2026-04-19
 - 两个版本在代码库中并存；past experiments（EXP-12~15）锁定 v1，future experiments 选 `loss_mode=wdl_sft_is` 走 v2
 
-本文档只对比 **loss 函数层**的差异。Weak-Driven rollout（fused sampling，λ=0.5）和 joint model 结构在 v1 和 v2 里完全一致。
+本文档只对比 **loss 函数层**的差异。Rollout policy is recipe-specific:
+historical experiments may use fused sampling, whereas the active Qwen3-1.7B
+Math causal-P60 Stage2 uses Model2-only rollout and recomputes the joint/fused
+teacher-forced loss. Thus this loss spec does not itself establish a rollout
+topology or a `fusion_mode`; see the active experiment plan for those choices.
 
 ---
 

@@ -1,3 +1,12 @@
+> **Historical infrastructure investigation, not the live Stage2 contract.**
+> This document records the original fused-rollout GRPO design discussion. The
+> active Qwen3-1.7B Math causal-P60 Stage2 instead uses **Model2-only rollout**
+> and applies fusion only while recomputing the teacher-forced WDL objective.
+> It also adds `fusion_mode=strong_scaled` for the D0 matched-scale no-weak
+> control. For the current protocol, use
+> `plans/active/qwen3_1p7b_math_stage123.md`; do not infer current rollout
+> semantics or available config fields from this historical document.
+
 我们提出了一个联合训练的算法，它在标准的 SFT 上取得了成功。
 
 现在我们想要知道这个范式能不能推广到强化学习中，那就以 GRPO 为例子，我们要试一下能不能推广到 GRPO 中。
