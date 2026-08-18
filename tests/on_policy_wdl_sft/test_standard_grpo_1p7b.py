@@ -141,6 +141,7 @@ def test_math_grpo_formal_launch_is_gated_by_strict_reward_contract():
     assert 'joint_training/custom_reward_function_latex_verify.py' in launcher
     assert 'scripts/check_math_reward_contract.py' in launcher
     assert '--reward-path "${CUSTOM_REWARD_FN_PATH}"' in launcher
+    assert 'PYTHONPATH="${REPO_PYTHONPATH_ROOT:-${SCRIPT_DIR}/../../..}:${PYTHONPATH:-}"' in launcher
     assert 'grpo_retrain_admission.py' in launcher
     assert '--runtime-image-digest "${GRPO_RUNTIME_IMAGE_DIGEST}"' in launcher
     assert '--receipt "${GRPO_ADMISSION_RECEIPT}"' in launcher
