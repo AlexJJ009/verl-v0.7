@@ -11,6 +11,8 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pyarrow.parquet as pq
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -97,6 +99,41 @@ def require_sha(path: Path, expected: str, label: str) -> str:
     return actual
 
 
+def resolve_ordered_data_schedule(
+    train_file: Path,
+    train_prompt_bsz: int,
+    total_training_steps: int,
+    total_epochs: int,
+) -> dict[str, int | bool]:
+    train_rows = pq.ParquetFile(train_file).metadata.num_rows
+    if train_rows <= 0:
+        raise RuntimeError("train parquet must contain at least one row")
+    if train_rows % train_prompt_bsz:
+        raise RuntimeError(
+            f"train rows ({train_rows}) are not divisible by prompt batch size "
+            f"({train_prompt_bsz})"
+        )
+    steps_per_epoch = train_rows // train_prompt_bsz
+    required_epochs = (total_training_steps + steps_per_epoch - 1) // steps_per_epoch
+    if total_epochs != required_epochs:
+        raise RuntimeError(
+            f"total_epochs must exactly cover the ordered training schedule: "
+            f"steps={total_training_steps}, steps_per_epoch={steps_per_epoch}, "
+            f"expected={required_epochs}, got={total_epochs}"
+        )
+    full_epochs, trailing_steps = divmod(total_training_steps, steps_per_epoch)
+    return {
+        "shuffle": False,
+        "train_rows": train_rows,
+        "train_prompt_bsz": train_prompt_bsz,
+        "steps_per_epoch": steps_per_epoch,
+        "total_training_steps": total_training_steps,
+        "total_epochs": total_epochs,
+        "full_epochs": full_epochs,
+        "trailing_steps_in_next_epoch": trailing_steps,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--task", choices=("math", "code"), required=True)
@@ -113,7 +150,13 @@ def main() -> int:
     parser.add_argument("--expected-reward-sha256", required=True)
     parser.add_argument("--runtime-image-digest", required=True)
     parser.add_argument("--expected-image-digest", required=True)
-    parser.add_argument("--training-seed", type=int, required=True)
+    parser.add_argument("--actor-seed", type=int, required=True)
+    parser.add_argument("--rollout-seed", type=int, required=True)
+    parser.add_argument("--data-seed", type=int, required=True)
+    parser.add_argument("--data-shuffle", choices=("True", "False"), required=True)
+    parser.add_argument("--train-prompt-bsz", type=int, required=True)
+    parser.add_argument("--total-training-steps", type=int, required=True)
+    parser.add_argument("--total-epochs", type=int, required=True)
     parser.add_argument("--scheduler-managed", action="store_true")
     parser.add_argument("--root-commit")
     parser.add_argument("--recipe-commit")
@@ -121,8 +164,31 @@ def main() -> int:
     parser.add_argument("--receipt", type=Path, required=True)
     args = parser.parse_args()
 
-    if args.training_seed < 0:
-        raise ValueError("training seed must be non-negative")
+    for label, value in (
+        ("actor seed", args.actor_seed),
+        ("rollout seed", args.rollout_seed),
+        ("data seed", args.data_seed),
+    ):
+        if value < 0:
+            raise ValueError(f"{label} must be non-negative")
+    expected_randomness = {
+        "math": {"actor_seed": 42, "rollout_seed": 0, "data_seed": 20260719},
+        "code": {"actor_seed": 42, "rollout_seed": 0, "data_seed": 20260706},
+    }[args.task]
+    observed_randomness = {
+        "actor_seed": args.actor_seed,
+        "rollout_seed": args.rollout_seed,
+        "data_seed": args.data_seed,
+    }
+    if observed_randomness != expected_randomness:
+        raise ValueError(
+            f"{args.task} randomness does not match the frozen A/C/D0 contract: "
+            f"expected={expected_randomness} observed={observed_randomness}"
+        )
+    if args.data_shuffle != "False":
+        raise ValueError("matched A/C/D0 admission requires data shuffle=False")
+    if args.train_prompt_bsz <= 0 or args.total_training_steps <= 0 or args.total_epochs <= 0:
+        raise ValueError("batch size, training steps, and epochs must be positive")
     digest_pattern = re.compile(r"sha256:[0-9a-f]{64}")
     if not digest_pattern.fullmatch(args.runtime_image_digest):
         raise ValueError("runtime image digest must be a full sha256 digest")
@@ -146,13 +212,24 @@ def main() -> int:
         "train_file_sha256": require_sha(args.train_file, args.expected_train_sha256, "train file"),
         "reward_sha256": require_sha(args.reward_path, args.expected_reward_sha256, "reward scorer"),
     }
+    ordered_data_schedule = resolve_ordered_data_schedule(
+        args.train_file,
+        args.train_prompt_bsz,
+        args.total_training_steps,
+        args.total_epochs,
+    )
     payload = {
-        "schema_version": 1,
+        "schema_version": 2,
         "status": "admitted",
         "admitted_at": datetime.now(timezone.utc).isoformat(),
         "task": args.task,
         "pipeline": args.pipeline,
-        "training_seed": args.training_seed,
+        "randomness": {
+            "actor_seed": args.actor_seed,
+            "rollout_seed": args.rollout_seed,
+            "data_seed": args.data_seed,
+        },
+        "ordered_data_schedule": ordered_data_schedule,
         "root_commit": root_commit,
         "recipe_commit": recipe_commit,
         "snapshot_digest": snapshot_digest,

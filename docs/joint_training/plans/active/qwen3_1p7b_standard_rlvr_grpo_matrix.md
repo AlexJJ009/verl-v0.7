@@ -16,7 +16,9 @@
 - primary LR 为 `1e-6`；`5e-7` 只作为预注册 sensitivity arm；
 - Math 使用 `recipe/joint_training/custom_reward_function_latex_verify.py`，Code 使用
   `official_aligned_reward.py`；两者的 SHA-256 进入 admission receipt；
-- fresh retrain 固定 `resume_mode=disable`、training/generation seed `1`、PPO epoch `1`、
+- fresh retrain 固定 `resume_mode=disable`；复现 A/C/D0 的实际 resolved randomness：
+  actor/FSDP 与 actor data-loader seed `42`、vLLM rollout base seed `0`、Math data seed
+  `20260719`（Code 为 `20260706`）；PPO epoch `1`、
   prompt batch `64`、group `N=8`、clip `0.2/0.2`、actor KL `0.001`；
 - formal launch 必须核对 clean root/recipe commits、recipe gitlink、image digest、init model、
   train parquet 和 scorer hash，并在 repo 外写唯一 admission receipt；
@@ -166,8 +168,11 @@ GPU-hours 同时记录，不能只写一个含混的 “batch size”。
 行。`batch=64` 且 `shuffle=False` 时分别精确支持 `40 + 20 + 40 = 100` step，不需要重复样本。
 `Stage1 + GRPO` 使用既有 `stage2 -> stage3` 合并 shard，共 `3,840/64=60` step；
 `Cold Start + GRPO` 使用新生成并带 SHA-256 receipt 的 `stage1 -> stage2 -> stage3` 6,400-row
-连续 shard，共 100 step。若继续训练超过 P100，就必须预注册新数据窗口或明确进入第二 epoch，
-不能静默循环当前 6,400 rows。
+连续 shard，共 100 step。超过一个 epoch 的扩展训练必须继续使用同一冻结行序：每个完整 epoch
+从 row 0 到最后一行，之后才从 row 0 开始下一 epoch。admission receipt 必须记录
+`rows / batch / steps_per_epoch / full_epochs / trailing_steps`，并要求 `total_epochs` 恰好等于
+覆盖目标 step 所需的 epoch 数。例如 post-Stage1 local P160 是 `60 + 60 + 40`，即两个完整
+3,840-row epoch 加第三个 epoch 的前 2,560 rows；禁止 shuffle、跳行或以 resume 改变边界。
 
 ### 6.2 Thinking 与 loss-mask 合同
 

@@ -8,11 +8,13 @@ from types import SimpleNamespace
 import pandas as pd
 import pytest
 import torch
+import yaml
 from omegaconf import OmegaConf
 
 from verl.trainer.ppo.core_algos import compute_policy_loss_vanilla
 from verl.trainer.ppo.ray_trainer import compute_response_mask
 from verl.workers.config.rollout import RolloutConfig
+from scripts.grpo_retrain_admission import resolve_ordered_data_schedule
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -51,8 +53,12 @@ def test_friendly_entries_resolve_frozen_standard_grpo_contract(wrapper, task, p
     assert config["ppo_mini_batch_size"] == "64"
     assert config["learning_rate"] == "1e-6"
     assert config["ppo_epochs"] == "1"
-    assert config["training_seed"] == "1"
+    assert config["actor_seed"] == "42"
+    assert config["rollout_seed"] == "0"
+    assert config["data_seed"] == {"math": "20260719", "code": "20260706"}[task]
+    assert config["actor_shuffle"] == "False"
     assert config["resume_mode"] == "disable"
+    assert config["total_epochs"] == "1"
     assert config["actor_grad_clip"] == "1.0"
     assert config["loss_mode"] == "vanilla"
     assert config["loss_agg_mode"] == "seq-mean-token-mean"
@@ -121,8 +127,11 @@ def test_common_launcher_forwards_standard_grpo_actor_contract():
     assert "actor_rollout_ref.actor.ppo_mini_batch_size=${train_prompt_mini_bsz}" in launcher
     assert "actor_rollout_ref.actor.ppo_epochs=${ppo_epochs}" in launcher
     assert "actor_rollout_ref.actor.data_loader_seed=${training_seed}" in launcher
+    assert "actor_rollout_ref.actor.shuffle=${actor_shuffle}" in launcher
     assert "+actor_rollout_ref.rollout.seed=${rollout_seed}" in launcher
-    assert "data.seed=${training_seed}" in launcher
+    assert "actor_rollout_ref.actor.fsdp_config.seed=${training_seed}" in launcher
+    assert "actor_rollout_ref.ref.fsdp_config.seed=${training_seed}" in launcher
+    assert "data.seed=${data_seed}" in launcher
     assert "trainer.resume_mode=${resume_mode}" in launcher
     assert "actor_rollout_ref.actor.grad_clip=${actor_grad_clip}" in launcher
     assert "actor_rollout_ref.actor.loss_agg_mode=${loss_agg_mode}" in launcher
@@ -166,6 +175,11 @@ def test_math_grpo_formal_launch_is_gated_by_strict_reward_contract():
         ("TRAIN_PROMPT_MINI_BSZ", "512", "TRAIN_PROMPT_MINI_BSZ=64"),
         ("PPO_EPOCHS", "2", "PPO_EPOCHS=1"),
         ("RESUME_MODE", "auto", "RESUME_MODE=disable"),
+        ("TRAINING_SEED", "1", "TRAINING_SEED=42"),
+        ("ROLLOUT_SEED", "1", "ROLLOUT_SEED=0"),
+        ("DATA_SEED", "1", "DATA_SEED=20260719"),
+        ("ACTOR_SHUFFLE", "True", "ACTOR_SHUFFLE=False"),
+        ("ROLLOUT_DO_SAMPLE", "False", "ROLLOUT_DO_SAMPLE=True"),
     ],
 )
 def test_config_only_rejects_noncanonical_grpo_overrides(override, value, message):
@@ -260,3 +274,42 @@ def test_continuous_dataset_is_stage1_then_stage2_then_stage3(tmp_path):
         "stage3",
         "stage3",
     ]
+
+
+def test_ordered_epoch_schedule_records_full_and_partial_epochs(tmp_path):
+    train_file = tmp_path / "train.parquet"
+    pd.DataFrame({"row": range(3840)}).to_parquet(train_file, index=False)
+
+    schedule = resolve_ordered_data_schedule(train_file, 64, 160, 3)
+    assert schedule == {
+        "shuffle": False,
+        "train_rows": 3840,
+        "train_prompt_bsz": 64,
+        "steps_per_epoch": 60,
+        "total_training_steps": 160,
+        "total_epochs": 3,
+        "full_epochs": 2,
+        "trailing_steps_in_next_epoch": 40,
+    }
+
+    with pytest.raises(RuntimeError, match="expected=3, got=2"):
+        resolve_ordered_data_schedule(train_file, 64, 160, 2)
+
+
+@pytest.mark.parametrize(
+    ("manifest_name", "data_seed"),
+    [
+        ("math_qwen3_1p7b_wdl_causal_p60.yaml", 20260719),
+        ("code_qwen3_1p7b_wdl_acd0_p60_beta0.yaml", 20260706),
+    ],
+)
+def test_grpo_randomness_matches_the_recorded_acd0_contract(manifest_name, data_seed):
+    manifest = yaml.safe_load(
+        (ROOT / "recipe/on_policy_wdl_sft/experiment_manifest" / manifest_name).read_text()
+    )
+    assert manifest["training_contract"]["randomness"] == {
+        "actor_fsdp_seed": 42,
+        "actor_data_loader_seed": 42,
+        "rollout_base_seed": 0,
+        "data_seed": data_seed,
+    }
