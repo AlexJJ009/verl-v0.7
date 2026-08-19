@@ -164,15 +164,22 @@ GPU-hours 同时记录，不能只写一个含混的 “batch size”。
 不同任务的最大长度不能为了“参数看起来一致”而强行统一。公平性要求同一任务内各方法保持完全
 相同的 prompt/response contract；数学与代码之间允许使用各自已经冻结的长度。
 
-两项数据 receipt 都已验证相同结构：stage1 `2,560` 行、stage2 `1,280` 行、stage3 `2,560`
-行。`batch=64` 且 `shuffle=False` 时分别精确支持 `40 + 20 + 40 = 100` step，不需要重复样本。
-`Stage1 + GRPO` 使用既有 `stage2 -> stage3` 合并 shard，共 `3,840/64=60` step；
-`Cold Start + GRPO` 使用新生成并带 SHA-256 receipt 的 `stage1 -> stage2 -> stage3` 6,400-row
-连续 shard，共 100 step。超过一个 epoch 的扩展训练必须继续使用同一冻结行序：每个完整 epoch
-从 row 0 到最后一行，之后才从 row 0 开始下一 epoch。admission receipt 必须记录
-`rows / batch / steps_per_epoch / full_epochs / trailing_steps`，并要求 `total_epochs` 恰好等于
-覆盖目标 step 所需的 epoch 数。例如 post-Stage1 local P160 是 `60 + 60 + 40`，即两个完整
-3,840-row epoch 加第三个 epoch 的前 2,560 rows；禁止 shuffle、跳行或以 resume 改变边界。
+两项数据 receipt 都已验证相同 raw 结构：stage1 `2,560` 行、stage2 `1,280` 行、stage3
+`2,560` 行。但 VERL 训练入口会先执行 `filter_overlong_prompts=True`，再用
+`drop_last=True` 构造 dataloader；因此训练预算必须按实际 dataloader batches 记录，而不能只按
+raw parquet 行数推断。当前 Math frozen tokenizer/template 下：
+
+- post-Stage1 `stage2 -> stage3` raw `3,840` 行过滤为 `3,792` 行，每个 dataloader epoch 是
+  `59` 个 batch，尾部 `16` 条被 `drop_last` 丢弃；
+- cold-start `stage1 -> stage2 -> stage3` raw `6,400` 行过滤为 `6,324` 行，每个 dataloader
+  epoch 是 `98` 个 batch，尾部 `52` 条被 `drop_last` 丢弃。
+
+第一轮 `Stage1 + GRPO` 仍以 hard cap local P60 停止，`Cold Start + GRPO` 仍以 hard cap
+P100 停止；两者都需要 `total_epochs=2` 才覆盖 VERL 实际 dataloader。超过一个 epoch 的扩展训练
+必须继续使用同一冻结行序：每个完整 dataloader epoch 结束后才从 epoch 起点继续。admission
+receipt 必须同时记录 `raw_rows/raw_steps_per_epoch` 与
+`effective_rows/steps_per_epoch/full_epochs/trailing_steps`，并要求 `total_epochs` 恰好等于覆盖
+目标 step 所需的实际 dataloader epoch 数；禁止 shuffle、跳行或以 resume 改变边界。
 
 ### 6.2 Thinking 与 loss-mask 合同
 

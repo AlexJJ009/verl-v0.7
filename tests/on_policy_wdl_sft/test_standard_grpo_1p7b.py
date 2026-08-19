@@ -58,7 +58,7 @@ def test_friendly_entries_resolve_frozen_standard_grpo_contract(wrapper, task, p
     assert config["data_seed"] == {"math": "20260719", "code": "20260706"}[task]
     assert config["actor_shuffle"] == "False"
     assert config["resume_mode"] == "disable"
-    assert config["total_epochs"] == "1"
+    assert config["total_epochs"] == ("2" if task == "math" else "1")
     assert config["actor_grad_clip"] == "1.0"
     assert config["loss_mode"] == "vanilla"
     assert config["loss_agg_mode"] == "seq-mean-token-mean"
@@ -71,6 +71,13 @@ def test_friendly_entries_resolve_frozen_standard_grpo_contract(wrapper, task, p
     assert config["rollout_is"] == "null"
     assert config["enable_thinking"] == "True"
     assert config["data_shuffle"] == "False"
+    if task == "math":
+        expected_schedule = {
+            "stage1_grpo": ("3792", "59"),
+            "cold_start_grpo": ("6324", "98"),
+        }[pipeline]
+        assert config["expected_filtered_train_rows"] == expected_schedule[0]
+        assert config["expected_dataloader_steps_per_epoch"] == expected_schedule[1]
     expected_reward = {
         "math": (
             str(ROOT / "recipe/joint_training/custom_reward_function_latex_verify.py"),
@@ -136,6 +143,15 @@ def test_common_launcher_forwards_standard_grpo_actor_contract():
     assert "actor_rollout_ref.actor.grad_clip=${actor_grad_clip}" in launcher
     assert "actor_rollout_ref.actor.loss_agg_mode=${loss_agg_mode}" in launcher
     assert "actor_rollout_ref.actor.grad_clip=500.0" not in launcher
+
+
+def test_fresh_grpo_run_cannot_reuse_an_existing_checkpoint_namespace():
+    launcher = (ROOT / "recipe/on_policy_wdl_sft/ablation_single_model/_common_ablation.sh").read_text()
+    disable_branch = launcher.split('if [ "$resume_mode" = "disable" ]; then', 1)[1].split("else", 1)[0]
+    assert 'CKPTS_DIR="$BASE_CKPT_DIR/${WANDB_RUN_NAME}"' in disable_branch
+    assert 'if [ -e "$CKPTS_DIR" ]; then' in disable_branch
+    assert "fresh-run checkpoint namespace already exists" in disable_branch
+    assert "LATEST_CKPT_DIR=" not in disable_branch
 
 
 def test_rollout_config_accepts_the_reproducibility_seed_forwarded_by_launcher():
@@ -283,7 +299,9 @@ def test_ordered_epoch_schedule_records_full_and_partial_epochs(tmp_path):
     schedule = resolve_ordered_data_schedule(train_file, 64, 160, 3)
     assert schedule == {
         "shuffle": False,
-        "train_rows": 3840,
+        "raw_train_rows": 3840,
+        "raw_steps_per_epoch": 60,
+        "effective_train_rows": 3840,
         "train_prompt_bsz": 64,
         "steps_per_epoch": 60,
         "total_training_steps": 160,
@@ -294,6 +312,28 @@ def test_ordered_epoch_schedule_records_full_and_partial_epochs(tmp_path):
 
     with pytest.raises(RuntimeError, match="expected=3, got=2"):
         resolve_ordered_data_schedule(train_file, 64, 160, 2)
+
+
+def test_ordered_epoch_schedule_can_use_filtered_verl_dataloader_steps(tmp_path):
+    train_file = tmp_path / "train.parquet"
+    pd.DataFrame({"row": range(3840)}).to_parquet(train_file, index=False)
+
+    schedule = resolve_ordered_data_schedule(train_file, 64, 60, 2, 3792, 59)
+    assert schedule == {
+        "shuffle": False,
+        "raw_train_rows": 3840,
+        "raw_steps_per_epoch": 60,
+        "effective_train_rows": 3792,
+        "train_prompt_bsz": 64,
+        "steps_per_epoch": 59,
+        "total_training_steps": 60,
+        "total_epochs": 2,
+        "full_epochs": 1,
+        "trailing_steps_in_next_epoch": 1,
+    }
+
+    with pytest.raises(RuntimeError, match="expected=2, got=1"):
+        resolve_ordered_data_schedule(train_file, 64, 60, 1, 3792, 59)
 
 
 @pytest.mark.parametrize(

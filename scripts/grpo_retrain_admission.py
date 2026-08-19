@@ -104,6 +104,8 @@ def resolve_ordered_data_schedule(
     train_prompt_bsz: int,
     total_training_steps: int,
     total_epochs: int,
+    expected_filtered_train_rows: int | None = None,
+    expected_dataloader_steps_per_epoch: int | None = None,
 ) -> dict[str, int | bool]:
     train_rows = pq.ParquetFile(train_file).metadata.num_rows
     if train_rows <= 0:
@@ -113,7 +115,23 @@ def resolve_ordered_data_schedule(
             f"train rows ({train_rows}) are not divisible by prompt batch size "
             f"({train_prompt_bsz})"
         )
-    steps_per_epoch = train_rows // train_prompt_bsz
+    raw_steps_per_epoch = train_rows // train_prompt_bsz
+    if expected_filtered_train_rows is None and expected_dataloader_steps_per_epoch is None:
+        effective_train_rows = train_rows
+        steps_per_epoch = raw_steps_per_epoch
+    elif expected_filtered_train_rows is not None and expected_dataloader_steps_per_epoch is not None:
+        if expected_filtered_train_rows <= 0 or expected_dataloader_steps_per_epoch <= 0:
+            raise RuntimeError("filtered train rows and dataloader steps must be positive")
+        if expected_filtered_train_rows // train_prompt_bsz != expected_dataloader_steps_per_epoch:
+            raise RuntimeError(
+                f"filtered train rows ({expected_filtered_train_rows}) do not produce the expected "
+                f"drop_last dataloader steps ({expected_dataloader_steps_per_epoch}) with batch "
+                f"{train_prompt_bsz}"
+            )
+        effective_train_rows = expected_filtered_train_rows
+        steps_per_epoch = expected_dataloader_steps_per_epoch
+    else:
+        raise RuntimeError("filtered train rows and dataloader steps must be supplied together")
     required_epochs = (total_training_steps + steps_per_epoch - 1) // steps_per_epoch
     if total_epochs != required_epochs:
         raise RuntimeError(
@@ -124,7 +142,9 @@ def resolve_ordered_data_schedule(
     full_epochs, trailing_steps = divmod(total_training_steps, steps_per_epoch)
     return {
         "shuffle": False,
-        "train_rows": train_rows,
+        "raw_train_rows": train_rows,
+        "raw_steps_per_epoch": raw_steps_per_epoch,
+        "effective_train_rows": effective_train_rows,
         "train_prompt_bsz": train_prompt_bsz,
         "steps_per_epoch": steps_per_epoch,
         "total_training_steps": total_training_steps,
@@ -157,6 +177,8 @@ def main() -> int:
     parser.add_argument("--train-prompt-bsz", type=int, required=True)
     parser.add_argument("--total-training-steps", type=int, required=True)
     parser.add_argument("--total-epochs", type=int, required=True)
+    parser.add_argument("--expected-filtered-train-rows", type=int)
+    parser.add_argument("--expected-dataloader-steps-per-epoch", type=int)
     parser.add_argument("--scheduler-managed", action="store_true")
     parser.add_argument("--root-commit")
     parser.add_argument("--recipe-commit")
@@ -217,6 +239,8 @@ def main() -> int:
         args.train_prompt_bsz,
         args.total_training_steps,
         args.total_epochs,
+        args.expected_filtered_train_rows,
+        args.expected_dataloader_steps_per_epoch,
     )
     payload = {
         "schema_version": 2,
