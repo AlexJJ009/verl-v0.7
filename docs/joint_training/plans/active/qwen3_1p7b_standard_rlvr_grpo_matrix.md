@@ -201,14 +201,12 @@ answer token。历史 “CoT token 没进入 SFT loss mask” 的事故不能原
 sensitivity 只保留这两个 LR，不新增第三档：`5e-7 / 1e-6`。任务、pipeline、初始化、seed、数据
 顺序和其他超参完全一致；两个 LR 都报告完整曲线，不能只挑最好结果。
 
-必须区分两种执行方式：
-
-- **同 LR 延长训练**：从现有 terminal checkpoint resume，保留 optimizer、scheduler 和 RNG state，
-  只把总训练步数延长到第二 epoch；
-- 两个 LR 各自只能 resume 自己的 terminal checkpoint；不得在 resume 时互换 LR。
+strict-scorer 重训不复用任何旧 terminal checkpoint。每个 LR 都从相应 frozen init 以唯一 run
+namespace 启动，在一个 fresh process 中直接跑到预注册终点；`resume_mode=disable`，目标 checkpoint
+目录已存在时 fail closed。两个 LR 不得共享 run namespace、optimizer 或 RNG state。
 
 所有新 GRPO run 固定 `lr_warmup_steps=0`。这里的依据不是“已有 cold start 所以理论上永远不需要
-warmup”，而是本轮要测 canonical constant-LR baseline，并避免第二 epoch resume 时重新 warmup。
+warmup”，而是本轮要测 canonical constant-LR baseline，并避免引入额外 schedule 变量。
 
 ## 7. 训练 budget 与 checkpoint 规则
 
@@ -222,19 +220,19 @@ Stage1 的 pipeline effective step，避免把两种坐标混在一起：
   local P60 由 latest 规则保留；
 - `Cold Start + GRPO` 只显式保护 P40/P60（Stage1 -> Stage2、Stage2 -> Stage3 边界），terminal
   P100 由 latest 规则保留；不再保留无语义边界的 Stage1+GRPO local P40 或 Cold Start P80；
-- checkpoint retention 固定为“阶段关键点 + best/latest”：latest 保留 optimizer 以支持连续
-  saturation sweep，较早的 protected/best checkpoint 只保留 model weights；best/latest 与关键点
+- checkpoint retention 固定为“阶段关键点 + best/latest”：latest 保留 optimizer 供故障恢复，
+  较早的 protected/best checkpoint 只保留 model weights；best/latest 与关键点
   重合时去重。不得默认保留每 5 step 的全部 full checkpoint；
-- 第一轮先完整跑到 60/100，不用在线分数做 winner-only early stop；
-- 数学 `Cold Start + GRPO`：从 P100 原 optimizer resume 到 P200；完整 `stage1 -> stage2 -> stage3`
-  6,400-prompt 数据集按相同 seed、`shuffle=False` 和相同顺序再跑 100 step；第二 epoch 显式保护
-  source P100、Stage1 end P140、Stage2 end P160，terminal P200 由 latest 保留；
-- 数学 `Stage1 + GRPO`：从现有 GRPO local P60 / pipeline effective P100 checkpoint resume，保留
-  GRPO optimizer，随后用相同的完整 6,400-prompt `stage1 -> stage2 -> stage3` 数据集再跑 100 step。
-  终点是 GRPO local P160 / pipeline effective P200；显式保护 source local P60、第二轮 Stage1 end
-  local P100、Stage2 end local P120，terminal local P160 由 latest 保留；
-- 因而本轮“两 epoch”按完整 100-step pipeline 数据预算定义：两条 pipeline 都从 effective P100
-  延长到 effective P200。`Stage1 + GRPO` 的第二轮全部使用 GRPO，不重跑最初 40-step SFT；
+- strict 重训不在 P60/P100 停进程，也不从这些点 resume：数学 `Cold Start + GRPO` 在一个 fresh
+  process 中直接跑 local P200；数学 `Stage1 + GRPO` 在一个 fresh process 中直接跑 GRPO local
+  P160 / pipeline effective P200；
+- `Cold Start + GRPO` 始终循环同一 frozen `stage1 -> stage2 -> stage3` parquet；实际 dataloader
+  每 epoch 98 batch，因此 P200 是 `98 + 98 + 4`，要求 `total_epochs=3`；
+- `Stage1 + GRPO` 始终循环与 C 相同的 frozen post-Stage1 `stage2 -> stage3` parquet，不在 local
+  P60 后切换到完整 cold-start corpus；实际每 epoch 59 batch，因此 local P160 是
+  `59 + 59 + 42`，要求 `total_epochs=3`；
+- 两条轨迹都显式保留 local P60/P100 等比较点，但禁止用 checkpoint resume 改变 dataloader、
+  optimizer 或 RNG 轨迹；
 - 第二 epoch 之后，若曲线仍持续上升且没有出现 peak/回落，再以 20-step chunk 延长到预注册 hard cap；
   不得因为某个中间点有利于任一方法而临时停止。
 
@@ -255,7 +253,7 @@ step-matched 不是唯一公平口径。每个 run 还必须记录：
 1. **第一轮 pipeline matched**：C 的 GRPO/WDL-local P60（含共同 Stage1 时 effective P100）对
    `Stage1 + GRPO` local P60 / effective P100；回答相同 pipeline 数据预算下谁学得更快；
 2. **扩展预算比较**：C effective P100 对 GRPO effective P200；这是本轮用于检验 GRPO 是否只是
-   收敛更慢的预注册扩展点，但明确标注它不是精确 FLOPs 对齐；
+   收敛更慢的预注册扩展点，但不是 matched-budget 方法比较，也不是精确 FLOPs 对齐；
 3. **实测 compute matched**：根据 GPU-hours、generated tokens、训练/rollout/validation 分项耗时和
    profiler receipt，在 GRPO 曲线上插值到与 C 相同预算；这是主要的等算力比较。
 
