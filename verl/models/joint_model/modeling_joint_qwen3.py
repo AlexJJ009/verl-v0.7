@@ -9,6 +9,7 @@ experiment; it intentionally leaves model1 out of the active objective.
 For evaluation, pass eval_only=True to get only model2's logits.
 """
 
+import time
 from dataclasses import dataclass
 from typing import Optional
 
@@ -20,6 +21,7 @@ from transformers.modeling_outputs import CausalLMOutputWithPast
 from transformers.modeling_utils import PreTrainedModel
 
 from verl.models.joint_model.configuration_joint_qwen3 import QwenJointConfig
+from verl.models.joint_model.dynamic_permutation import target_preserving_dynamic_permutation
 
 
 @dataclass
@@ -27,6 +29,7 @@ class QwenJointCausalLMOutputWithPast(CausalLMOutputWithPast):
     """CausalLM output that explicitly carries per-submodel logits when requested."""
 
     submodel_logits: Optional[tuple[torch.FloatTensor, ...]] = None
+    dynamic_permutation_telemetry: Optional[dict[str, float]] = None
 
 
 class QwenJointForCausalLM(PreTrainedModel, GenerationMixin):
@@ -41,13 +44,12 @@ class QwenJointForCausalLM(PreTrainedModel, GenerationMixin):
 
     def __init__(self, config: QwenJointConfig):
         super().__init__(config)
-        self.sub_models = nn.ModuleList(
-            [Qwen3ForCausalLM(config) for _ in range(config.num_sub_models)]
-        )
+        self.sub_models = nn.ModuleList([Qwen3ForCausalLM(config) for _ in range(config.num_sub_models)])
         self.fusion_lambda = config.fusion_lambda
         self.fusion_mode = getattr(config, "fusion_mode", "mixture")
         self.last_logit_disagreement: float | None = None
         self.last_logit_diagnostics: dict[str, float] | None = None
+        self.last_dynamic_permutation_telemetry: dict[str, float] | None = None
 
         if config.freeze_model1:
             for param in self.sub_models[0].parameters():
@@ -68,13 +70,15 @@ class QwenJointForCausalLM(PreTrainedModel, GenerationMixin):
         logits_to_keep=0,
         eval_only=False,
         return_submodel_logits=False,
+        apply_weak_logit_permutation=False,
+        weak_logit_permutation_context=None,
         **kwargs,
     ):
         # Support eval_only via model attribute (for HF generate() which can't pass custom kwargs)
-        eval_only = eval_only or getattr(self, '_eval_only_mode', False)
+        eval_only = eval_only or getattr(self, "_eval_only_mode", False)
 
         if eval_only:
-            submodel_index = getattr(self, '_eval_submodel_index', 1)
+            submodel_index = getattr(self, "_eval_submodel_index", 1)
             return self.sub_models[submodel_index](
                 input_ids=input_ids,
                 attention_mask=attention_mask,
@@ -105,6 +109,34 @@ class QwenJointForCausalLM(PreTrainedModel, GenerationMixin):
             )
             outputs_list[submodel_index] = out
 
+        self.last_dynamic_permutation_telemetry = None
+        if apply_weak_logit_permutation:
+            if self.fusion_mode != "mixture":
+                raise ValueError("weak-logit Dynamic Permutation requires fusion_mode='mixture'")
+            if not isinstance(weak_logit_permutation_context, dict):
+                raise ValueError("training-only weak_logit_permutation_context is required")
+            transform_start = time.perf_counter()
+            permuted, telemetry = target_preserving_dynamic_permutation(
+                outputs_list[0].logits,
+                weak_logit_permutation_context["target_ids"],
+                weak_logit_permutation_context["sample_ids"],
+                weak_logit_permutation_context["token_positions"],
+                weak_logit_permutation_context["active_mask"],
+                rho=weak_logit_permutation_context["rho"],
+                base_seed=weak_logit_permutation_context["base_seed"],
+                global_step=weak_logit_permutation_context["global_step"],
+                actor_update_index=weak_logit_permutation_context["actor_update_index"],
+                row_chunk_size=weak_logit_permutation_context["row_chunk_size"],
+                audit_rows=weak_logit_permutation_context["audit_rows"],
+                entropy_atol=weak_logit_permutation_context["entropy_atol"],
+                multiset_atol=weak_logit_permutation_context["multiset_atol"],
+            )
+            outputs_list[0].logits = permuted
+            self.last_dynamic_permutation_telemetry = telemetry.as_metrics()
+            self.last_dynamic_permutation_telemetry["dynperm/transform_host_time_ms"] = (
+                time.perf_counter() - transform_start
+            ) * 1_000.0
+
         lam = self.fusion_lambda
         if self.fusion_mode == "strong_scaled":
             logits = outputs_list[1].logits * lam
@@ -133,12 +165,16 @@ class QwenJointForCausalLM(PreTrainedModel, GenerationMixin):
                 # without adding hundreds of MiB to every training microbatch.
                 max_diagnostic_tokens = 8
                 if flat0.shape[0] > max_diagnostic_tokens:
-                    token_indices = torch.linspace(
-                        0,
-                        flat0.shape[0] - 1,
-                        steps=max_diagnostic_tokens,
-                        device=flat0.device,
-                    ).round().long()
+                    token_indices = (
+                        torch.linspace(
+                            0,
+                            flat0.shape[0] - 1,
+                            steps=max_diagnostic_tokens,
+                            device=flat0.device,
+                        )
+                        .round()
+                        .long()
+                    )
                     flat0 = flat0.index_select(0, token_indices)
                     flat1 = flat1.index_select(0, token_indices)
                 n_tokens = flat0.shape[0]
@@ -147,24 +183,26 @@ class QwenJointForCausalLM(PreTrainedModel, GenerationMixin):
                 total_js = 0.0
                 top1_equal = 0
                 for i in range(0, n_tokens, _CHUNK):
-                    p0 = torch.softmax(flat0[i:i + _CHUNK].float(), dim=-1)
-                    p1 = torch.softmax(flat1[i:i + _CHUNK].float(), dim=-1)
+                    p0 = torch.softmax(flat0[i : i + _CHUNK].float(), dim=-1)
+                    p1 = torch.softmax(flat1[i : i + _CHUNK].float(), dim=-1)
                     midpoint = 0.5 * (p0 + p1)
                     total_l1 += (p0 - p1).abs().sum().item()
                     total_js += (
-                        0.5
-                        * torch.sum(
-                            p0
-                            * (torch.log(p0.clamp_min(1e-12)) - torch.log(midpoint.clamp_min(1e-12))),
-                            dim=-1,
+                        (
+                            0.5
+                            * torch.sum(
+                                p0 * (torch.log(p0.clamp_min(1e-12)) - torch.log(midpoint.clamp_min(1e-12))),
+                                dim=-1,
+                            )
+                            + 0.5
+                            * torch.sum(
+                                p1 * (torch.log(p1.clamp_min(1e-12)) - torch.log(midpoint.clamp_min(1e-12))),
+                                dim=-1,
+                            )
                         )
-                        + 0.5
-                        * torch.sum(
-                            p1
-                            * (torch.log(p1.clamp_min(1e-12)) - torch.log(midpoint.clamp_min(1e-12))),
-                            dim=-1,
-                        )
-                    ).sum().item()
+                        .sum()
+                        .item()
+                    )
                     top1_equal += (p0.argmax(dim=-1) == p1.argmax(dim=-1)).sum().item()
                 self.last_logit_disagreement = total_l1 / (n_tokens * orig_shape[-1])
                 self.last_logit_diagnostics = {
@@ -192,6 +230,7 @@ class QwenJointForCausalLM(PreTrainedModel, GenerationMixin):
                 if return_submodel_logits
                 else None
             ),
+            dynamic_permutation_telemetry=self.last_dynamic_permutation_telemetry,
         )
         return result
 

@@ -21,7 +21,6 @@ This trainer supports model-agonistic model initialization with huggingface
 import json
 import os
 import shutil
-import time
 import uuid
 from collections import defaultdict
 from copy import deepcopy
@@ -68,7 +67,6 @@ from verl.utils.tracking import ValidationGenerationsLogger
 from verl.workers.config import FSDPEngineConfig
 from verl.workers.utils.padding import left_right_2_no_padding, no_padding_2_padding
 
-
 TEST_STEP_LOG_PREFIXES = (
     "training/",
     "actor/",
@@ -110,6 +108,19 @@ WDL_SFT_REWARD_LABEL_LOSS_MODES = {"wdl_sft", "wdl_sft_is"}
 WDL_GROUP_ADV_IS_LOSS_MODE = "wdl_group_adv_is"
 
 BEST_CHECKPOINT_TRACKER = "best_checkpoint.json"
+
+
+def assign_dynamic_permutation_sample_ids(batch: DataProto, global_step: int) -> None:
+    """Assign stable global actor-row identities after final rollout expansion."""
+
+    if global_step < 0 or global_step >= 2**31:
+        raise ValueError("global_step is outside the stable dynperm_sample_id encoding range")
+    if "dynperm_sample_id" in batch.batch:
+        raise ValueError("dynperm_sample_id already exists before final actor-row assignment")
+    row_count = len(batch.batch)
+    if row_count >= 2**32:
+        raise ValueError("actor batch is too large for the stable dynperm_sample_id encoding")
+    batch.batch["dynperm_sample_id"] = torch.arange(row_count, dtype=torch.int64) + (int(global_step) << 32)
 
 
 def _metric_value_to_python_scalar(value: Any) -> Any | None:
@@ -182,7 +193,7 @@ def _checkpoint_steps_from_config_value(value: Any) -> set[int]:
         if not stripped or stripped.lower() in {"none", "null", "[]"}:
             return set()
         value = stripped.replace("[", "").replace("]", "").replace(";", ",").split(",")
-    elif not isinstance(value, (list, tuple, set)):
+    elif not isinstance(value, list | tuple | set):
         value = [value]
 
     steps = set()
@@ -223,9 +234,7 @@ def apply_wdl_sft_reward_label_advantages(
         positive_mask = reward_labels > 0
         response_mask = batch.batch["response_mask"]
         metrics["wdl_sft/positive_supervised_response_count"] = int(positive_mask.sum().item())
-        metrics["wdl_sft/positive_supervised_token_count"] = int(
-            response_mask[positive_mask].sum().item()
-        )
+        metrics["wdl_sft/positive_supervised_token_count"] = int(response_mask[positive_mask].sum().item())
 
         if "uid" not in batch.non_tensor_batch:
             raise ValueError("WDL-SFT telemetry requires uid to compute prompt-group composition")
@@ -314,8 +323,8 @@ def apply_wdl_group_advantage_positive_fallback(
         metrics["wdl_group_adv_is/mixed_group_fraction"] = mixed_group_count / group_count
         metrics["wdl_group_adv_is/all_correct_fallback_group_fraction"] = all_correct_group_count / group_count
         metrics["wdl_group_adv_is/all_correct_fallback_response_fraction"] = (
-            (fallback > 0).sum().item() / response_count
-        )
+            fallback > 0
+        ).sum().item() / response_count
         metrics["wdl_group_adv_is/all_incorrect_group_fraction"] = all_incorrect_group_count / group_count
 
     return batch
@@ -330,7 +339,7 @@ def _normalize_validation_generation_value(value: Any) -> Any:
         return value.item()
     if isinstance(value, dict):
         return {key: _normalize_validation_generation_value(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple)):
+    if isinstance(value, list | tuple):
         return [_normalize_validation_generation_value(item) for item in value]
     return value
 
@@ -657,7 +666,9 @@ class RayPPOTrainer:
                 f"{{'joint', 'model2'}}, got {self._joint_training_rollout_source!r}"
             )
         if self._joint_training_rollout_source == "model2" and not self._is_joint_training:
-            raise ValueError("joint_training_rollout_source=model2 requires actor_rollout_ref.model.joint_training=True")
+            raise ValueError(
+                "joint_training_rollout_source=model2 requires actor_rollout_ref.model.joint_training=True"
+            )
 
         if self.hybrid_engine:
             assert Role.ActorRollout in role_worker_mapping or Role.ActorRolloutRef in role_worker_mapping, (
@@ -862,8 +873,7 @@ class RayPPOTrainer:
             return
 
         print(
-            f"Validation generations at step {self.global_steps} "
-            f"(showing {len(samples)}/{total_samples} samples):",
+            f"Validation generations at step {self.global_steps} (showing {len(samples)}/{total_samples} samples):",
             flush=True,
         )
         preferred_key_order = [
@@ -913,14 +923,14 @@ class RayPPOTrainer:
             self.validation_generations_logger.log(self.config.trainer.logger, tracking_samples, self.global_steps)
 
     def _get_gen_batch(self, batch: DataProto) -> DataProto:
-        reward_keys = set({"data_source", "reward_model", "extra_info", "uid", "source_uid"}) & batch.non_tensor_batch.keys()
+        reward_keys = (
+            set({"data_source", "reward_model", "extra_info", "uid", "source_uid"}) & batch.non_tensor_batch.keys()
+        )
 
         # HFRollout (in-process, sync) needs tensor data for model.generate().
         # AgentLoopManager (vLLM/SGLang) uses text prompts from non_tensor_batch.
         if not self.async_rollout_mode and batch.batch is not None:
-            batch_keys_to_pop = [
-                k for k in ["input_ids", "attention_mask", "position_ids"] if k in batch.batch.keys()
-            ]
+            batch_keys_to_pop = [k for k in ["input_ids", "attention_mask", "position_ids"] if k in batch.batch.keys()]
         else:
             batch_keys_to_pop = []
 
@@ -1192,8 +1202,7 @@ class RayPPOTrainer:
             )
         elif weight_view == "model1":
             print(
-                "[WDL-SFT VERIFY] rollout source: model1-only; "
-                f"reason={reason}; actor_training_model=joint",
+                f"[WDL-SFT VERIFY] rollout source: model1-only; reason={reason}; actor_training_model=joint",
                 flush=True,
             )
         elif self._is_joint_training:
@@ -1264,6 +1273,7 @@ class RayPPOTrainer:
         # Verification method distribution
         if verification_methods:
             from collections import Counter
+
             method_counts = Counter(verification_methods)
             total = len(verification_methods)
             for method, count in method_counts.items():
@@ -1272,7 +1282,7 @@ class RayPPOTrainer:
         # Verifier pred/gt disagreement: pred matches gt text but answer_correct is False
         if preds and ground_truths and answer_corrects:
             disagreement_count = 0
-            for pred, gt, correct in zip(preds, ground_truths, answer_corrects):
+            for pred, gt, correct in zip(preds, ground_truths, answer_corrects, strict=True):
                 if pred == gt and not correct and pred != "[NO_BOXED]":
                     disagreement_count += 1
             metrics["jointTraining/verifier_pred_gt_disagreement_count"] = disagreement_count
@@ -1280,6 +1290,7 @@ class RayPPOTrainer:
         # Response unprintable/non-ASCII ratio
         if response_texts:
             import string
+
             printable_set = set(string.printable)
             unprintable_count = 0
             for text in response_texts:
@@ -1616,7 +1627,7 @@ class RayPPOTrainer:
         if not os.path.exists(tracker_path):
             return
         try:
-            with open(tracker_path, "r") as f:
+            with open(tracker_path) as f:
                 data = json.load(f)
         except Exception as exc:
             print(f"[checkpoint-retention] Could not read {tracker_path}: {exc}")
@@ -1967,9 +1978,10 @@ class RayPPOTrainer:
         actor_config = self.config.actor_rollout_ref.actor
         calculate_entropy = actor_config.calculate_entropy or actor_config.entropy_coeff != 0.0
         return_submodel_log_probs = []
-        if getattr(self, "_is_joint_training", False) and getattr(
-            self, "_joint_training_rollout_source", None
-        ) == "model2":
+        if (
+            getattr(self, "_is_joint_training", False)
+            and getattr(self, "_joint_training_rollout_source", None) == "model2"
+        ):
             return_submodel_log_probs = [1]
             if hasattr(batch, "meta_info"):
                 batch.meta_info["return_submodel_log_probs"] = return_submodel_log_probs
@@ -2022,9 +2034,19 @@ class RayPPOTrainer:
 
     def _update_actor(self, batch: DataProto) -> DataProto:
         rollout_config = self.config.actor_rollout_ref.rollout
+        weak_logit_permutation = self.config.actor_rollout_ref.actor.get("weak_logit_permutation", None)
+        if (
+            weak_logit_permutation
+            and weak_logit_permutation.get("enabled", False)
+            and self.use_legacy_worker_impl == "disable"
+        ):
+            raise NotImplementedError(
+                "weak-logit Dynamic Permutation requires the DataParallelPPOActor worker implementation"
+            )
         batch.meta_info["multi_turn"] = rollout_config.multi_turn.enable
         # TODO: Make "temperature" single source of truth from generation.
         batch.meta_info["temperature"] = rollout_config.temperature
+        batch.meta_info["global_step"] = self.global_steps
         # update actor
         if self.use_legacy_worker_impl == "disable":
             batch_td = batch.to_tensordict()
@@ -2229,6 +2251,9 @@ class RayPPOTrainer:
 
                     if "response_mask" not in batch.batch.keys():
                         batch.batch["response_mask"] = compute_response_mask(batch)
+                    weak_logit_permutation = self.config.actor_rollout_ref.actor.get("weak_logit_permutation", None)
+                    if weak_logit_permutation and weak_logit_permutation.get("enabled", False):
+                        assign_dynamic_permutation_sample_ids(batch, self.global_steps)
                     # Balance the number of valid tokens across DP ranks.
                     # NOTE: This usually changes the order of data in the `batch`,
                     # which won't affect the advantage calculation (since it's based on uid),

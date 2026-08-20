@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
@@ -31,6 +32,7 @@ __all__ = [
     "RouterReplayConfig",
     "SubmodelKLConfig",
     "SubmodelKLPairConfig",
+    "WeakLogitPermutationConfig",
     "ActorConfig",
     "FSDPActorConfig",
     "McoreActorConfig",
@@ -136,6 +138,40 @@ class SubmodelKLPairConfig(BaseConfig):
 
 
 @dataclass
+class WeakLogitPermutationConfig(BaseConfig):
+    """Training-only target-preserving Dynamic Permutation settings."""
+
+    enabled: bool = False
+    rho: float = 0.0
+    seed: int = 42
+    row_chunk_size: int = 8
+    audit_invariants: bool = True
+    audit_frequency: int = 1
+    audit_rows: int = 4
+    entropy_atol: float = 2e-6
+    multiset_atol: float = 0.0
+    log_telemetry: bool = True
+
+    def __post_init__(self):
+        if isinstance(self.rho, bool):
+            raise ValueError("weak_logit_permutation.rho must be a finite numeric value in [0, 1]")
+        try:
+            rho = float(self.rho)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("weak_logit_permutation.rho must be a finite numeric value in [0, 1]") from exc
+        if not math.isfinite(rho) or not 0.0 <= rho <= 1.0:
+            raise ValueError(f"weak_logit_permutation.rho must be finite and in [0, 1], got {self.rho!r}")
+        if self.row_chunk_size <= 0:
+            raise ValueError("weak_logit_permutation.row_chunk_size must be positive")
+        if self.audit_frequency <= 0:
+            raise ValueError("weak_logit_permutation.audit_frequency must be positive")
+        if self.audit_rows < 0:
+            raise ValueError("weak_logit_permutation.audit_rows must be non-negative")
+        if self.entropy_atol < 0 or self.multiset_atol < 0:
+            raise ValueError("weak_logit_permutation audit tolerances must be non-negative")
+
+
+@dataclass
 class ActorConfig(BaseConfig):
     """Configuration for actor model training.
 
@@ -162,6 +198,7 @@ class ActorConfig(BaseConfig):
         tau_neg (float): Negative tau for SAPO smoothing (> tau_pos for asymmetry).
         use_kl_loss (bool): Whether to use KL divergence loss.
         submodel_kl (SubmodelKLPairConfig): Independent KL regularization for joint submodels.
+        weak_logit_permutation (WeakLogitPermutationConfig): Training-only weak-logit intervention.
         use_torch_compile (bool): Whether to use torch.compile for optimization.
         kl_loss_coef (float): KL divergence loss coefficient.
         kl_loss_type (str): Type of KL loss to use.
@@ -206,6 +243,7 @@ class ActorConfig(BaseConfig):
     use_kl_loss: bool = False
     track_joint_submodel_losses: bool = False
     submodel_kl: SubmodelKLPairConfig = field(default_factory=SubmodelKLPairConfig)
+    weak_logit_permutation: WeakLogitPermutationConfig = field(default_factory=WeakLogitPermutationConfig)
     # Whether to enable PrefixGrouper-based shared-prefix forward
     use_prefix_grouper: bool = False
     use_torch_compile: bool = True
@@ -315,6 +353,8 @@ class McoreActorConfig(ActorConfig):
     def __post_init__(self):
         """Validate FSDP actor configuration parameters."""
         super().__post_init__()
+        if self.weak_logit_permutation.enabled:
+            raise NotImplementedError("weak-logit Dynamic Permutation currently supports only the FSDP actor")
         self.engine = self.megatron
 
 
@@ -387,4 +427,6 @@ class VeOmniActorConfig(ActorConfig):
     def __post_init__(self):
         """Validate VeOmni actor configuration parameters."""
         super().__post_init__()
+        if self.weak_logit_permutation.enabled:
+            raise NotImplementedError("weak-logit Dynamic Permutation currently supports only the FSDP actor")
         self.engine = self.veomni

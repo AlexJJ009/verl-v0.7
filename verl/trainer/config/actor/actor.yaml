@@ -143,6 +143,42 @@ submodel_kl:
     # Optional model2 reference path; null means resolve from Stage2 handoff model
     ref_path: null
 
+# Training-only target-preserving Dynamic Permutation of weak-model logits
+weak_logit_permutation:
+
+  # Target class for this configuration
+  _target_: verl.workers.config.WeakLogitPermutationConfig
+
+  # Master switch; rollout, reference, validation, and eval forwards never use it
+  enabled: false
+
+  # Fraction of non-target vocabulary coordinates selected for an exact permutation
+  rho: 0.0
+
+  # Base seed mixed with restored step, actor update, sample identity, and token position
+  seed: 42
+
+  # Maximum active token rows whose permutation indices are materialized together
+  row_chunk_size: 8
+
+  # Whether to run bounded deterministic runtime invariant audits
+  audit_invariants: true
+
+  # Audit every N global training steps
+  audit_frequency: 1
+
+  # Maximum token rows audited per actor microbatch
+  audit_rows: 4
+
+  # Absolute entropy tolerance for sampled runtime audits
+  entropy_atol: 2.0e-6
+
+  # Absolute sorted-value tolerance for sampled runtime audits
+  multiset_atol: 0.0
+
+  # Whether to publish transform validity counters into actor metrics
+  log_telemetry: true
+
 # Whether to enable PrefixGrouper shared-prefix forward
 use_prefix_grouper: false
 
