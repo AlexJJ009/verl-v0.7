@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+
 """Feature tests for HF rollout integration with QwenJointForCausalLM.
 
 Tests verify:
@@ -6,7 +8,6 @@ Tests verify:
 3. _eval_only_mode attribute works with generate()
 """
 
-import pytest
 import torch
 
 

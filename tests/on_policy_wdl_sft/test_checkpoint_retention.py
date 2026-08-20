@@ -1,7 +1,8 @@
+# SPDX-License-Identifier: Apache-2.0
+
 from omegaconf import OmegaConf
 
 from verl.trainer.ppo.ray_trainer import RayPPOTrainer
-
 
 METRIC_KEY = "val-core/HuggingFaceH4/MATH-500/acc/mean@1"
 

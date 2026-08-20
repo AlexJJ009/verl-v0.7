@@ -406,12 +406,7 @@ class ValidationGenerationsLogger:
     def _tabularize_samples(self, samples, step):
         normalized_samples = self._normalize_samples(samples)
         extra_columns = sorted(
-            {
-                key
-                for sample in normalized_samples
-                for key in sample.keys()
-                if key not in self._base_columns
-            }
+            {key for sample in normalized_samples for key in sample.keys() if key not in self._base_columns}
         )
         columns = [*self._base_columns, *extra_columns]
         row_data = []

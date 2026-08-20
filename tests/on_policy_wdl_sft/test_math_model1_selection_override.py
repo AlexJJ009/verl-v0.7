@@ -1,12 +1,13 @@
+# SPDX-License-Identifier: Apache-2.0
+
 import importlib.util
 import json
-from pathlib import Path
 import sys
+from pathlib import Path
 
 import pytest
 
 from scripts.math_stage123_queue import model1_selection_policy, selected_model_from_receipt
-
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -103,6 +104,9 @@ def test_dry_run_policy_validation_fails_closed_without_step_binding():
         model1_selection_policy(
             {"model1_selection_policy": {"selected_step": 20, "allow_below_format_threshold": False}}
         )
-    assert model1_selection_policy(
-        {"model1_selection_policy": {"selected_step": 20, "allow_below_format_threshold": True}}
-    )["selected_step"] == 20
+    assert (
+        model1_selection_policy(
+            {"model1_selection_policy": {"selected_step": 20, "allow_below_format_threshold": True}}
+        )["selected_step"]
+        == 20
+    )

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+
 """Weight utilities for joint training models.
 
 Provides functions to:
@@ -41,7 +43,7 @@ def extract_sub_model_weights(
     result = OrderedDict()
     for key, value in state_dict.items():
         if key.startswith(prefix):
-            clean_key = key[len(prefix):]
+            clean_key = key[len(prefix) :]
             result[clean_key] = value
     return result
 
@@ -62,4 +64,4 @@ def extract_sub_model_weights_iter(
     prefix = f"sub_models.{sub_model_index}."
     for key, value in state_dict.items():
         if key.startswith(prefix):
-            yield key[len(prefix):], value
+            yield key[len(prefix) :], value

@@ -112,9 +112,7 @@ def test_reward_loop_ray_actor_uses_configured_max_concurrency(monkeypatch):
         lambda: [{"NodeID": "01" * 28, "Alive": True, "Resources": {"CPU": 176}}],
     )
     manager = RewardLoopManager.__new__(RewardLoopManager)
-    manager.config = OmegaConf.create(
-        {"reward": {"num_workers": 2, "max_concurrency_per_worker": 4}}
-    )
+    manager.config = OmegaConf.create({"reward": {"num_workers": 2, "max_concurrency_per_worker": 4}})
     manager.reward_router_address = None
     manager.reward_loop_workers_class = _RemoteClass()
 

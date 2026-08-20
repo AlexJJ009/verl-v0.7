@@ -308,7 +308,9 @@ class TestDataParallelPPOActor(unittest.TestCase):
         data.meta_info["use_dynamic_bsz"] = True
         data.meta_info["max_token_len"] = data.batch["attention_mask"].shape[-1]
 
-        with patch("verl.workers.actor.dp_actor.prepare_dynamic_batch", wraps=dp_actor_module.prepare_dynamic_batch) as mocked:
+        with patch(
+            "verl.workers.actor.dp_actor.prepare_dynamic_batch", wraps=dp_actor_module.prepare_dynamic_batch
+        ) as mocked:
             actor.compute_log_prob(data, calculate_entropy=False)
 
         self.assertIs(mocked.call_args.kwargs["dp_group"], torch.distributed.group.WORLD)
@@ -336,7 +338,9 @@ class TestDataParallelPPOActor(unittest.TestCase):
         )
         data = self._create_test_data_for_update_policy()
 
-        with patch("verl.workers.actor.dp_actor.prepare_dynamic_batch", wraps=dp_actor_module.prepare_dynamic_batch) as mocked:
+        with patch(
+            "verl.workers.actor.dp_actor.prepare_dynamic_batch", wraps=dp_actor_module.prepare_dynamic_batch
+        ) as mocked:
             actor.update_policy(data)
 
         self.assertIs(mocked.call_args.kwargs["dp_group"], torch.distributed.group.WORLD)

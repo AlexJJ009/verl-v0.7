@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Plot all available Qwen3-1.7B code Stage1 pass@1 curves together."""
 
 from __future__ import annotations
@@ -8,7 +10,6 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
-
 
 ROOT = Path(__file__).resolve().parents[4]
 DATA_DIR = ROOT / "docs/joint_training/reports/data"
@@ -94,9 +95,7 @@ def plot(rows: list[dict[str, object]]) -> tuple[Path, Path]:
         for family in family_order:
             for beta in ("0.0", "0.1"):
                 points = [
-                    row
-                    for row in rows
-                    if row["family"] == family and row["beta"] == beta and row["metric"] == metric
+                    row for row in rows if row["family"] == family and row["beta"] == beta and row["metric"] == metric
                 ]
                 points.sort(key=lambda row: int(row["step"]))
                 axis.plot(
@@ -130,10 +129,7 @@ def plot(rows: list[dict[str, object]]) -> tuple[Path, Path]:
 
     axes[0].set_ylabel("Online validation pass@1 (%)")
 
-    family_handles = [
-        Line2D([0], [0], color=COLORS[family], linewidth=3, label=family)
-        for family in family_order
-    ]
+    family_handles = [Line2D([0], [0], color=COLORS[family], linewidth=3, label=family) for family in family_order]
     beta_handles = [
         Line2D(
             [0],

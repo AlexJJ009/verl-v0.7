@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Structured validator for experiment execution results."""
 
 from __future__ import annotations
 
 import argparse
-from dataclasses import asdict, dataclass, field
 import hashlib
 import json
-from pathlib import Path
 import subprocess
 import sys
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
 from typing import Any
 
 
@@ -86,7 +88,9 @@ def validate_repetition(result: ValidationResult, phase: str, index: int, repeti
     if repetition.get("timed_out"):
         result.add("repetition_timeout", "calibration repetition timed out", **context)
     if repetition.get("status") not in {"passed", "succeeded"}:
-        result.add("repetition_status", "calibration repetition did not pass", status=repetition.get("status"), **context)
+        result.add(
+            "repetition_status", "calibration repetition did not pass", status=repetition.get("status"), **context
+        )
     metrics = repetition.get("metrics")
     if not isinstance(metrics, dict) or "validation_elapsed_seconds" not in metrics:
         result.add("metrics_incomplete", "validation metrics are incomplete", **context)
@@ -97,7 +101,12 @@ def validate_repetition(result: ValidationResult, phase: str, index: int, repeti
     if not isinstance(cleanup, dict) or not cleanup.get("resources_released", False):
         result.add("cleanup_failed", "runtime resources were not released", **context)
     if repetition.get("truncated_count", 0):
-        result.add("response_truncation", "calibration responses were truncated", count=repetition.get("truncated_count"), **context)
+        result.add(
+            "response_truncation",
+            "calibration responses were truncated",
+            count=repetition.get("truncated_count"),
+            **context,
+        )
     if repetition.get("score_complete") is not True:
         result.add("score_incomplete", "calibration score evidence is incomplete", **context)
 
@@ -121,13 +130,23 @@ def check(
         result.add("authorization_scope", str(exc), authorization_scope=scope)
         return result.as_dict()
     if report.get("authorization_scope") != scope:
-        result.add("authorization_scope", "report authorization scope mismatch", expected=scope, actual=report.get("authorization_scope"))
+        result.add(
+            "authorization_scope",
+            "report authorization scope mismatch",
+            expected=scope,
+            actual=report.get("authorization_scope"),
+        )
     if report.get("evidence_class") != "infrastructure_calibration":
         result.add("evidence_class", "wrong evidence class", actual=report.get("evidence_class"))
     if report.get("decision") != "candidate":
         result.add("candidate_decision", "assembler report decision must be candidate", actual=report.get("decision"))
     if report.get("manifest_sha256") != manifest.get("manifest_sha256"):
-        result.add("manifest_hash", "manifest hash mismatch", expected=manifest.get("manifest_sha256"), actual=report.get("manifest_sha256"))
+        result.add(
+            "manifest_hash",
+            "manifest hash mismatch",
+            expected=manifest.get("manifest_sha256"),
+            actual=report.get("manifest_sha256"),
+        )
     bindings = report.get("input_bindings", {})
     for name, expected_hash in hashes.items():
         actual = bindings.get(name, {}).get("sha256")
@@ -141,7 +160,13 @@ def check(
     for phase_report in phase_reports:
         phase = phase_report.get("phase")
         if phase_report.get("profile_hash") != profile_hash:
-            result.add("profile_hash", "resource profile hash mismatch", phase=phase, expected=profile_hash, actual=phase_report.get("profile_hash"))
+            result.add(
+                "profile_hash",
+                "resource profile hash mismatch",
+                phase=phase,
+                expected=profile_hash,
+                actual=phase_report.get("profile_hash"),
+            )
         repetitions = phase_report.get("repetitions", [])
         if not repetitions:
             result.add("repetitions_missing", "phase has no calibration repetitions", phase=phase)
@@ -150,9 +175,19 @@ def check(
     expected_deadline = manifest.get("calibration_policy", {}).get("validation_deadline_seconds")
     actual_deadline = report.get("contract", {}).get("validation_deadline_seconds")
     if actual_deadline != expected_deadline:
-        result.add("validation_deadline", "validation deadline contract mismatch", expected=expected_deadline, actual=actual_deadline)
+        result.add(
+            "validation_deadline",
+            "validation deadline contract mismatch",
+            expected=expected_deadline,
+            actual=actual_deadline,
+        )
     if contract is not None and contract.get("authorization_scope") not in (None, scope):
-        result.add("prediction_scope", "prediction contract authorization scope mismatch", expected=scope, actual=contract.get("authorization_scope"))
+        result.add(
+            "prediction_scope",
+            "prediction contract authorization scope mismatch",
+            expected=scope,
+            actual=contract.get("authorization_scope"),
+        )
     if history_index is not None:
         result.diagnostics["history_run_count"] = len(history_index.get("runs", []))
     return result.as_dict()
@@ -175,7 +210,9 @@ def main() -> int:
         manifest = load_manifest(args.manifest)
         contract = load_json(args.contract) if args.contract else None
         history = load_json(args.history_index) if args.history_index else None
-        output = check(report, manifest, contract=contract, history_index=history, authorization_scope=args.authorization_scope)
+        output = check(
+            report, manifest, contract=contract, history_index=history, authorization_scope=args.authorization_scope
+        )
         if args.receipt:
             output["compatibility_warning"] = "deployability receipts are no longer issued; use acceptance_report.json"
     except (OSError, ValueError, json.JSONDecodeError, subprocess.CalledProcessError) as exc:

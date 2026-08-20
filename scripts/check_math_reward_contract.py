@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Fail closed unless a math reward module enforces the structured format contract."""
 
 from __future__ import annotations
@@ -45,8 +47,7 @@ def main() -> int:
     )
     duplicate_answer = score_fn(
         solution_str=(
-            "<think>Compute the requested value.</think>"
-            "<answer>\\boxed{42}</answer><answer>\\boxed{42}</answer>"
+            "<think>Compute the requested value.</think><answer>\\boxed{42}</answer><answer>\\boxed{42}</answer>"
         ),
         **common,
     )
@@ -72,13 +73,11 @@ def main() -> int:
     missing_keys = sorted(required_keys - set(valid))
     checks = {
         "valid_formatted_answer_is_positive": valid.get("score") == 1.0 and valid.get("acc") is True,
-        "missing_answer_tag_is_negative": missing_answer.get("score") == -1.0
-        and missing_answer.get("acc") is False,
+        "missing_answer_tag_is_negative": missing_answer.get("score") == -1.0 and missing_answer.get("acc") is False,
         "misordered_tags_are_negative": misordered.get("score") == -1.0 and misordered.get("acc") is False,
         "duplicate_answer_tags_are_negative": duplicate_answer.get("score") == -1.0
         and duplicate_answer.get("acc") is False,
-        "missing_think_tag_is_negative": missing_think.get("score") == -1.0
-        and missing_think.get("acc") is False,
+        "missing_think_tag_is_negative": missing_think.get("score") == -1.0 and missing_think.get("acc") is False,
         "truncated_or_no_eos_is_negative": truncated.get("score") == -1.0
         and truncated.get("acc") is False
         and truncated.get("has_eos") is False,

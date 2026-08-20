@@ -1,21 +1,24 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Authoritative result classes and fail-closed legacy evidence migration."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import argparse
-from datetime import datetime, timezone
 import hashlib
 import importlib.util
 import json
-from pathlib import Path
-import shutil
 import shlex
+import shutil
 import subprocess
 import sys
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
+ROOT = Path(__file__).resolve().parents[1]
 
 RESULT_TYPES = {
     "preflight_result": "preflight_result.json",
@@ -55,16 +58,35 @@ def result_sha256(value: dict[str, Any]) -> str:
     return hashlib.sha256(canonical_bytes(value)).hexdigest()
 
 
-def validate_result(value: dict[str, Any], expected_type: str | None = None, expected_bindings: dict[str, Any] | None = None) -> EvidenceDecision:
+def validate_result(
+    value: dict[str, Any], expected_type: str | None = None, expected_bindings: dict[str, Any] | None = None
+) -> EvidenceDecision:
     result_type = value.get("result_type")
     if result_type in LEGACY_AUTHORITY_TYPES or value.get("receipt_type") in LEGACY_AUTHORITY_TYPES:
-        return EvidenceDecision(False, "legacy_evidence", "legacy receipt or adoption evidence is not current authority", {"result_type": result_type, "receipt_type": value.get("receipt_type")})
+        return EvidenceDecision(
+            False,
+            "legacy_evidence",
+            "legacy receipt or adoption evidence is not current authority",
+            {"result_type": result_type, "receipt_type": value.get("receipt_type")},
+        )
     if result_type not in RESULT_TYPES:
-        return EvidenceDecision(False, "unsupported_result_type", "unsupported execution result type", {"result_type": result_type})
+        return EvidenceDecision(
+            False, "unsupported_result_type", "unsupported execution result type", {"result_type": result_type}
+        )
     if expected_type is not None and result_type != expected_type:
-        return EvidenceDecision(False, "result_type_mismatch", "execution result type mismatch", {"expected": expected_type, "actual": result_type})
+        return EvidenceDecision(
+            False,
+            "result_type_mismatch",
+            "execution result type mismatch",
+            {"expected": expected_type, "actual": result_type},
+        )
     if value.get("schema_version") != 1:
-        return EvidenceDecision(False, "schema_version", "unsupported execution result schema", {"schema_version": value.get("schema_version")})
+        return EvidenceDecision(
+            False,
+            "schema_version",
+            "unsupported execution result schema",
+            {"schema_version": value.get("schema_version")},
+        )
     if result_type == "calibration_result":
         module_path = Path(__file__).with_name("calibration_result.py")
         spec = importlib.util.spec_from_file_location("_calibration_result_validator", module_path)
@@ -72,13 +94,17 @@ def validate_result(value: dict[str, Any], expected_type: str | None = None, exp
             return EvidenceDecision(False, "result_validator", "calibration result validator cannot be loaded", {})
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-        schema_path = Path(__file__).resolve().parents[1] / "config/experiment_execution/calibration_result_schema_v1.json"
+        schema_path = (
+            Path(__file__).resolve().parents[1] / "config/experiment_execution/calibration_result_schema_v1.json"
+        )
         outcome = module.validate(value, load_object(schema_path))
         if not outcome["ok"]:
             first = outcome["failures"][0]
             return EvidenceDecision(False, first["code"], first["message"], first["context"])
         if expected_bindings is None:
-            return EvidenceDecision(False, "expected_bindings", "calibration result requires explicit expected bindings", {})
+            return EvidenceDecision(
+                False, "expected_bindings", "calibration result requires explicit expected bindings", {}
+            )
         actual_bindings = {
             "manifest_sha256": value.get("manifest_sha256"),
             "resource_profile_sha256": value.get("resource_profile_sha256"),
@@ -88,25 +114,40 @@ def validate_result(value: dict[str, Any], expected_type: str | None = None, exp
             "authorization_identity": value.get("authorization_identity"),
         }
         if actual_bindings != expected_bindings:
-            return EvidenceDecision(False, "result_binding", "calibration result binding mismatch", {"expected": expected_bindings, "actual": actual_bindings})
+            return EvidenceDecision(
+                False,
+                "result_binding",
+                "calibration result binding mismatch",
+                {"expected": expected_bindings, "actual": actual_bindings},
+            )
     if not isinstance(value.get("manifest_sha256"), str) or len(value["manifest_sha256"]) != 64:
         return EvidenceDecision(False, "manifest_binding", "execution result lacks manifest binding", {})
     decision = value.get("decision")
     if decision not in {"passed", "blocked", "accepted", "rejected"}:
         return EvidenceDecision(False, "decision", "execution result has invalid decision", {"decision": decision})
-    authorized = (result_type != "acceptance_report" and decision == "passed") or (result_type == "acceptance_report" and decision == "accepted")
+    authorized = (result_type != "acceptance_report" and decision == "passed") or (
+        result_type == "acceptance_report" and decision == "accepted"
+    )
     code = "authorized" if authorized else "result_blocked"
-    message = "execution result authorizes this stage" if authorized else "execution result does not authorize this stage"
+    message = (
+        "execution result authorizes this stage" if authorized else "execution result does not authorize this stage"
+    )
     return EvidenceDecision(authorized, code, message, {"result_type": result_type, "decision": decision})
 
 
-def load_and_validate(path: Path, expected_type: str | None = None, expected_bindings: dict[str, Any] | None = None) -> EvidenceDecision:
+def load_and_validate(
+    path: Path, expected_type: str | None = None, expected_bindings: dict[str, Any] | None = None
+) -> EvidenceDecision:
     try:
         value = json.loads(path.read_text())
     except (OSError, json.JSONDecodeError) as exc:
-        return EvidenceDecision(False, "invalid_result_file", "execution result cannot be read", {"path": str(path), "error": str(exc)})
+        return EvidenceDecision(
+            False, "invalid_result_file", "execution result cannot be read", {"path": str(path), "error": str(exc)}
+        )
     if not isinstance(value, dict):
-        return EvidenceDecision(False, "invalid_result_file", "execution result must be a JSON object", {"path": str(path)})
+        return EvidenceDecision(
+            False, "invalid_result_file", "execution result must be a JSON object", {"path": str(path)}
+        )
     return validate_result(value, expected_type, expected_bindings)
 
 
@@ -134,7 +175,12 @@ def load_object(path: Path) -> dict[str, Any]:
 def load_manifest_object(path: Path, repo_root: Path | None = None) -> dict[str, Any]:
     if path.suffix in {".yaml", ".yml"}:
         root = repo_root or Path(__file__).resolve().parents[1]
-        value = json.loads(subprocess.check_output([sys.executable, str(root / "scripts/experiment_manifest.py"), "render", str(path), "--format", "json"], text=True))
+        value = json.loads(
+            subprocess.check_output(
+                [sys.executable, str(root / "scripts/experiment_manifest.py"), "render", str(path), "--format", "json"],
+                text=True,
+            )
+        )
         if not isinstance(value, dict):
             raise ValueError("rendered manifest is not an object")
         return value
@@ -230,38 +276,81 @@ def acceptance_report_sha256(report: dict[str, Any]) -> str:
     return result_sha256(unsigned)
 
 
-def validate_acceptance_report(report: dict[str, Any], bundle: dict[str, Any], *, plan_path: Path | None = None, candidate_commit: str | None = None) -> EvidenceDecision:
+def validate_acceptance_report(
+    report: dict[str, Any],
+    bundle: dict[str, Any],
+    *,
+    plan_path: Path | None = None,
+    candidate_commit: str | None = None,
+) -> EvidenceDecision:
     required = {
-        "result_type", "schema_version", "decision", "goal_id", "plan_id", "plan_version", "plan_sha256",
-        "reviewer", "candidate_commit", "readiness_evidence_commit", "run_ids", "bundle_sha256",
-        "acceptance_report_sha256", "ac_verdicts", "input_hashes", "protected_baseline_sha256",
+        "result_type",
+        "schema_version",
+        "decision",
+        "goal_id",
+        "plan_id",
+        "plan_version",
+        "plan_sha256",
+        "reviewer",
+        "candidate_commit",
+        "readiness_evidence_commit",
+        "run_ids",
+        "bundle_sha256",
+        "acceptance_report_sha256",
+        "ac_verdicts",
+        "input_hashes",
+        "protected_baseline_sha256",
     }
     missing = sorted(required - report.keys())
     if missing:
         return EvidenceDecision(False, "acceptance_schema", "acceptance report is incomplete", {"missing": missing})
     reviewer = report.get("reviewer")
-    if not isinstance(reviewer, dict) or reviewer.get("model") != "GPT-5.5" or reviewer.get("reasoning_effort") != "medium":
+    if (
+        not isinstance(reviewer, dict)
+        or reviewer.get("model") != "GPT-5.5"
+        or reviewer.get("reasoning_effort") != "medium"
+    ):
         return EvidenceDecision(False, "acceptance_reviewer", "acceptance reviewer identity is not GPT-5.5 medium", {})
-    if report.get("result_type") != "acceptance_report" or report.get("schema_version") != 1 or report.get("decision") != "accepted":
+    if (
+        report.get("result_type") != "acceptance_report"
+        or report.get("schema_version") != 1
+        or report.get("decision") != "accepted"
+    ):
         return EvidenceDecision(False, "acceptance_schema", "acceptance report schema or decision is invalid", {})
     if report.get("bundle_sha256") != bundle.get("bundle_sha256"):
         return EvidenceDecision(False, "acceptance_binding", "acceptance report does not bind candidate bundle", {})
     if report.get("run_ids") != bundle.get("run_ids"):
         return EvidenceDecision(False, "acceptance_binding", "acceptance report run set does not match bundle", {})
     if candidate_commit and report.get("candidate_commit") != candidate_commit:
-        return EvidenceDecision(False, "acceptance_binding", "acceptance candidate commit does not match current HEAD", {})
+        return EvidenceDecision(
+            False, "acceptance_binding", "acceptance candidate commit does not match current HEAD", {}
+        )
     if plan_path is not None:
-        if report.get("plan_id") != "stage123-execution-readiness" or report.get("plan_version") != 9 or report.get("plan_sha256") != file_sha256(plan_path):
+        if (
+            report.get("plan_id") != "stage123-execution-readiness"
+            or report.get("plan_version") != 9
+            or report.get("plan_sha256") != file_sha256(plan_path)
+        ):
             return EvidenceDecision(False, "acceptance_plan_binding", "acceptance report Plan binding mismatch", {})
     verdicts = report.get("ac_verdicts")
     if not isinstance(verdicts, dict) or any(verdicts.get(f"AC-{index:02d}") != "PASS" for index in range(1, 9)):
         return EvidenceDecision(False, "acceptance_verdicts", "AC-01 through AC-08 must all be PASS", {})
     expected_inputs = bundle.get("bindings", {})
     input_hashes = report.get("input_hashes")
-    if not isinstance(input_hashes, dict) or any(input_hashes.get(key) != expected_inputs.get(key) for key in ("manifest_sha256", "resource_profile_sha256", "calibration_result_sha256", "preflight_result_sha256")):
+    if not isinstance(input_hashes, dict) or any(
+        input_hashes.get(key) != expected_inputs.get(key)
+        for key in (
+            "manifest_sha256",
+            "resource_profile_sha256",
+            "calibration_result_sha256",
+            "preflight_result_sha256",
+        )
+    ):
         return EvidenceDecision(False, "acceptance_input_binding", "acceptance input hashes do not match bundle", {})
     if report.get("protected_baseline_sha256") != expected_inputs.get("protected_baseline_sha256"):
-        return EvidenceDecision(False, "acceptance_protected_binding", "acceptance protected baseline does not match bundle", {})
+        return EvidenceDecision(
+            False, "acceptance_protected_binding", "acceptance protected baseline does not match bundle", {}
+        )
     if report.get("acceptance_report_sha256") != acceptance_report_sha256(report):
         return EvidenceDecision(False, "acceptance_report_hash", "acceptance report hash mismatch", {})
     return EvidenceDecision(True, "accepted", "acceptance report authorizes readiness", {})
@@ -282,11 +371,30 @@ def validate_current_checkout(
         if file_sha256(protected_baseline) != bundle["bindings"]["protected_baseline_sha256"]:
             return EvidenceDecision(False, "protected_baseline_hash", "protected baseline hash mismatch", {})
         compare_protected_baseline(repo_root, protected_baseline)
-        if subprocess.check_output(["git", "-C", str(repo_root), "rev-parse", "HEAD"], text=True).strip() != bundle["bindings"]["readiness_evidence_commit"]:
-            return EvidenceDecision(False, "evidence_commit", "current HEAD does not match readiness evidence commit", {})
+        if (
+            subprocess.check_output(["git", "-C", str(repo_root), "rev-parse", "HEAD"], text=True).strip()
+            != bundle["bindings"]["readiness_evidence_commit"]
+        ):
+            return EvidenceDecision(
+                False, "evidence_commit", "current HEAD does not match readiness evidence commit", {}
+            )
         if current_implementation_tree_sha256(repo_root) != bundle["bindings"]["implementation_tree_sha256"]:
-            return EvidenceDecision(False, "implementation_tree", "current implementation tree does not match admission bundle", {})
-        manifest = json.loads(subprocess.check_output([sys.executable, str(repo_root / "scripts/experiment_manifest.py"), "render", inputs["manifest"], "--format", "json"], text=True))
+            return EvidenceDecision(
+                False, "implementation_tree", "current implementation tree does not match admission bundle", {}
+            )
+        manifest = json.loads(
+            subprocess.check_output(
+                [
+                    sys.executable,
+                    str(repo_root / "scripts/experiment_manifest.py"),
+                    "render",
+                    inputs["manifest"],
+                    "--format",
+                    "json",
+                ],
+                text=True,
+            )
+        )
         calibration = load_object(Path(inputs["calibration_result"]))
         preflight = load_object(Path(inputs["preflight_result"]))
         profile_path = Path(inputs["resource_profile"])
@@ -302,7 +410,11 @@ def validate_current_checkout(
         if rendered_resource_profile_sha256(profile_path) != expected["resource_profile_sha256"]:
             return EvidenceDecision(False, "resource_profile", "resource profile has changed", {})
         if enforce_result_freshness:
-            enforce_freshness(calibration, int(manifest["calibration_policy"]["calibration_result_max_age_seconds"]), "calibration result")
+            enforce_freshness(
+                calibration,
+                int(manifest["calibration_policy"]["calibration_result_max_age_seconds"]),
+                "calibration result",
+            )
             enforce_freshness(preflight, int(manifest["preflight"]["result_max_age_seconds"]), "preflight result")
     except (OSError, KeyError, ValueError, subprocess.CalledProcessError) as exc:
         return EvidenceDecision(False, "current_checkout", str(exc), {})
@@ -311,7 +423,12 @@ def validate_current_checkout(
         report = load_object(report_path)
         if file_sha256(report_path) != bundle.get("acceptance_report_sha256"):
             return EvidenceDecision(False, "acceptance_report_file_hash", "acceptance report file hash mismatch", {})
-        decision = validate_acceptance_report(report, bundle, plan_path=repo_root / "docs/joint_training/goals/stage123-execution-readiness/plan.md", candidate_commit=bundle["bindings"]["readiness_evidence_commit"])
+        decision = validate_acceptance_report(
+            report,
+            bundle,
+            plan_path=repo_root / "docs/joint_training/goals/stage123-execution-readiness/plan.md",
+            candidate_commit=bundle["bindings"]["readiness_evidence_commit"],
+        )
         if not decision.authorized:
             return decision
     return EvidenceDecision(True, "authorized", "current checkout matches admission bundle", {})
@@ -347,10 +464,17 @@ def validate_batch_phase_admission(
         }
         mismatched = [key for key, value in expected.items() if record.get(key) != value]
         if mismatched:
-            return EvidenceDecision(False, "batch_admission_record_binding", "batch admission record binding mismatch", {"mismatched": mismatched})
+            return EvidenceDecision(
+                False,
+                "batch_admission_record_binding",
+                "batch admission record binding mismatch",
+                {"mismatched": mismatched},
+            )
         run_ids = record.get("expected_run_ids")
         if not isinstance(run_ids, list) or run_id not in run_ids:
-            return EvidenceDecision(False, "batch_admission_run_id", "run id is not admitted for the active batch item", {"run_id": run_id})
+            return EvidenceDecision(
+                False, "batch_admission_run_id", "run id is not admitted for the active batch item", {"run_id": run_id}
+            )
         if file_sha256(bundle_path) != admission_bundle_sha256:
             return EvidenceDecision(False, "batch_admission_bundle_hash", "admission bundle file hash mismatch", {})
         state_path = Path(record["batch_state_path"])
@@ -386,7 +510,12 @@ def validate_admission_bundle(bundle: dict[str, Any], *, require_accepted: bool 
     if bundle.get("schema_version") != 1 or bundle.get("bundle_type") != "stage123_admission_bundle":
         return EvidenceDecision(False, "admission_schema", "unsupported admission bundle schema", {})
     if bundle.get("run_ids") != ["frac25-stage1-control", "frac25-stage2", "frac25-stage3"]:
-        return EvidenceDecision(False, "admission_run_set", "admission bundle run set is not the matched primary matrix", {"run_ids": bundle.get("run_ids")})
+        return EvidenceDecision(
+            False,
+            "admission_run_set",
+            "admission bundle run set is not the matched primary matrix",
+            {"run_ids": bundle.get("run_ids")},
+        )
     bindings = bundle.get("bindings")
     if not isinstance(bindings, dict):
         return EvidenceDecision(False, "admission_bindings", "admission bundle lacks bindings", {})
@@ -400,11 +529,15 @@ def validate_admission_bundle(bundle: dict[str, Any], *, require_accepted: bool 
     )
     missing = [name for name in required if not isinstance(bindings.get(name), str) or not bindings[name]]
     if missing:
-        return EvidenceDecision(False, "admission_bindings", "admission bundle has incomplete bindings", {"missing": missing})
+        return EvidenceDecision(
+            False, "admission_bindings", "admission bundle has incomplete bindings", {"missing": missing}
+        )
     if require_accepted:
         acceptance = bundle.get("acceptance")
         if not isinstance(acceptance, dict) or acceptance.get("decision") != "accepted":
-            return EvidenceDecision(False, "admission_not_accepted", "admission bundle lacks independent acceptance", {})
+            return EvidenceDecision(
+                False, "admission_not_accepted", "admission bundle lacks independent acceptance", {}
+            )
         if acceptance.get("bundle_sha256") != bundle.get("bundle_sha256"):
             return EvidenceDecision(False, "acceptance_binding", "acceptance does not bind the bundle hash", {})
         required_acceptance = (
@@ -420,7 +553,12 @@ def validate_admission_bundle(bundle: dict[str, Any], *, require_accepted: bool 
             required_acceptance += ("protected_baseline_sha256",)
         missing_acceptance = [name for name in required_acceptance if name not in acceptance]
         if missing_acceptance:
-            return EvidenceDecision(False, "acceptance_binding", "acceptance report has incomplete bindings", {"missing": missing_acceptance})
+            return EvidenceDecision(
+                False,
+                "acceptance_binding",
+                "acceptance report has incomplete bindings",
+                {"missing": missing_acceptance},
+            )
         expected_acceptance = {
             "manifest_sha256": bindings["manifest_sha256"],
             "resource_profile_sha256": bindings["resource_profile_sha256"],
@@ -432,8 +570,15 @@ def validate_admission_bundle(bundle: dict[str, Any], *, require_accepted: bool 
         }
         mismatched = [name for name, expected in expected_acceptance.items() if acceptance.get(name) != expected]
         if mismatched:
-            return EvidenceDecision(False, "acceptance_binding", "acceptance report bindings do not match bundle", {"mismatched": mismatched})
-    return EvidenceDecision(True, "authorized", "admission bundle authorizes the primary queue", {"run_ids": bundle["run_ids"]})
+            return EvidenceDecision(
+                False,
+                "acceptance_binding",
+                "acceptance report bindings do not match bundle",
+                {"mismatched": mismatched},
+            )
+    return EvidenceDecision(
+        True, "authorized", "admission bundle authorizes the primary queue", {"run_ids": bundle["run_ids"]}
+    )
 
 
 def build_admission_bundle(
@@ -486,7 +631,9 @@ def build_admission_bundle(
         raise ValueError("preflight implementation tree binding does not match")
     if preflight.get("run_ids") != run_ids:
         raise ValueError("preflight run set does not match manifest")
-    enforce_freshness(calibration, int(manifest["calibration_policy"]["calibration_result_max_age_seconds"]), "calibration result")
+    enforce_freshness(
+        calibration, int(manifest["calibration_policy"]["calibration_result_max_age_seconds"]), "calibration result"
+    )
     enforce_freshness(preflight, int(manifest["preflight"]["result_max_age_seconds"]), "preflight result")
     value = {
         "schema_version": 1,
@@ -501,7 +648,9 @@ def build_admission_bundle(
             "calibration_result_sha256": file_sha256(calibration_path),
             "preflight_result_sha256": file_sha256(preflight_path),
             "readiness_evidence_commit": evidence_commit,
-            "recipe_gitlink": subprocess.check_output(["git", "-C", str((repo_root or ROOT) / "recipe"), "rev-parse", "HEAD"], text=True).strip(),
+            "recipe_gitlink": subprocess.check_output(
+                ["git", "-C", str((repo_root or ROOT) / "recipe"), "rev-parse", "HEAD"], text=True
+            ).strip(),
             "protected_baseline_sha256": file_sha256(protected_baseline_path) if protected_baseline_path else "",
             "calibration_completed_at": calibration.get("completed_at"),
             "preflight_completed_at": preflight.get("completed_at"),
@@ -559,7 +708,8 @@ def admission_launch_command(bundle: dict[str, Any], repo_host: Path) -> list[st
         "STAGE123_ADMISSION_BUNDLE=" + bundle_path,
         "STAGE123_IMPLEMENTATION_TREE_SHA256=" + bindings["implementation_tree_sha256"],
         "STAGE123_BUNDLE_SHA256=" + bundle["bundle_sha256"],
-        "EXPERIMENT_BATCH_MANIFEST=" + str(repo_host / "docs/joint_training/goals/stage123-primary-chain-execution/experiment_batch_manifest.json"),
+        "EXPERIMENT_BATCH_MANIFEST="
+        + str(repo_host / "docs/joint_training/goals/stage123-primary-chain-execution/experiment_batch_manifest.json"),
         "bash",
         str(repo_host / "recipe/on_policy_wdl_sft/code_task/run_code_task_qwen3_1p7b_stage123_queue.sh"),
     ]
@@ -597,22 +747,56 @@ def admission_main(argv: list[str]) -> int:
     args = parser.parse_args(argv)
     try:
         if args.action == "validate" and args.bundle is None:
-            required = (args.manifest, args.resource_profile, args.calibration_result, args.preflight_result, args.protected_baseline, args.readiness_evidence_commit, args.output)
+            required = (
+                args.manifest,
+                args.resource_profile,
+                args.calibration_result,
+                args.preflight_result,
+                args.protected_baseline,
+                args.readiness_evidence_commit,
+                args.output,
+            )
             if not all(required):
-                raise ValueError("candidate validation requires manifest, resource profile, calibration result, preflight result, protected baseline, evidence commit, and output")
-            bundle = build_admission_bundle(args.manifest, args.resource_profile, args.calibration_result, args.preflight_result, args.readiness_evidence_commit, args.output, args.acceptance_report, args.repo_root, args.protected_baseline)
+                raise ValueError(
+                    "candidate validation requires manifest, resource profile, calibration result, preflight result, protected baseline, evidence commit, and output"
+                )
+            bundle = build_admission_bundle(
+                args.manifest,
+                args.resource_profile,
+                args.calibration_result,
+                args.preflight_result,
+                args.readiness_evidence_commit,
+                args.output,
+                args.acceptance_report,
+                args.repo_root,
+                args.protected_baseline,
+            )
             args.output.parent.mkdir(parents=True, exist_ok=True)
             args.output.write_text(json.dumps(bundle, indent=2, sort_keys=True) + "\n")
         else:
             bundle = load_object(args.bundle)
         expected_hash = bundle.get("bundle_sha256")
-        unsigned = {key: value for key, value in bundle.items() if key not in {"bundle_sha256", "acceptance", "acceptance_report_sha256", "acceptance_report_path"}}
+        unsigned = {
+            key: value
+            for key, value in bundle.items()
+            if key not in {"bundle_sha256", "acceptance", "acceptance_report_sha256", "acceptance_report_path"}
+        }
         actual_hash = result_sha256(unsigned)
         if expected_hash != actual_hash:
-            decision = EvidenceDecision(False, "bundle_hash", "admission bundle hash mismatch", {"expected": expected_hash, "actual": actual_hash})
+            decision = EvidenceDecision(
+                False,
+                "bundle_hash",
+                "admission bundle hash mismatch",
+                {"expected": expected_hash, "actual": actual_hash},
+            )
         elif args.action == "validate-phase":
             if expected_hash != actual_hash:
-                decision = EvidenceDecision(False, "bundle_hash", "admission bundle hash mismatch", {"expected": expected_hash, "actual": actual_hash})
+                decision = EvidenceDecision(
+                    False,
+                    "bundle_hash",
+                    "admission bundle hash mismatch",
+                    {"expected": expected_hash, "actual": actual_hash},
+                )
             else:
                 decision = validate_batch_phase_admission(
                     bundle,
@@ -633,13 +817,19 @@ def admission_main(argv: list[str]) -> int:
             if decision.authorized:
                 validation_root = getattr(args, "repo_root", None) if args.action == "validate" else args.repo_host
                 if not bundle.get("inputs"):
-                    decision = EvidenceDecision(False, "admission_inputs", "admission bundle lacks canonical input paths", {})
+                    decision = EvidenceDecision(
+                        False, "admission_inputs", "admission bundle lacks canonical input paths", {}
+                    )
                 else:
-                    baseline_value = getattr(args, "protected_baseline", None) or bundle.get("inputs", {}).get("protected_baseline", "")
+                    baseline_value = getattr(args, "protected_baseline", None) or bundle.get("inputs", {}).get(
+                        "protected_baseline", ""
+                    )
                     if not baseline_value:
                         decision = EvidenceDecision(False, "protected_baseline", "protected baseline is required", {})
                     else:
-                        decision = validate_current_checkout(bundle, validation_root, Path(baseline_value), require_accepted=require_accepted)
+                        decision = validate_current_checkout(
+                            bundle, validation_root, Path(baseline_value), require_accepted=require_accepted
+                        )
         if args.action in {"validate", "validate-phase"}:
             print(json.dumps(decision.as_dict(), sort_keys=True))
             return 0 if decision.authorized else 1

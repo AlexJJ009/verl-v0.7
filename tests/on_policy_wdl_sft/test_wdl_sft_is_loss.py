@@ -38,13 +38,10 @@ from verl.trainer.ppo.core_algos import (
 from verl.trainer.ppo.ray_trainer import apply_wdl_sft_reward_label_advantages, compute_advantage
 from verl.workers.config.actor import ActorConfig
 
-
 # ---------- Fixtures / helpers ----------
 
 
-def _make_config(
-    beta: float = 0.0, clip_ratio_low: float = 0.2, clip_ratio_high: float = 0.27
-) -> ActorConfig:
+def _make_config(beta: float = 0.0, clip_ratio_low: float = 0.2, clip_ratio_high: float = 0.27) -> ActorConfig:
     config = ActorConfig.__new__(ActorConfig)
     config.clip_ratio = 0.2
     config.clip_ratio_low = clip_ratio_low
@@ -349,9 +346,7 @@ class TestTrainerRewardLabelOverride:
         T = 4
         reward_labels = torch.tensor([1.0, 1.0, 1.0, -1.0])
 
-        batch, grpo_advantages, metrics = _compute_grpo_then_apply_wdl_override(
-            reward_labels, loss_mode=loss_mode, T=T
-        )
+        batch, grpo_advantages, metrics = _compute_grpo_then_apply_wdl_override(reward_labels, loss_mode=loss_mode, T=T)
 
         assert not torch.allclose(grpo_advantages[:, 0], reward_labels)
         assert torch.allclose(batch.batch["advantages"], _broadcast_labels(reward_labels, T))

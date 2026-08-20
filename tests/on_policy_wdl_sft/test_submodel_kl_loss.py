@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+
 import torch
 
 from verl.trainer.ppo.core_algos import agg_loss, compute_policy_loss_wdl_sft, kl_penalty

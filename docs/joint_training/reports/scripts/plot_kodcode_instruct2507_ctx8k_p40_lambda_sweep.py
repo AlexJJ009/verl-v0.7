@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Plot KodCode Instruct2507 CTX8K P40 Stage2 lambda sweep curves."""
 
 from __future__ import annotations
@@ -8,7 +10,6 @@ import json
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-
 
 ROOT = Path(__file__).resolve().parents[4]
 OUT_DIR = ROOT / "docs/joint_training/reports/figures"
@@ -188,18 +189,16 @@ def summarize(rows: list[dict]) -> list[dict]:
             lambda05_series = by_run_dataset.get((lambda05_label, dataset), [])
             stage1_series = by_run_dataset.get((stage1_label, dataset), [])
             lambda05_final = lambda05_series[-1]["pass_at_1"] if lambda05_series else None
-            lambda05_best = max(lambda05_series, key=lambda item: item["pass_at_1"])["pass_at_1"] if lambda05_series else None
+            lambda05_best = (
+                max(lambda05_series, key=lambda item: item["pass_at_1"])["pass_at_1"] if lambda05_series else None
+            )
             stage1_step80 = next(
                 (item["pass_at_1"] for item in stage1_series if item["effective_step"] == 80),
                 None,
             )
-            stage1_40_80 = [
-                item for item in stage1_series if 40 <= item["effective_step"] <= 80
-            ]
+            stage1_40_80 = [item for item in stage1_series if 40 <= item["effective_step"] <= 80]
             stage1_40_80_best = (
-                max(stage1_40_80, key=lambda item: item["pass_at_1"])["pass_at_1"]
-                if stage1_40_80
-                else None
+                max(stage1_40_80, key=lambda item: item["pass_at_1"])["pass_at_1"] if stage1_40_80 else None
             )
 
             def delta(value: float, baseline: float | None) -> float | None:
@@ -240,9 +239,7 @@ def plot(rows: list[dict]) -> None:
             series = [
                 row
                 for row in rows
-                if row["run"] == run["label"]
-                and row["dataset"] == dataset
-                and 35 <= row["effective_step"] <= 100
+                if row["run"] == run["label"] and row["dataset"] == dataset and 35 <= row["effective_step"] <= 100
             ]
             series.sort(key=lambda item: item["effective_step"])
             if not series:

@@ -5,7 +5,6 @@ import os
 import subprocess
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FAMILY_DIR = REPO_ROOT / "recipe/on_policy_wdl_sft/group_advantage_is"
 PLATFORM_DIR = REPO_ROOT / "platform/hope_group_advantage_is"
@@ -69,7 +68,7 @@ def test_overlong_buffer_default_is_safe_for_short_smoke():
     common = _read(FAMILY_DIR / "_common_group_adv_is.sh")
 
     assert 'if [ -n "${OVERLONG_BUFFER_LEN+x}" ]' in common
-    assert 'exceeds MAX_RESPONSE_LENGTH=${max_response_length}' in common
+    assert "exceeds MAX_RESPONSE_LENGTH=${max_response_length}" in common
     assert "overlong_buffer_len=${max_response_length}" in common
     assert "+reward_model.reward_kwargs.overlong_buffer_cfg.len=${overlong_buffer_len}" in common
 
@@ -94,9 +93,9 @@ def test_parent_paths_are_overridable_in_common_script():
     for var in required_vars:
         assert (
             f"{var}=${{" in common
-            or f"{var}=\"${{" in common
+            or f'{var}="${{' in common
             or f"export {var}=${{" in common
-            or f"export {var}=\"${{" in common
+            or f'export {var}="${{' in common
         ), var
 
 
@@ -119,7 +118,7 @@ def test_meituan_smoke_propagation_and_run_script_resolution():
 
     assert "export SMOKE=${SMOKE:-0}" in platform
     assert "TOTAL_TRAINING_STEPS" in platform
-    assert "exec bash \"$REPO/recipe/on_policy_wdl_sft/group_advantage_is/meituan/jupyter.sh\"" in platform
+    assert 'exec bash "$REPO/recipe/on_policy_wdl_sft/group_advantage_is/meituan/jupyter.sh"' in platform
     assert 'if [ "${SMOKE:-0}" = "1" ]' in adapter
     assert 'RUN_SCRIPT="${FAMILY_DIR}/run_${EXPERIMENT//-/_}.sh"' in adapter
     assert 'exec bash "$RUN_SCRIPT"' in adapter

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Import the completed WDL group-advantage IS run into the local registry.
 
 The importer is intentionally source-driven: every value comes from the
@@ -10,27 +12,23 @@ the run log. It is idempotent and scoped to the branch project
 from __future__ import annotations
 
 import argparse
-import subprocess
 import datetime as dt
 import hashlib
 import json
 import math
-import os
-import re
 import sqlite3
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
 
 import pyarrow.parquet as pq
 
-
 REGISTRY_TOOLS = Path("/data-1/agent-tools/experiment_registry")
 if str(REGISTRY_TOOLS) not in sys.path:
     sys.path.insert(0, str(REGISTRY_TOOLS))
 
 from registry_core import connect, init_db, slug, utc_now  # noqa: E402
-
 
 RUN_NAME = "WDL-GROUP-ADV-IS-Qwen3-4B-MATH-1A_1779295502"
 PROJECT_NAME = "verl:feature/on-policy-wdl-sft"
@@ -457,7 +455,9 @@ def upsert_training_run(
         "latest_checkpoint_step": "300",
         "validation_dir": str(validation_dir),
         "launcher": str(Path("/data-1/verl07/verl/recipe/on_policy_wdl_sft/group_advantage_is/run_1a_group_adv_is.sh")),
-        "common_launcher": str(Path("/data-1/verl07/verl/recipe/on_policy_wdl_sft/group_advantage_is/_common_group_adv_is.sh")),
+        "common_launcher": str(
+            Path("/data-1/verl07/verl/recipe/on_policy_wdl_sft/group_advantage_is/_common_group_adv_is.sh")
+        ),
         "initial_log": str(Path("/data-1/verl07/verl/recipe/on_policy_wdl_sft/group_advantage_is") / f"{RUN_NAME}.log"),
         "resume_log": str(log_path),
     }
@@ -582,13 +582,15 @@ def insert_all_metrics(conn: sqlite3.Connection, training_run_id: int, rows: lis
         for name, value in row["data"].items():
             if isinstance(value, bool):
                 continue
-            if isinstance(value, (int, float)) and math.isfinite(float(value)):
+            if isinstance(value, int | float) and math.isfinite(float(value)):
                 upsert_training_metric(conn, training_run_id, name, value, step)
                 count += 1
     return count
 
 
-def add_training_run_dataset(conn: sqlite3.Connection, training_run_id: int, dataset_id: int, role: str, row_count: int | None) -> None:
+def add_training_run_dataset(
+    conn: sqlite3.Connection, training_run_id: int, dataset_id: int, role: str, row_count: int | None
+) -> None:
     conn.execute(
         """
         insert into training_run_datasets(training_run_id, dataset_id, role, row_count, notes)
@@ -682,7 +684,14 @@ def main() -> None:
             "train",
             "Row count read from parquet metadata during WDL-GROUP-ADV-IS import.",
         )
-        math_ds = upsert_dataset(conn, "math.huggingfaceh4_math_500_with_system_prompt", "HuggingFaceH4/MATH-500", str(math_val), 500, "validation")
+        math_ds = upsert_dataset(
+            conn,
+            "math.huggingfaceh4_math_500_with_system_prompt",
+            "HuggingFaceH4/MATH-500",
+            str(math_val),
+            500,
+            "validation",
+        )
         aime_ds = upsert_dataset(conn, "math.aime25_with_system_prompt", "aime25", str(aime_val), 30, "validation")
 
         exp_id = upsert_experiment(conn, project_id, best)
@@ -763,34 +772,165 @@ def main() -> None:
             ("latest_checkpoint_txt", latest_path, "Latest checkpointed iteration marker."),
             ("checkpoint_dir", checkpoint_dir, "Final actor checkpoint directory."),
             ("checkpoint_data_pt", data_pt, "Checkpoint dataloader state with samples_yielded."),
-            ("validation_generation_dir", initial_validation_dir, "Validation generations from initial launch before OOM."),
+            (
+                "validation_generation_dir",
+                initial_validation_dir,
+                "Validation generations from initial launch before OOM.",
+            ),
             ("validation_generation_dir", validation_dir, "Validation generations from resumed run."),
-            ("validation_generation_dir", empty_validation_dirs[0], "Empty validation directory from failed resume attempt before successful resume."),
-            ("validation_generation_dir", empty_validation_dirs[1], "Empty validation directory from failed resume attempt before successful resume."),
+            (
+                "validation_generation_dir",
+                empty_validation_dirs[0],
+                "Empty validation directory from failed resume attempt before successful resume.",
+            ),
+            (
+                "validation_generation_dir",
+                empty_validation_dirs[1],
+                "Empty validation directory from failed resume attempt before successful resume.",
+            ),
             ("launcher_script", run_dir / "run_1a_group_adv_is.sh", "Thin launcher for group-advantage IS 1A."),
-            ("launcher_script", run_dir / "_common_group_adv_is.sh", "Shared portable launcher with full hyperparameter surface."),
-            ("method_contract", repo / "docs/joint_training/plans/active/wdl_group_advantage_is_goal.md", "Implementation contract for the method."),
+            (
+                "launcher_script",
+                run_dir / "_common_group_adv_is.sh",
+                "Shared portable launcher with full hyperparameter surface.",
+            ),
+            (
+                "method_contract",
+                repo / "docs/joint_training/plans/active/wdl_group_advantage_is_goal.md",
+                "Implementation contract for the method.",
+            ),
         ]
         for kind, path, desc in artifact_specs:
-            add_artifact(conn, kind, path, experiment_id=exp_id, training_run_id=tr_id, model_id=output_model if "checkpoint" in kind else None, description=desc)
+            add_artifact(
+                conn,
+                kind,
+                path,
+                experiment_id=exp_id,
+                training_run_id=tr_id,
+                model_id=output_model if "checkpoint" in kind else None,
+                description=desc,
+            )
 
         for source_path, source_type, section, record_kind, record_id, entity_table, entity_key, notes in [
-            (metrics_path, "training_metrics_jsonl", None, "training_runs", tr_id, "training_runs", str(tr_id), "Primary source for training and validation metrics."),
-            (resume_log, "training_log", "resume", "training_runs", tr_id, "training_runs", str(tr_id), "Source for launch command and completion evidence."),
-            (best_path, "checkpoint_metadata_json", None, "models", output_model, "models", str(output_model), "Source for best checkpoint selection."),
-            (latest_path, "checkpoint_marker", None, "models", output_model, "models", str(output_model), "Source for latest checkpoint step."),
-            (data_pt, "checkpoint_state", "dataloader", "training_runs", tr_id, "training_runs", str(tr_id), "Source for samples_yielded."),
-            (initial_validation_dir, "validation_generation_dir", "initial", "training_runs", tr_id, "training_runs", str(tr_id), "Initial validation generation directory before OOM."),
-            (validation_dir, "validation_generation_dir", "resume", "training_runs", tr_id, "training_runs", str(tr_id), "Successful resumed validation generation directory."),
-            (empty_validation_dirs[0], "validation_generation_dir", "empty_resume_attempt", "training_runs", tr_id, "training_runs", str(tr_id), "Empty validation directory from failed resume attempt."),
-            (empty_validation_dirs[1], "validation_generation_dir", "empty_resume_attempt", "training_runs", tr_id, "training_runs", str(tr_id), "Empty validation directory from failed resume attempt."),
-            (run_dir / "run_1a_group_adv_is.sh", "launcher_script", None, "experiments", exp_id, "experiments", str(exp_id), "Experiment wrapper source."),
-            (run_dir / "_common_group_adv_is.sh", "launcher_script", None, "experiments", exp_id, "experiments", str(exp_id), "Shared launcher source."),
+            (
+                metrics_path,
+                "training_metrics_jsonl",
+                None,
+                "training_runs",
+                tr_id,
+                "training_runs",
+                str(tr_id),
+                "Primary source for training and validation metrics.",
+            ),
+            (
+                resume_log,
+                "training_log",
+                "resume",
+                "training_runs",
+                tr_id,
+                "training_runs",
+                str(tr_id),
+                "Source for launch command and completion evidence.",
+            ),
+            (
+                best_path,
+                "checkpoint_metadata_json",
+                None,
+                "models",
+                output_model,
+                "models",
+                str(output_model),
+                "Source for best checkpoint selection.",
+            ),
+            (
+                latest_path,
+                "checkpoint_marker",
+                None,
+                "models",
+                output_model,
+                "models",
+                str(output_model),
+                "Source for latest checkpoint step.",
+            ),
+            (
+                data_pt,
+                "checkpoint_state",
+                "dataloader",
+                "training_runs",
+                tr_id,
+                "training_runs",
+                str(tr_id),
+                "Source for samples_yielded.",
+            ),
+            (
+                initial_validation_dir,
+                "validation_generation_dir",
+                "initial",
+                "training_runs",
+                tr_id,
+                "training_runs",
+                str(tr_id),
+                "Initial validation generation directory before OOM.",
+            ),
+            (
+                validation_dir,
+                "validation_generation_dir",
+                "resume",
+                "training_runs",
+                tr_id,
+                "training_runs",
+                str(tr_id),
+                "Successful resumed validation generation directory.",
+            ),
+            (
+                empty_validation_dirs[0],
+                "validation_generation_dir",
+                "empty_resume_attempt",
+                "training_runs",
+                tr_id,
+                "training_runs",
+                str(tr_id),
+                "Empty validation directory from failed resume attempt.",
+            ),
+            (
+                empty_validation_dirs[1],
+                "validation_generation_dir",
+                "empty_resume_attempt",
+                "training_runs",
+                tr_id,
+                "training_runs",
+                str(tr_id),
+                "Empty validation directory from failed resume attempt.",
+            ),
+            (
+                run_dir / "run_1a_group_adv_is.sh",
+                "launcher_script",
+                None,
+                "experiments",
+                exp_id,
+                "experiments",
+                str(exp_id),
+                "Experiment wrapper source.",
+            ),
+            (
+                run_dir / "_common_group_adv_is.sh",
+                "launcher_script",
+                None,
+                "experiments",
+                exp_id,
+                "experiments",
+                str(exp_id),
+                "Shared launcher source.",
+            ),
         ]:
-            add_source_record(conn, source_path, source_type, section, record_kind, record_id, entity_table, entity_key, notes)
+            add_source_record(
+                conn, source_path, source_type, section, record_kind, record_id, entity_table, entity_key, notes
+            )
 
         conn.execute("delete from validation_checks where check_name like 'wdl_group_adv_is_1a_%'")
-        db_best_metric = conn.execute("select selection_metric_value from models where id=?", (output_model,)).fetchone()["selection_metric_value"]
+        db_best_metric = conn.execute(
+            "select selection_metric_value from models where id=?", (output_model,)
+        ).fetchone()["selection_metric_value"]
         add_validation_check(
             conn,
             "wdl_group_adv_is_1a_best_checkpoint_metric",
@@ -807,10 +947,13 @@ def main() -> None:
             metrics_path,
             rows[-1]["data"]["val-core/HuggingFaceH4/MATH-500/acc/mean@3"],
             db_step300,
-            db_step300 is not None and abs(rows[-1]["data"]["val-core/HuggingFaceH4/MATH-500/acc/mean@3"] - db_step300) < 1e-12,
+            db_step300 is not None
+            and abs(rows[-1]["data"]["val-core/HuggingFaceH4/MATH-500/acc/mean@3"] - db_step300) < 1e-12,
             "step 300 MATH-500 mean@3 imported from metrics JSONL",
         )
-        db_metric_count = conn.execute("select count(*) as n from training_metrics where training_run_id=?", (tr_id,)).fetchone()["n"]
+        db_metric_count = conn.execute(
+            "select count(*) as n from training_metrics where training_run_id=?", (tr_id,)
+        ).fetchone()["n"]
         add_validation_check(
             conn,
             "wdl_group_adv_is_1a_training_metric_row_count",
@@ -844,7 +987,8 @@ def main() -> None:
             train_file,
             train_rows,
             conn.execute("select row_count from datasets where id=?", (train_ds,)).fetchone()["row_count"],
-            train_rows == int(conn.execute("select row_count from datasets where id=?", (train_ds,)).fetchone()["row_count"]),
+            train_rows
+            == int(conn.execute("select row_count from datasets where id=?", (train_ds,)).fetchone()["row_count"]),
             "training parquet row count imported into datasets",
         )
 

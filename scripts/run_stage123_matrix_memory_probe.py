@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 import yaml
 
@@ -14,8 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from scripts.run_calibration_probe_zero_step import run_repetition, sha256, split_workload, write_json
-
+from scripts.run_calibration_probe_zero_step import run_repetition, sha256, split_workload, write_json  # noqa: E402
 
 DEFAULT_RUN_IDS = ("frac25-stage2-nokl", "frac25-stage2-m2kl")
 EXPECTED_STAGE2_GENERATIONS = 64 * 3 * 2
@@ -182,10 +183,18 @@ def main() -> int:
             result = json.loads(reused[run["id"]].read_text())
             repetitions.append(qualify_matrix_repetition(result))
         for repetition in range(1, args.repetitions + 1 if not repetitions else 1):
-            result = qualify_matrix_repetition(run_repetition(
-                base, "stage2", repetition, run_root, splits, deadline,
-                environment_overrides=run_environment(run, matrix["resource_profile"]), repetition_label=run["id"],
-            ))
+            result = qualify_matrix_repetition(
+                run_repetition(
+                    base,
+                    "stage2",
+                    repetition,
+                    run_root,
+                    splits,
+                    deadline,
+                    environment_overrides=run_environment(run, matrix["resource_profile"]),
+                    repetition_label=run["id"],
+                )
+            )
             repetitions.append(result)
             if result["status"] != "passed":
                 break
@@ -223,17 +232,22 @@ def main() -> int:
         },
         "run_root": str(run_root),
         "runs": reports,
-        "status": "passed" if len(reports) == len(runs) and all(item["status"] == "passed" for item in reports) else "failed",
+        "status": "passed"
+        if len(reports) == len(runs) and all(item["status"] == "passed" for item in reports)
+        else "failed",
     }
     report_path = run_root / "matrix-memory-probe-report.json"
     write_json(report_path, report)
-    write_json(args.scratch_root / "latest-matrix-memory-probe.json", {
-        "schema_version": 1,
-        "report": str(report_path),
-        "report_sha256": sha256(report_path),
-        "status": report["status"],
-        "run_root": str(run_root),
-    })
+    write_json(
+        args.scratch_root / "latest-matrix-memory-probe.json",
+        {
+            "schema_version": 1,
+            "report": str(report_path),
+            "report_sha256": sha256(report_path),
+            "status": report["status"],
+            "run_root": str(run_root),
+        },
+    )
     print(json.dumps({"ok": report["status"] == "passed", "report": str(report_path)}, sort_keys=True))
     return 0 if report["status"] == "passed" else 1
 

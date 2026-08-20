@@ -344,9 +344,7 @@ class MultiTurnSFTDataset(Dataset):
                 )
 
             termination_start = None
-            for candidate_start in range(
-                response_start, len(input_ids) - len(assistant_termination_ids) + 1
-            ):
+            for candidate_start in range(response_start, len(input_ids) - len(assistant_termination_ids) + 1):
                 candidate_end = candidate_start + len(assistant_termination_ids)
                 if torch.equal(input_ids[candidate_start:candidate_end], assistant_termination_ids):
                     termination_start = candidate_start

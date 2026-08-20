@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+
 """Prepare joint model weights from one or two base models.
 
 Mode 1 (single model): Both sub-models share the same initial weights.
@@ -47,10 +49,7 @@ def _validate_config_compatibility(config1, config2):
         if v1 != v2:
             mismatches.append(f"  {field}: model1={v1}, model2={v2}")
     if mismatches:
-        raise ValueError(
-            "Model architectures are incompatible for joint training:\n"
-            + "\n".join(mismatches)
-        )
+        raise ValueError("Model architectures are incompatible for joint training:\n" + "\n".join(mismatches))
 
 
 def _format_model_source(model_path: str) -> str:
@@ -119,6 +118,7 @@ def prepare_joint_weights(
     print(f"Saving weights to {weight_path}...")
     try:
         from safetensors.torch import save_file
+
         save_file(joint_state_dict, weight_path)
     except ImportError:
         weight_path = os.path.join(output_path, "pytorch_model.bin")

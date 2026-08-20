@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Prepare and validate the non-training Stage123 certified-control recovery."""
 
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
 import hashlib
 import importlib.util
 import json
-from pathlib import Path
-import shutil
 import subprocess
 import sys
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 import yaml
-
 
 ROOT = Path(__file__).resolve().parents[1]
 STAGE2_ID = "frac25-stage2"
@@ -56,7 +56,14 @@ def workload_artifact_sha256(path: Path) -> str:
 
 def current_control_plane_identity() -> dict[str, str]:
     probe = subprocess.run(
-        [sys.executable, str(ROOT / "scripts/implementation_tree_identity.py"), "--repo-root", str(ROOT), "--boundary-manifest", str(IMPLEMENTATION_BOUNDARY)],
+        [
+            sys.executable,
+            str(ROOT / "scripts/implementation_tree_identity.py"),
+            "--repo-root",
+            str(ROOT),
+            "--boundary-manifest",
+            str(IMPLEMENTATION_BOUNDARY),
+        ],
         text=True,
         capture_output=True,
         check=False,
@@ -69,7 +76,12 @@ def current_control_plane_identity() -> dict[str, str]:
         raise ValueError("invalid implementation tree identity")
     commit = subprocess.check_output(["git", "-C", str(ROOT), "rev-parse", "HEAD"], text=True).strip()
     recipe = subprocess.check_output(["git", "-C", str(ROOT / "recipe"), "rev-parse", "HEAD"], text=True).strip()
-    return {"plan_sha256": digest(GOAL_PLAN), "implementation_tree_sha256": tree, "evidence_commit": commit, "recipe_gitlink": recipe}
+    return {
+        "plan_sha256": digest(GOAL_PLAN),
+        "implementation_tree_sha256": tree,
+        "evidence_commit": commit,
+        "recipe_gitlink": recipe,
+    }
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -148,13 +160,24 @@ def training_plane(bundle: dict[str, Any], control: dict[str, Any], manifest_pat
     try:
         rendered = json.loads(
             subprocess.check_output(
-                [sys.executable, str(ROOT / "scripts/experiment_manifest.py"), "render", str(manifest), "--format", "json"], text=True
+                [
+                    sys.executable,
+                    str(ROOT / "scripts/experiment_manifest.py"),
+                    "render",
+                    str(manifest),
+                    "--format",
+                    "json",
+                ],
+                text=True,
             )
         )
         manifest_identity = rendered.get("manifest_sha256")
     except subprocess.CalledProcessError:
         manifest_identity = control.get("manifest_sha256")
-    if manifest_identity != required["manifest_sha256"] or control.get("manifest_sha256") != required["manifest_sha256"]:
+    if (
+        manifest_identity != required["manifest_sha256"]
+        or control.get("manifest_sha256") != required["manifest_sha256"]
+    ):
         raise ValueError("control provenance manifest hash no longer matches admission bundle")
     if not profile.is_file():
         raise ValueError("resource profile is missing")
@@ -192,7 +215,11 @@ def certify(args: argparse.Namespace) -> int:
         stage2_artifact_dir=args.stage2_artifact_dir,
         legacy_checkpoint=args.legacy_checkpoint,
     )
-    for label, path in {"control checkpoint": checkpoint, "control metrics": metrics, "control validation": validation}.items():
+    for label, path in {
+        "control checkpoint": checkpoint,
+        "control metrics": metrics,
+        "control validation": validation,
+    }.items():
         if not path.exists():
             failures.append(f"missing {label}: {path}")
     try:
@@ -234,7 +261,9 @@ def certify(args: argparse.Namespace) -> int:
             "adapter_path": str(args.adapter),
             "adapter_sha256": digest(args.adapter) if args.adapter.is_file() else None,
             "legacy_checkpoint": str(args.legacy_checkpoint),
-            "legacy_checkpoint_tree_sha256": tree_digest(args.legacy_checkpoint, allow_empty=True) if args.legacy_checkpoint.is_dir() else None,
+            "legacy_checkpoint_tree_sha256": tree_digest(args.legacy_checkpoint, allow_empty=True)
+            if args.legacy_checkpoint.is_dir()
+            else None,
         },
         "failures": failures,
     }
@@ -249,7 +278,11 @@ def validate_certificate(path: Path) -> dict[str, Any]:
     if certificate.get("eligible") is not True:
         raise ValueError("reuse certificate is not eligible")
     if certificate.get("result_type") == "stage123_certified_control_reuse":
-        for section, key in (("control", "provenance_path"), ("old_failure", "batch_state_path"), ("old_failure", "stage2_state_path")):
+        for section, key in (
+            ("control", "provenance_path"),
+            ("old_failure", "batch_state_path"),
+            ("old_failure", "stage2_state_path"),
+        ):
             value = certificate.get(section, {}).get(key)
             if not isinstance(value, str) or not Path(value).is_file():
                 raise ValueError(f"certificate missing preserved evidence: {section}.{key}")
@@ -309,12 +342,20 @@ def stage3_pretraining_proof(
 ) -> list[str]:
     failures: list[str] = []
     stage2_transitions = [(event.get("from"), event.get("to")) for event in stage2_state.get("transitions", [])]
-    if stage2_state.get("run_id") != STAGE2_ID or stage2_state.get("status") != "succeeded" or stage2_state.get("attempt") != 1:
+    if (
+        stage2_state.get("run_id") != STAGE2_ID
+        or stage2_state.get("status") != "succeeded"
+        or stage2_state.get("attempt") != 1
+    ):
         failures.append("stage2 state does not prove one completed Stage2 execution")
     if stage2_transitions != [("pending", "running"), ("running", "succeeded")]:
         failures.append("stage2 state does not preserve pending->running->succeeded")
     stage3_transitions = [(event.get("from"), event.get("to")) for event in stage3_state.get("transitions", [])]
-    if stage3_state.get("run_id") != STAGE3_ID or stage3_state.get("status") != "failed" or stage3_state.get("attempt") != 1:
+    if (
+        stage3_state.get("run_id") != STAGE3_ID
+        or stage3_state.get("status") != "failed"
+        or stage3_state.get("attempt") != 1
+    ):
         failures.append("stage3 state does not prove one failed child")
     if stage3_transitions != [("pending", "running"), ("running", "failed")]:
         failures.append("stage3 state does not preserve pending->running->failed")
@@ -352,9 +393,19 @@ def certify_stage2_handoff(args: argparse.Namespace) -> int:
         queue_log=args.queue_log,
         stage3_artifact_dir=args.stage3_artifact_dir,
     )
-    if stage2_provenance.get("run_id") != STAGE2_ID or stage2_provenance.get("phase") != "stage2" or stage2_provenance.get("release_eligible") is not True:
+    if (
+        stage2_provenance.get("run_id") != STAGE2_ID
+        or stage2_provenance.get("phase") != "stage2"
+        or stage2_provenance.get("release_eligible") is not True
+    ):
         failures.append("stage2 provenance is not a release-eligible completed Stage2 record")
-    for label, path in {"source manifest": source_manifest, "stage2 metrics": metrics, "stage2 validation": validation, "stage2 extracted model2": extracted, "stage2 joint model": joint}.items():
+    for label, path in {
+        "source manifest": source_manifest,
+        "stage2 metrics": metrics,
+        "stage2 validation": validation,
+        "stage2 extracted model2": extracted,
+        "stage2 joint model": joint,
+    }.items():
         if not path.exists():
             failures.append(f"missing {label}: {path}")
     if metrics.is_file() and digest(metrics) != stage2_provenance.get("metrics_sha256"):
@@ -373,7 +424,11 @@ def certify_stage2_handoff(args: argparse.Namespace) -> int:
             "sha256": digest(Path(source_admission["certificate_path"])),
         },
         "source_admission": {"path": str(args.source_admission), "sha256": digest(args.source_admission)},
-        "source_manifest": {"path": str(source_manifest), "sha256": digest(source_manifest) if source_manifest.is_file() else None, "stage2_manifest_sha256": stage2_provenance.get("manifest_sha256")},
+        "source_manifest": {
+            "path": str(source_manifest),
+            "sha256": digest(source_manifest) if source_manifest.is_file() else None,
+            "stage2_manifest_sha256": stage2_provenance.get("manifest_sha256"),
+        },
         "stage2": {
             "provenance_path": str(args.stage2_provenance),
             "provenance_sha256": digest(args.stage2_provenance),
@@ -467,9 +522,30 @@ def prepare(args: argparse.Namespace) -> int:
     admission["admission_sha256"] = hashlib.sha256(canonical_json(admission).encode()).hexdigest()
     admission_path = args.output_root / "treatment-admission.json"
     admission_path.write_text(json.dumps(admission, indent=2, sort_keys=True) + "\n")
-    provenance_path.write_text(json.dumps({"schema_version": 1, "status": "prepared_not_authorized", "execution_id": execution_id, "certificate_sha256": admission["certificate_sha256"], "control_reuse": admission["control_reuse_disclosure"]}, indent=2, sort_keys=True) + "\n")
+    provenance_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "status": "prepared_not_authorized",
+                "execution_id": execution_id,
+                "certificate_sha256": admission["certificate_sha256"],
+                "control_reuse": admission["control_reuse_disclosure"],
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n"
+    )
     commands = [
-        ["/data-1/verl07/run_train.sh", "python", "/workspace/verl/scripts/stage123_phase_adapter.py", "--manifest", str(manifest_copy), "--run-id", run_id]
+        [
+            "/data-1/verl07/run_train.sh",
+            "python",
+            "/workspace/verl/scripts/stage123_phase_adapter.py",
+            "--manifest",
+            str(manifest_copy),
+            "--run-id",
+            run_id,
+        ]
         for run_id in admission["expected_run_ids"]
     ]
     batch_manifest = {
@@ -480,23 +556,37 @@ def prepare(args: argparse.Namespace) -> int:
         "created_at": "prepared-without-training",
         "failure_policy_id": "batch-fallback-v1",
         "operator_control_path": str(args.output_root / "operator-controls.jsonl"),
-        "items": [{
-            "item_id": f"stage123-treatment-reuse-{execution_id}",
-            "goal_id": "stage123-primary-chain-execution",
-            "plan_sha256": "0" * 64,
-            "adapter_type": "stage123_treatment_reuse_v1",
-            "admission_bundle_path": str(admission_path),
-            "admission_bundle_sha256": digest(admission_path),
-            "implementation_tree_sha256": "0" * 64,
-            "expected_run_ids": admission["expected_run_ids"],
-            "command_sha256": hashlib.sha256(canonical_json(commands).encode()).hexdigest(),
-            "timeout_seconds": 86400,
-        }],
+        "items": [
+            {
+                "item_id": f"stage123-treatment-reuse-{execution_id}",
+                "goal_id": "stage123-primary-chain-execution",
+                "plan_sha256": "0" * 64,
+                "adapter_type": "stage123_treatment_reuse_v1",
+                "admission_bundle_path": str(admission_path),
+                "admission_bundle_sha256": digest(admission_path),
+                "implementation_tree_sha256": "0" * 64,
+                "expected_run_ids": admission["expected_run_ids"],
+                "command_sha256": hashlib.sha256(canonical_json(commands).encode()).hexdigest(),
+                "timeout_seconds": 86400,
+            }
+        ],
     }
     batch_manifest["batch_manifest_sha256"] = hashlib.sha256(canonical_json(batch_manifest).encode()).hexdigest()
     batch_path = args.output_root / "treatment-batch-manifest.json"
     batch_path.write_text(json.dumps(batch_manifest, indent=2, sort_keys=True) + "\n")
-    print(json.dumps({"ok": True, "admission_path": str(admission_path), "batch_manifest_path": str(batch_path), "state_root": str(state_root), "monitor_path": str(monitor_path), "provenance_path": str(provenance_path)}, sort_keys=True))
+    print(
+        json.dumps(
+            {
+                "ok": True,
+                "admission_path": str(admission_path),
+                "batch_manifest_path": str(batch_path),
+                "state_root": str(state_root),
+                "monitor_path": str(monitor_path),
+                "provenance_path": str(provenance_path),
+            },
+            sort_keys=True,
+        )
+    )
     return 0
 
 
@@ -586,8 +676,31 @@ def prepare_stage3_handoff(args: argparse.Namespace) -> int:
     admission["admission_sha256"] = hashlib.sha256(canonical_json(admission).encode()).hexdigest()
     admission_path = args.output_root / "stage3-handoff-admission.json"
     admission_path.write_text(json.dumps(admission, indent=2, sort_keys=True) + "\n")
-    provenance_path.write_text(json.dumps({"schema_version": 1, "status": "prepared_not_authorized", "execution_id": execution_id, "handoff_certificate_sha256": admission["certificate_sha256"], "stage2_handoff": admission["stage2_handoff_disclosure"]}, indent=2, sort_keys=True) + "\n")
-    commands = [["/data-1/verl07/run_train.sh", "python", "/workspace/verl/scripts/stage123_phase_adapter.py", "--manifest", str(manifest_path), "--run-id", STAGE3_ID]]
+    provenance_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "status": "prepared_not_authorized",
+                "execution_id": execution_id,
+                "handoff_certificate_sha256": admission["certificate_sha256"],
+                "stage2_handoff": admission["stage2_handoff_disclosure"],
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n"
+    )
+    commands = [
+        [
+            "/data-1/verl07/run_train.sh",
+            "python",
+            "/workspace/verl/scripts/stage123_phase_adapter.py",
+            "--manifest",
+            str(manifest_path),
+            "--run-id",
+            STAGE3_ID,
+        ]
+    ]
     batch_manifest = {
         "schema_version": 1,
         "prepared_not_authorized": True,
@@ -596,23 +709,37 @@ def prepare_stage3_handoff(args: argparse.Namespace) -> int:
         "created_at": "prepared-without-training",
         "failure_policy_id": "batch-fallback-v1",
         "operator_control_path": str(args.output_root / "operator-controls.jsonl"),
-        "items": [{
-            "item_id": f"stage123-stage2-handoff-{execution_id}",
-            "goal_id": "stage123-primary-chain-execution",
-            "plan_sha256": "0" * 64,
-            "adapter_type": "stage123_stage2_handoff_v1",
-            "admission_bundle_path": str(admission_path),
-            "admission_bundle_sha256": digest(admission_path),
-            "implementation_tree_sha256": "0" * 64,
-            "expected_run_ids": [STAGE3_ID],
-            "command_sha256": hashlib.sha256(canonical_json(commands).encode()).hexdigest(),
-            "timeout_seconds": 86400,
-        }],
+        "items": [
+            {
+                "item_id": f"stage123-stage2-handoff-{execution_id}",
+                "goal_id": "stage123-primary-chain-execution",
+                "plan_sha256": "0" * 64,
+                "adapter_type": "stage123_stage2_handoff_v1",
+                "admission_bundle_path": str(admission_path),
+                "admission_bundle_sha256": digest(admission_path),
+                "implementation_tree_sha256": "0" * 64,
+                "expected_run_ids": [STAGE3_ID],
+                "command_sha256": hashlib.sha256(canonical_json(commands).encode()).hexdigest(),
+                "timeout_seconds": 86400,
+            }
+        ],
     }
     batch_manifest["batch_manifest_sha256"] = hashlib.sha256(canonical_json(batch_manifest).encode()).hexdigest()
     batch_path = args.output_root / "stage3-handoff-batch-manifest.json"
     batch_path.write_text(json.dumps(batch_manifest, indent=2, sort_keys=True) + "\n")
-    print(json.dumps({"ok": True, "admission_path": str(admission_path), "batch_manifest_path": str(batch_path), "state_root": str(state_root), "monitor_path": str(monitor_path), "provenance_path": str(provenance_path)}, sort_keys=True))
+    print(
+        json.dumps(
+            {
+                "ok": True,
+                "admission_path": str(admission_path),
+                "batch_manifest_path": str(batch_path),
+                "state_root": str(state_root),
+                "monitor_path": str(monitor_path),
+                "provenance_path": str(provenance_path),
+            },
+            sort_keys=True,
+        )
+    )
     return 0
 
 
@@ -642,12 +769,19 @@ def validate_treatment(args: argparse.Namespace) -> int:
         if certificate.get("result_type") != "stage123_certified_stage2_handoff":
             raise ValueError("Stage3 handoff admission certificate type mismatch")
         manifest = yaml.safe_load(manifest_path.read_text())
-        runs = {run.get("id"): run for run in manifest.get("runs", []) if isinstance(run, dict)} if isinstance(manifest, dict) else {}
+        runs = (
+            {run.get("id"): run for run in manifest.get("runs", []) if isinstance(run, dict)}
+            if isinstance(manifest, dict)
+            else {}
+        )
         if tuple(runs) != (STAGE3_ID,):
             raise ValueError("Stage3 handoff manifest must contain exactly Stage3")
         stage3 = runs.get(STAGE3_ID, {})
         source = stage3.get("source", {}) if isinstance(stage3, dict) else {}
-        if source.get("model2_path") != certificate["stage2"]["extracted_model2"] or source.get("provenance_file") != certificate["stage2"]["provenance_path"]:
+        if (
+            source.get("model2_path") != certificate["stage2"]["extracted_model2"]
+            or source.get("provenance_file") != certificate["stage2"]["provenance_path"]
+        ):
             raise ValueError("Stage3 handoff manifest does not bind certified Stage2 extraction")
     if args.run_id is not None and args.run_id not in expected_run_ids:
         raise ValueError("requested run id is not admitted for treatment reuse")
@@ -661,7 +795,12 @@ def validate_treatment(args: argparse.Namespace) -> int:
         facts = load_json(facts_path)
         if facts.get("artifact_type") != "stage123_host_facts" or facts.get("ok") is not True:
             raise ValueError("authorized treatment host facts are invalid or failed")
-    print(json.dumps({"ok": True, "execution_id": admission.get("execution_id"), "status": admission.get("status")}, sort_keys=True))
+    print(
+        json.dumps(
+            {"ok": True, "execution_id": admission.get("execution_id"), "status": admission.get("status")},
+            sort_keys=True,
+        )
+    )
     return 0
 
 
@@ -670,7 +809,12 @@ def authorize_batch_manifest(prepared_path: Path, admission_path: Path, decision
     if prepared.get("prepared_not_authorized") is not True:
         raise ValueError("treatment batch manifest is not a prepared template")
     prepared_hash = prepared.get("batch_manifest_sha256")
-    if prepared_hash != hashlib.sha256(canonical_json({key: value for key, value in prepared.items() if key != "batch_manifest_sha256"}).encode()).hexdigest():
+    if (
+        prepared_hash
+        != hashlib.sha256(
+            canonical_json({key: value for key, value in prepared.items() if key != "batch_manifest_sha256"}).encode()
+        ).hexdigest()
+    ):
         raise ValueError("prepared treatment batch manifest hash mismatch")
     items = prepared.get("items")
     if not isinstance(items, list) or len(items) != 1:
@@ -679,7 +823,10 @@ def authorize_batch_manifest(prepared_path: Path, admission_path: Path, decision
     if item.get("admission_bundle_path") != str(admission_path):
         raise ValueError("prepared treatment batch manifest admission path mismatch")
     identity = load_json(admission_path).get("control_plane_identity")
-    if not isinstance(identity, dict) or any(not isinstance(identity.get(key), str) or set(identity[key]) == {"0"} for key in ("plan_sha256", "implementation_tree_sha256", "evidence_commit", "recipe_gitlink")):
+    if not isinstance(identity, dict) or any(
+        not isinstance(identity.get(key), str) or set(identity[key]) == {"0"}
+        for key in ("plan_sha256", "implementation_tree_sha256", "evidence_commit", "recipe_gitlink")
+    ):
         raise ValueError("authorized treatment admission lacks bound control-plane identity")
     authorized = dict(prepared)
     authorized.pop("prepared_not_authorized", None)
@@ -691,7 +838,9 @@ def authorize_batch_manifest(prepared_path: Path, admission_path: Path, decision
     authorized_item["plan_sha256"] = identity["plan_sha256"]
     authorized_item["implementation_tree_sha256"] = identity["implementation_tree_sha256"]
     authorized["items"] = [authorized_item]
-    authorized["batch_manifest_sha256"] = hashlib.sha256(canonical_json({key: value for key, value in authorized.items() if key != "batch_manifest_sha256"}).encode()).hexdigest()
+    authorized["batch_manifest_sha256"] = hashlib.sha256(
+        canonical_json({key: value for key, value in authorized.items() if key != "batch_manifest_sha256"}).encode()
+    ).hexdigest()
     output = prepared_path.with_name("authorized-treatment-batch-manifest.json")
     if output.exists():
         raise ValueError(f"authorized treatment batch manifest already exists: {output}")
@@ -714,12 +863,16 @@ def authorize_treatment(args: argparse.Namespace) -> int:
         raise ValueError("host facts are missing, invalid, or failed")
     if host_facts.get("tmux", {}).get("stage123_conflicts"):
         raise ValueError("host facts report an active Stage123 conflict")
-    gpu = subprocess.run(["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"], text=True, capture_output=True, check=False)
+    gpu = subprocess.run(
+        ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"], text=True, capture_output=True, check=False
+    )
     rows = [row.strip() for row in gpu.stdout.splitlines() if row.strip()]
     if gpu.returncode != 0 or rows != ["NVIDIA L40S"] * 8:
         raise ValueError("GPU inventory is not exactly eight NVIDIA L40S devices")
     profile = ROOT / "recipe/on_policy_wdl_sft/code_task/qwen3_1p7b_stage123_resource_profile.sh"
-    profile_result = subprocess.run(["bash", "-lc", f"source {profile}; stage123_profile_hash"], text=True, capture_output=True, check=False)
+    profile_result = subprocess.run(
+        ["bash", "-lc", f"source {profile}; stage123_profile_hash"], text=True, capture_output=True, check=False
+    )
     profile_hash = profile_result.stdout.strip()
     certificate = validate_certificate(Path(admission["certificate_path"]))
     if profile_result.returncode != 0 or profile_hash != certificate["training_plane"]["resource_profile_sha256"]:
@@ -734,10 +887,23 @@ def authorize_treatment(args: argparse.Namespace) -> int:
         "resource_profile_sha256": profile_hash,
     }
     admission["control_plane_identity"] = current_control_plane_identity()
-    admission["admission_sha256"] = hashlib.sha256(canonical_json({key: value for key, value in admission.items() if key != "admission_sha256"}).encode()).hexdigest()
+    admission["admission_sha256"] = hashlib.sha256(
+        canonical_json({key: value for key, value in admission.items() if key != "admission_sha256"}).encode()
+    ).hexdigest()
     args.admission.write_text(json.dumps(admission, indent=2, sort_keys=True) + "\n")
     batch_manifest = authorize_batch_manifest(args.batch_manifest, args.admission, args.decision_id)
-    print(json.dumps({"ok": True, "execution_id": admission["execution_id"], "status": admission["status"], "admission_sha256": admission["admission_sha256"], "authorized_batch_manifest": str(batch_manifest)}, sort_keys=True))
+    print(
+        json.dumps(
+            {
+                "ok": True,
+                "execution_id": admission["execution_id"],
+                "status": admission["status"],
+                "admission_sha256": admission["admission_sha256"],
+                "authorized_batch_manifest": str(batch_manifest),
+            },
+            sort_keys=True,
+        )
+    )
     return 0
 
 
@@ -745,7 +911,18 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="command", required=True)
     certify_parser = sub.add_parser("certify")
-    for name in ("control_provenance", "stage2_state", "batch_state", "queue_log", "admission_bundle", "manifest", "adapter", "stage2_artifact_dir", "legacy_checkpoint", "output"):
+    for name in (
+        "control_provenance",
+        "stage2_state",
+        "batch_state",
+        "queue_log",
+        "admission_bundle",
+        "manifest",
+        "adapter",
+        "stage2_artifact_dir",
+        "legacy_checkpoint",
+        "output",
+    ):
         certify_parser.add_argument(f"--{name.replace('_', '-')}", type=Path, required=True)
     certify_parser.set_defaults(func=certify)
     prepare_parser = sub.add_parser("prepare")
@@ -756,7 +933,17 @@ def main() -> int:
     prepare_parser.add_argument("--execution-id", required=True)
     prepare_parser.set_defaults(func=prepare)
     certify_handoff_parser = sub.add_parser("certify-stage2-handoff")
-    for name in ("stage2_provenance", "stage2_state", "stage3_state", "batch_state", "queue_log", "source_admission", "source_manifest", "stage3_artifact_dir", "output"):
+    for name in (
+        "stage2_provenance",
+        "stage2_state",
+        "stage3_state",
+        "batch_state",
+        "queue_log",
+        "source_admission",
+        "source_manifest",
+        "stage3_artifact_dir",
+        "output",
+    ):
         certify_handoff_parser.add_argument(f"--{name.replace('_', '-')}", type=Path, required=True)
     certify_handoff_parser.set_defaults(func=certify_stage2_handoff)
     prepare_handoff_parser = sub.add_parser("prepare-stage3-handoff")

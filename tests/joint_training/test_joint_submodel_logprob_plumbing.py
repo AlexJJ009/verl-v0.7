@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+
 import os
 import unittest
 
@@ -7,9 +9,9 @@ from tensordict import TensorDict
 
 from verl import DataProto
 from verl.models.joint_model.modeling_joint_qwen3 import QwenJointCausalLMOutputWithPast
+from verl.trainer.ppo.core_algos import compute_wdl_sft_loss
 from verl.utils.device import get_device_name
 from verl.workers.actor.dp_actor import DataParallelPPOActor
-from verl.trainer.ppo.core_algos import compute_wdl_sft_loss
 from verl.workers.config import (
     FSDPActorConfig,
     OptimizerConfig,
@@ -131,12 +133,8 @@ class TestJointSubmodelLogprobPlumbing(unittest.TestCase):
         }
 
         metrics = actor._compute_joint_submodel_loss_metrics(outputs, response_mask, advantages)
-        expected_model1 = compute_wdl_sft_loss(
-            outputs["model1_log_probs"], response_mask, advantages[:, 0], beta=0.1
-        )
-        expected_model2 = compute_wdl_sft_loss(
-            outputs["model2_log_probs"], response_mask, advantages[:, 0], beta=0.1
-        )
+        expected_model1 = compute_wdl_sft_loss(outputs["model1_log_probs"], response_mask, advantages[:, 0], beta=0.1)
+        expected_model2 = compute_wdl_sft_loss(outputs["model2_log_probs"], response_mask, advantages[:, 0], beta=0.1)
 
         assert metrics["jointTraining/model1/wdl_sft_loss_total"] == expected_model1["total_loss"].item()
         assert metrics["jointTraining/model2/wdl_sft_loss_total"] == expected_model2["total_loss"].item()

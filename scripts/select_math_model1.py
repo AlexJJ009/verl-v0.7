@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Create the explicit Model1 selection receipt after reviewing math cold-start candidates."""
 
 from __future__ import annotations

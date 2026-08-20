@@ -1,11 +1,12 @@
+# SPDX-License-Identifier: Apache-2.0
+
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
 import importlib.util
-from pathlib import Path
 import sys
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from types import SimpleNamespace
-
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -130,12 +131,17 @@ def test_live_batch_phase_validation_skips_freshness_but_requires_live_state(tmp
         )
     )
     freshness_modes = []
-    monkeypatch.setattr(tool, "validate_admission_bundle", lambda bundle, require_accepted: SimpleNamespace(authorized=True))
+    monkeypatch.setattr(
+        tool, "validate_admission_bundle", lambda bundle, require_accepted: SimpleNamespace(authorized=True)
+    )
     monkeypatch.setattr(
         tool,
         "validate_current_checkout",
-        lambda bundle, repo_root, protected_baseline, require_accepted, enforce_result_freshness: freshness_modes.append(enforce_result_freshness)
-        or SimpleNamespace(authorized=True),
+        lambda bundle,
+        repo_root,
+        protected_baseline,
+        require_accepted,
+        enforce_result_freshness: freshness_modes.append(enforce_result_freshness) or SimpleNamespace(authorized=True),
     )
     bundle = {"inputs": {"protected_baseline": str(tmp_path / "protected.jsonl")}}
     decision = tool.validate_batch_phase_admission(

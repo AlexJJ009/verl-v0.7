@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Run and finalize the frozen Code Stage1 step40 post-fix reevaluation.
 
 The real launch is validation-only and must run inside tmux.  Finalization
@@ -9,26 +11,21 @@ overwrites the manifest-owned admission receipt.
 from __future__ import annotations
 
 import argparse
-from collections import Counter
-from copy import deepcopy
-from datetime import datetime, timezone
 import hashlib
 import json
 import os
-from pathlib import Path
 import subprocess
 import sys
+from collections import Counter
+from copy import deepcopy
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Mapping
 
-
 ROOT = Path(__file__).resolve().parents[1]
-ADMISSION_RECEIPT = (
-    "/data-2/model_weights/code_task/qwen3_1p7b_wdl_acd0_p60/"
-    "admission/stage1_reuse_receipt.json"
-)
+ADMISSION_RECEIPT = "/data-2/model_weights/code_task/qwen3_1p7b_wdl_acd0_p60/admission/stage1_reuse_receipt.json"
 HISTORICAL_BASELINE = (
-    ROOT
-    / "recipe/on_policy_wdl_sft/code_task/validation/"
+    ROOT / "recipe/on_policy_wdl_sft/code_task/validation/"
     "CODE-B0_STAGE1-QWEN3-1P7B-COTMASK-V3-AUTHOR-SIGNATURE-V2-STEP20_1784965213/0.jsonl"
 )
 
@@ -46,8 +43,7 @@ FROZEN_CONTRACT: dict[str, Any] = {
         "weights_sha256": "a6c69262975ada9e1bc5054128d9f6f79b14167653ba817809bc771799d43c74",
     },
     "train_file": (
-        "/data-1/dataset/code/verl_rl/"
-        "qwen3_1p7b_code_stage123_author_signature_v2_seed20260706/stage1.parquet"
+        "/data-1/dataset/code/verl_rl/qwen3_1p7b_code_stage123_author_signature_v2_seed20260706/stage1.parquet"
     ),
     "validation": {
         "HumanEval+": {
@@ -80,9 +76,7 @@ FROZEN_CONTRACT: dict[str, Any] = {
         "recipe/on_policy_wdl_sft/code_task/official_aligned_reward.py": (
             "2854639c4bd3e34b89b3b4d53d553406b46a800fb44ff0c3657670f2792c59a2"
         ),
-        "verl/workers/reward_manager/dapo.py": (
-            "4d05aaf514a199bca81d393d9d057eeb5f38b7067303e010f16a4c2b17c4829b"
-        ),
+        "verl/workers/reward_manager/dapo.py": ("4d05aaf514a199bca81d393d9d057eeb5f38b7067303e010f16a4c2b17c4829b"),
         "verl/experimental/reward_loop/reward_manager/dapo.py": (
             "54c24d5df68c0c6afc86b534e2ecd0fef3842de3b6295d71dbfbac852dc701ba"
         ),

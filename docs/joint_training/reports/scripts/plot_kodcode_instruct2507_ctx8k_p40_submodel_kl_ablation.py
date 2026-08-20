@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Plot KodCode Instruct2507 CTX8K P40 submodel-KL ablation curves."""
 
 from __future__ import annotations
@@ -10,7 +12,6 @@ import shutil
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-
 
 ROOT = Path(__file__).resolve().parents[4]
 STAGE1_METRICS = (
@@ -162,9 +163,7 @@ def plot_pass_curves(rows: list[dict]) -> None:
             series = [
                 row
                 for row in rows
-                if row["run"] == run["label"]
-                and row["metric"] == dataset
-                and 35 <= row["effective_step"] <= 100
+                if row["run"] == run["label"] and row["metric"] == dataset and 35 <= row["effective_step"] <= 100
             ]
             series.sort(key=lambda row: row["effective_step"])
             if not series:
@@ -204,9 +203,7 @@ def plot_diagnostics(rows: list[dict]) -> None:
             series = [
                 row
                 for row in rows
-                if row["run"] == run["label"]
-                and row["metric"] == metric_name
-                and 35 <= row["effective_step"] <= 100
+                if row["run"] == run["label"] and row["metric"] == metric_name and 35 <= row["effective_step"] <= 100
             ]
             series.sort(key=lambda row: row["effective_step"])
             if not series:
@@ -349,7 +346,9 @@ def main() -> None:
     validation_rows = collect_validation_stats()
     write_rows(DATA_DIR / "kodcode_instruct2507_ctx8k_p40_submodel_kl_online_validation.csv", pass_rows)
     write_rows(DATA_DIR / "kodcode_instruct2507_ctx8k_p40_submodel_kl_diagnostics.csv", diag_rows)
-    write_validation_stats(DATA_DIR / "kodcode_instruct2507_ctx8k_p40_submodel_kl_validation_format_stats.csv", validation_rows)
+    write_validation_stats(
+        DATA_DIR / "kodcode_instruct2507_ctx8k_p40_submodel_kl_validation_format_stats.csv", validation_rows
+    )
     plot_pass_curves(pass_rows)
     plot_diagnostics(diag_rows)
     print_final_table(pass_rows)

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Analyze raw validation outputs for KodCode Instruct2507 CTX8K P60 Stage2."""
 
 from __future__ import annotations
@@ -8,7 +10,6 @@ import csv
 import json
 import re
 from pathlib import Path
-
 
 ROOT = Path(__file__).resolve().parents[4]
 VAL_ROOT = ROOT / "recipe/on_policy_wdl_sft/staged_v1/validation"
@@ -160,19 +161,19 @@ def main() -> None:
                 row["run"],
                 row["step"],
                 "acc",
-                f"{100*row['acc']:.2f}",
+                f"{100 * row['acc']:.2f}",
                 "extract_fail",
-                f"{100*row['extraction_fail']:.2f}",
+                f"{100 * row['extraction_fail']:.2f}",
                 "no_code",
-                f"{100*row['no_code']:.2f}",
+                f"{100 * row['no_code']:.2f}",
                 "mean_chars",
                 f"{row['mean_chars']:.0f}",
                 "long2k",
-                f"{100*row['long_2k_chars']:.2f}",
+                f"{100 * row['long_2k_chars']:.2f}",
                 "strict",
-                f"{100*row['strict_format']:.2f}",
+                f"{100 * row['strict_format']:.2f}",
                 "rep16>=3",
-                f"{100*row['repeat16_ge3']:.2f}",
+                f"{100 * row['repeat16_ge3']:.2f}",
             )
 
 

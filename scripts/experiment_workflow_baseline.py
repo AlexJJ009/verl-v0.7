@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Build a deterministic workflow baseline from structured local evidence."""
 
 from __future__ import annotations
 
 import argparse
-from collections import Counter
 import hashlib
 import importlib.util
 import json
-from pathlib import Path
 import re
 import sys
+from collections import Counter
+from pathlib import Path
 from typing import Any
 
 
@@ -51,7 +53,7 @@ def interval_seconds(samples: list[dict[str, Any]], predicate) -> float | None:
     if len(samples) < 2:
         return None
     total = 0.0
-    for left, right in zip(samples, samples[1:]):
+    for left, right in zip(samples, samples[1:], strict=False):
         if predicate(left):
             total += float(right["timestamp_s"]) - float(left["timestamp_s"])
     return round(total, 3)
@@ -75,16 +77,25 @@ def collect(fixture: Path) -> dict[str, Any]:
     submitted = [event for event in events if event.get("event") == "score_submitted"]
     completed = [event for event in events if event.get("event") == "score_completed"]
     timeouts = [event for event in events if event.get("event") == "score_timeout"]
-    scores = [float(event["score"]) for event in completed if isinstance(event.get("score"), (int, float))]
+    scores = [float(event["score"]) for event in completed if isinstance(event.get("score"), int | float)]
     scorer_start = [float(event["timestamp_s"]) for event in events if event.get("event") == "scorer_start"]
     scorer_end = [float(event["timestamp_s"]) for event in events if event.get("event") == "scorer_end"]
     elapsed = max(scorer_end) - min(scorer_start) if scorer_start and scorer_end else None
-    peak_rss = max((float(sample["rss_gib"]) for sample in processes if sample.get("process_type") == "RewardLoopWorker"), default=None)
-    gpu_idle = interval_seconds(gpus, lambda sample: sample.get("phase_active") is True and all(float(value) <= 2 for value in sample.get("utilization_pct", [])))
+    peak_rss = max(
+        (float(sample["rss_gib"]) for sample in processes if sample.get("process_type") == "RewardLoopWorker"),
+        default=None,
+    )
+    gpu_idle = interval_seconds(
+        gpus,
+        lambda sample: sample.get("phase_active") is True
+        and all(float(value) <= 2 for value in sample.get("utilization_pct", [])),
+    )
     phase_wall = interval_seconds(gpus, lambda sample: sample.get("phase_active") is True)
     timeout_rate = len(timeouts) / len(submitted) if submitted else None
     distribution = Counter(score_bin(score) for score in scores)
-    source_text = "\n".join(path.read_text(encoding="utf-8", errors="replace") for path in fixture.iterdir() if path.is_file())
+    source_text = "\n".join(
+        path.read_text(encoding="utf-8", errors="replace") for path in fixture.iterdir() if path.is_file()
+    )
     classifier_signals = [source_text]
     if timeouts:
         classifier_signals.append("Reward computation timed out")
@@ -109,7 +120,9 @@ def collect(fixture: Path) -> dict[str, Any]:
             "reward_worker_peak_rss_gib": unknown_if_none(round(peak_rss, 3) if peak_rss is not None else None),
             "gpu_idle_seconds": unknown_if_none(gpu_idle),
             "phase_wall_seconds": unknown_if_none(phase_wall),
-            "gpu_idle_fraction": unknown_if_none(round(gpu_idle / phase_wall, 6) if gpu_idle is not None and phase_wall else None),
+            "gpu_idle_fraction": unknown_if_none(
+                round(gpu_idle / phase_wall, 6) if gpu_idle is not None and phase_wall else None
+            ),
         },
         "failure": classify("\n".join(classifier_signals)),
         "secret_scan": {"ok": not secret_hits, "matches": secret_hits},
@@ -159,7 +172,12 @@ def main() -> int:
     args.md_out.parent.mkdir(parents=True, exist_ok=True)
     args.json_out.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     args.md_out.write_text(markdown(report), encoding="utf-8")
-    print(json.dumps({"ok": report["secret_scan"]["ok"], "json": str(args.json_out), "markdown": str(args.md_out)}, sort_keys=True))
+    print(
+        json.dumps(
+            {"ok": report["secret_scan"]["ok"], "json": str(args.json_out), "markdown": str(args.md_out)},
+            sort_keys=True,
+        )
+    )
     return 0 if report["secret_scan"]["ok"] else 1
 
 

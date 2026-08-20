@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+
 import unittest
 from unittest.mock import patch
 
@@ -110,7 +112,9 @@ class TestDynamicBatchSyncGroupForCritic(unittest.TestCase):
     def test_compute_values_uses_dp_group_for_dynamic_batch(self):
         data = self._build_compute_values_data()
 
-        with patch("verl.workers.critic.dp_critic.prepare_dynamic_batch", wraps=dp_critic_module.prepare_dynamic_batch) as mocked:
+        with patch(
+            "verl.workers.critic.dp_critic.prepare_dynamic_batch", wraps=dp_critic_module.prepare_dynamic_batch
+        ) as mocked:
             values = self.critic.compute_values(data)
 
         self.assertEqual(values.shape, (4, 4))
@@ -120,7 +124,9 @@ class TestDynamicBatchSyncGroupForCritic(unittest.TestCase):
     def test_update_critic_uses_dp_group_for_dynamic_batch(self):
         data = self._build_update_critic_data()
 
-        with patch("verl.workers.critic.dp_critic.prepare_dynamic_batch", wraps=dp_critic_module.prepare_dynamic_batch) as mocked:
+        with patch(
+            "verl.workers.critic.dp_critic.prepare_dynamic_batch", wraps=dp_critic_module.prepare_dynamic_batch
+        ) as mocked:
             metrics = self.critic.update_critic(data)
 
         self.assertIn("critic/vf_loss", metrics)

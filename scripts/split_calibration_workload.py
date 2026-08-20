@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
 from pathlib import Path
-
 
 EXPECTED_COUNTS = {"HumanEval+": 16, "MBPP+": 16, "LiveCodeBench": 32}
 EXPECTED_SHA256 = "c3eaf3374661fba71d1132f0de7a8dbdbd3d90295d4fabeb77b5e9dd7c221608"
@@ -46,10 +47,7 @@ def main() -> int:
         "schema_version": 1,
         "source": str(args.source),
         "source_sha256": sha256(args.source),
-        "outputs": {
-            name: {"path": path, "sha256": sha256(Path(path))}
-            for name, path in outputs.items()
-        },
+        "outputs": {name: {"path": path, "sha256": sha256(Path(path))} for name, path in outputs.items()},
     }
     args.receipt.parent.mkdir(parents=True, exist_ok=True)
     args.receipt.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n")

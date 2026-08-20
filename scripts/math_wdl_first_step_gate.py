@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Wait for and validate the first optimizer step of a Math WDL causal arm."""
 
 from __future__ import annotations
@@ -9,7 +11,6 @@ import subprocess
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-
 
 REQUIRED_METRICS = {
     "training/global_step",
@@ -35,12 +36,15 @@ REQUIRED_METRICS = {
 
 
 def _tmux_alive(name: str) -> bool:
-    return subprocess.run(
-        ["tmux", "has-session", "-t", name],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        check=False,
-    ).returncode == 0
+    return (
+        subprocess.run(
+            ["tmux", "has-session", "-t", name],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        ).returncode
+        == 0
+    )
 
 
 def _find_step_one(metrics_root: Path, project: str, run_prefix: str) -> tuple[Path, dict] | None:

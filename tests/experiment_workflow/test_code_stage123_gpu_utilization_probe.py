@@ -1,13 +1,14 @@
+# SPDX-License-Identifier: Apache-2.0
+
 from __future__ import annotations
 
 import importlib.util
 import json
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 import yaml
-
 
 ROOT = Path(__file__).resolve().parents[2]
 PROBE = ROOT / "scripts/run_code_stage123_gpu_utilization_probe.py"
@@ -64,11 +65,11 @@ def test_probe_default_headroom_floor_is_explicit_and_report_owned():
     text = PROBE.read_text()
     wrapper = WRAPPER.read_text()
     admission = (ROOT / "scripts/code_stage123_admission.py").read_text()
-    assert 'default=512' in text
+    assert "default=512" in text
     assert '"minimum_required_gpu_headroom_mib": args.minimum_headroom_mib' in text
-    assert 'MINIMUM_HEADROOM_MIB=${MINIMUM_HEADROOM_MIB:-512}' in wrapper
+    assert "MINIMUM_HEADROOM_MIB=${MINIMUM_HEADROOM_MIB:-512}" in wrapper
     assert 'minimum_required_headroom = int(report.get("minimum_required_gpu_headroom_mib", 0))' in admission
-    assert 'minimum_required_headroom != 512' in admission
+    assert "minimum_required_headroom != 512" in admission
     assert 'raise SystemExit(f"admission file missing: {args.admission}")' in admission
 
 
@@ -184,9 +185,17 @@ def test_probe_rejects_legacy_answer_only_model1(tmp_path):
     probe = module()
     selection = tmp_path / "selection.json"
     receipt = tmp_path / "receipt.json"
-    selection.write_text(json.dumps({"selected_step": 20, "identity": {"model_path": "/models/format_cold_start_fraction/legacy"}}))
-    receipt.write_text(json.dumps({"schema_version": 2, "overlap_policy": {"cold_start_vs_stage1_stage2_stage3": "pairwise_disjoint"}}))
-    manifest = {"task": "code", "model1_selection_policy": {"selected_step": 20}, "paths": {"model1_selection": str(selection), "dataset_receipt": str(receipt)}}
+    selection.write_text(
+        json.dumps({"selected_step": 20, "identity": {"model_path": "/models/format_cold_start_fraction/legacy"}})
+    )
+    receipt.write_text(
+        json.dumps({"schema_version": 2, "overlap_policy": {"cold_start_vs_stage1_stage2_stage3": "pairwise_disjoint"}})
+    )
+    manifest = {
+        "task": "code",
+        "model1_selection_policy": {"selected_step": 20},
+        "paths": {"model1_selection": str(selection), "dataset_receipt": str(receipt)},
+    }
     try:
         probe.assert_cot_v3_probe_inputs(manifest)
     except SystemExit as exc:

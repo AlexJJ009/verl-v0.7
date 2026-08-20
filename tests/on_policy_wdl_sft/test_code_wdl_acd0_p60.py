@@ -1,13 +1,14 @@
+# SPDX-License-Identifier: Apache-2.0
+
 import importlib.util
 import json
-from pathlib import Path
 import subprocess
+from pathlib import Path
 
 import numpy as np
 import pytest
 import torch
 import yaml
-
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -46,9 +47,7 @@ def test_native_finish_reason_overrides_stale_reward_truncation_field():
 
 
 def test_signal_loss_is_reported_as_response_throughput_not_accuracy_causality():
-    summary = gate.summarize(
-        [row(formatted=True, correct=True), row(formatted=False, correct=False, finish="length")]
-    )
+    summary = gate.summarize([row(formatted=True, correct=True), row(formatted=False, correct=False, finish="length")])
     assert summary["micro"]["estimated_positive_signal_loss_fraction"] == 0.5
     assert summary["micro"]["expected_positive_responses_per_group_n8"] == 4.0
 
@@ -127,9 +126,7 @@ def test_joint_arm_cache_path_is_short_run_unique_and_arm_specific(tmp_path):
 
 
 def test_joint_wrapper_has_short_cache_fallback_for_direct_launches():
-    wrapper = (
-        ROOT / "recipe/on_policy_wdl_sft/code_task/run_code_qwen3_1p7b_wdl_acd0_joint_common.sh"
-    ).read_text()
+    wrapper = (ROOT / "recipe/on_policy_wdl_sft/code_task/run_code_qwen3_1p7b_wdl_acd0_joint_common.sh").read_text()
 
     assert "JOINT_MODEL_CACHE_ROOT" in wrapper
     assert 'export MODEL_PATH="${JOINT_MODEL_CACHE_ROOT}/code-acd0-${arm_tag}-${run_timestamp}"' in wrapper
@@ -377,9 +374,7 @@ def test_queue_main_wires_exact_run_name_to_terminal_outcome(tmp_path, monkeypat
         assert kwargs["env"]["WANDB_RUN_NAME"] == f"{run['run_prefix']}_1800000004"
         assert Path(kwargs["env"]["MODEL_PATH"]).name == "code-acd0-c-1800000004"
         assert kwargs["env"]["LOG_DIR"] == str(tmp_path / "artifacts" / "logs")
-        assert kwargs["env"]["VERL_FILE_LOGGER_ROOT"] == str(
-            tmp_path / "artifacts" / "logs" / "metrics"
-        )
+        assert kwargs["env"]["VERL_FILE_LOGGER_ROOT"] == str(tmp_path / "artifacts" / "logs" / "metrics")
         if wrapper_fails:
             raise subprocess.CalledProcessError(1, "wrapper")
         return subprocess.CompletedProcess("wrapper", 0)

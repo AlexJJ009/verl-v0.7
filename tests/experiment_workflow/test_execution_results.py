@@ -1,10 +1,12 @@
+# SPDX-License-Identifier: Apache-2.0
+
 from __future__ import annotations
 
-import importlib.util
 import hashlib
+import importlib.util
 import json
-from pathlib import Path
 import sys
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 TOOL = ROOT / "scripts/execution_results.py"
@@ -41,12 +43,14 @@ def bundle(tool, tmp_path: Path) -> tuple[Path, dict]:
 
 
 def test_admission_primary_pair_and_hash_authorize(tmp_path: Path) -> None:
-    tool = module(); _, value = bundle(tool, tmp_path)
+    tool = module()
+    _, value = bundle(tool, tmp_path)
     assert tool.validate_admission_bundle(value).as_dict()["authorized"] is True
 
 
 def test_admission_mutations_fail_closed(tmp_path: Path) -> None:
-    tool = module(); _, value = bundle(tool, tmp_path)
+    tool = module()
+    _, value = bundle(tool, tmp_path)
     value["run_ids"].append("frac50-stage2")
     decision = tool.validate_admission_bundle(value)
     assert decision.code == "admission_run_set"
@@ -55,14 +59,16 @@ def test_admission_mutations_fail_closed(tmp_path: Path) -> None:
 
 
 def test_acceptance_is_required_and_bound(tmp_path: Path) -> None:
-    tool = module(); _, value = bundle(tool, tmp_path)
+    tool = module()
+    _, value = bundle(tool, tmp_path)
     assert tool.validate_admission_bundle(value, require_accepted=True).code == "admission_not_accepted"
     value["acceptance"] = accepted_report(value)
     assert tool.validate_admission_bundle(value, require_accepted=True).authorized is True
 
 
 def test_launch_renderer_is_deterministic_and_contains_no_secrets(tmp_path: Path) -> None:
-    tool = module(); _, value = bundle(tool, tmp_path)
+    tool = module()
+    _, value = bundle(tool, tmp_path)
     first = tool.admission_launch_command(value, ROOT)
     assert first == tool.admission_launch_command(value, ROOT)
     rendered = " ".join(first)
@@ -74,7 +80,8 @@ def test_launch_renderer_is_deterministic_and_contains_no_secrets(tmp_path: Path
 
 
 def test_launch_requires_accepted_bundle(tmp_path: Path, capsys) -> None:
-    tool = module(); path, value = bundle(tool, tmp_path)
+    tool = module()
+    path, value = bundle(tool, tmp_path)
     assert tool.admission_main(["render-launch", "--bundle", str(path), "--repo-host", str(ROOT)]) == 1
     value["acceptance"] = accepted_report(value)
     path.write_text(json.dumps(value))
@@ -96,10 +103,27 @@ def accepted_report(value: dict) -> dict:
 
 
 def test_admission_builder_never_self_binds_calibration_identity(tmp_path: Path) -> None:
-    tool = module(); manifest = tmp_path / "manifest.json"; profile = tmp_path / "profile.sh"; calibration = tmp_path / "calibration.json"; preflight = tmp_path / "preflight.json"
-    manifest.write_text(json.dumps({"manifest_sha256": "a" * 64, "resource_profile": {"sha256": "c" * 64}, "runs": [{"id": "frac25-stage1-control"}, {"id": "frac25-stage2"}, {"id": "frac25-stage3"}]})); profile.write_text("profile")
+    tool = module()
+    manifest = tmp_path / "manifest.json"
+    profile = tmp_path / "profile.sh"
+    calibration = tmp_path / "calibration.json"
+    preflight = tmp_path / "preflight.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "manifest_sha256": "a" * 64,
+                "resource_profile": {"sha256": "c" * 64},
+                "runs": [{"id": "frac25-stage1-control"}, {"id": "frac25-stage2"}, {"id": "frac25-stage3"}],
+            }
+        )
+    )
+    profile.write_text("profile")
     calibration.write_text(json.dumps({"schema_version": 1, "result_type": "calibration_result", "decision": "passed"}))
-    preflight.write_text(json.dumps({"schema_version": 1, "result_type": "preflight_result", "decision": "passed", "manifest_sha256": "a" * 64}))
+    preflight.write_text(
+        json.dumps(
+            {"schema_version": 1, "result_type": "preflight_result", "decision": "passed", "manifest_sha256": "a" * 64}
+        )
+    )
     try:
         tool.build_admission_bundle(manifest, profile, calibration, preflight, "b" * 40, tmp_path / "bundle.json")
     except ValueError as exc:
@@ -132,7 +156,9 @@ def test_resource_profile_snapshot_hash_detects_mutation(tmp_path: Path) -> None
 
 
 def test_producer_pointer_v2_rejects_cross_run_report(tmp_path: Path) -> None:
-    renderer_spec = importlib.util.spec_from_file_location("calibration_renderer", ROOT / "scripts/render_calibration_result.py")
+    renderer_spec = importlib.util.spec_from_file_location(
+        "calibration_renderer", ROOT / "scripts/render_calibration_result.py"
+    )
     renderer = importlib.util.module_from_spec(renderer_spec)
     assert renderer_spec.loader
     renderer_spec.loader.exec_module(renderer)
@@ -142,18 +168,22 @@ def test_producer_pointer_v2_rejects_cross_run_report(tmp_path: Path) -> None:
     report = report_root / "probe-report.json"
     report.write_text(json.dumps({"status": "passed", "run_id": "run-a", "authorization_decision_id": "decision-a"}))
     pointer = scratch / "latest-probe.json"
-    pointer.write_text(json.dumps({
-        "schema_version": 2,
-        "run_id": "run-b",
-        "authorization_decision_id": "decision-a",
-        "report_sha256": "0" * 64,
-        "generated_at_utc": "2026-07-14T00:00:00Z",
-        "report_started_at_utc": "2026-07-14T00:00:00Z",
-        "report_completed_at_utc": "2026-07-14T00:00:01Z",
-        "run_root": str(report_root),
-        "report": str(report),
-        "status": "passed",
-    }))
+    pointer.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "run_id": "run-b",
+                "authorization_decision_id": "decision-a",
+                "report_sha256": "0" * 64,
+                "generated_at_utc": "2026-07-14T00:00:00Z",
+                "report_started_at_utc": "2026-07-14T00:00:00Z",
+                "report_completed_at_utc": "2026-07-14T00:00:01Z",
+                "run_root": str(report_root),
+                "report": str(report),
+                "status": "passed",
+            }
+        )
+    )
     try:
         renderer.validate_pointer(pointer, run_id="run-b", decision_id="decision-a", scratch_root=scratch)
     except ValueError as exc:
@@ -163,7 +193,9 @@ def test_producer_pointer_v2_rejects_cross_run_report(tmp_path: Path) -> None:
 
 
 def test_calibration_renderer_rejects_empty_phase_evidence(tmp_path: Path) -> None:
-    renderer_spec = importlib.util.spec_from_file_location("calibration_renderer_empty", ROOT / "scripts/render_calibration_result.py")
+    renderer_spec = importlib.util.spec_from_file_location(
+        "calibration_renderer_empty", ROOT / "scripts/render_calibration_result.py"
+    )
     renderer = importlib.util.module_from_spec(renderer_spec)
     assert renderer_spec.loader
     renderer_spec.loader.exec_module(renderer)
@@ -171,30 +203,38 @@ def test_calibration_renderer_rejects_empty_phase_evidence(tmp_path: Path) -> No
     report_root = scratch / "probe-1"
     report_root.mkdir(parents=True)
     report = report_root / "probe-report.json"
-    report.write_text(json.dumps({
-        "status": "passed",
-        "run_id": "run-a",
-        "authorization_decision_id": "decision-a",
-        "manifest_sha256": "a" * 64,
-        "phases": [],
-        "optimizer_steps": 0,
-        "formal_checkpoints": [],
-        "prediction_comparison": {"qualified": True},
-        "cleanup": {"resources_released": True},
-    }))
+    report.write_text(
+        json.dumps(
+            {
+                "status": "passed",
+                "run_id": "run-a",
+                "authorization_decision_id": "decision-a",
+                "manifest_sha256": "a" * 64,
+                "phases": [],
+                "optimizer_steps": 0,
+                "formal_checkpoints": [],
+                "prediction_comparison": {"qualified": True},
+                "cleanup": {"resources_released": True},
+            }
+        )
+    )
     pointer = scratch / "latest-probe.json"
-    pointer.write_text(json.dumps({
-        "schema_version": 2,
-        "run_id": "run-a",
-        "authorization_decision_id": "decision-a",
-        "report_sha256": renderer.sha256(report),
-        "generated_at_utc": "2026-07-14T00:00:00Z",
-        "report_started_at_utc": "2026-07-14T00:00:00Z",
-        "report_completed_at_utc": "2026-07-14T00:00:01Z",
-        "run_root": str(report_root),
-        "report": str(report),
-        "status": "passed",
-    }))
+    pointer.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "run_id": "run-a",
+                "authorization_decision_id": "decision-a",
+                "report_sha256": renderer.sha256(report),
+                "generated_at_utc": "2026-07-14T00:00:00Z",
+                "report_started_at_utc": "2026-07-14T00:00:00Z",
+                "report_completed_at_utc": "2026-07-14T00:00:01Z",
+                "run_root": str(report_root),
+                "report": str(report),
+                "status": "passed",
+            }
+        )
+    )
     try:
         renderer.validate_pointer(pointer, run_id="run-a", decision_id="decision-a", scratch_root=scratch)
     except ValueError as exc:
@@ -204,7 +244,9 @@ def test_calibration_renderer_rejects_empty_phase_evidence(tmp_path: Path) -> No
 
 
 def test_calibration_renderer_binds_current_authorized_plan(tmp_path: Path) -> None:
-    renderer_spec = importlib.util.spec_from_file_location("calibration_renderer_plan", ROOT / "scripts/render_calibration_result.py")
+    renderer_spec = importlib.util.spec_from_file_location(
+        "calibration_renderer_plan", ROOT / "scripts/render_calibration_result.py"
+    )
     renderer = importlib.util.module_from_spec(renderer_spec)
     assert renderer_spec.loader
     renderer_spec.loader.exec_module(renderer)
@@ -214,13 +256,18 @@ def test_calibration_renderer_binds_current_authorized_plan(tmp_path: Path) -> N
     plan.write_text("# Plan v9\n")
     plan_sha256 = hashlib.sha256(plan.read_bytes()).hexdigest()
     ledger = goal / "runtime.jsonl"
-    ledger.write_text(json.dumps({
-        "event": "USER_DECISION_RECORDED",
-        "decision_id": "decision-v9",
-        "plan_version": 9,
-        "plan_sha256": plan_sha256,
-        "time": "2026-07-15T00:00:00Z",
-    }) + "\n")
+    ledger.write_text(
+        json.dumps(
+            {
+                "event": "USER_DECISION_RECORDED",
+                "decision_id": "decision-v9",
+                "plan_version": 9,
+                "plan_sha256": plan_sha256,
+                "time": "2026-07-15T00:00:00Z",
+            }
+        )
+        + "\n"
+    )
     decision = renderer.matching_authorization(ledger, "decision-v9")
     assert decision["plan_version"] == 9
     plan.write_text("# Mutated plan\n")

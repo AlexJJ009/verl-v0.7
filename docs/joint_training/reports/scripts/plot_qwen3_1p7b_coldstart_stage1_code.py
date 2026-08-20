@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Plot Qwen3-1.7B cold-start KodCode Stage1 online validation curves."""
 
 from __future__ import annotations
@@ -9,7 +11,6 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
-
 ROOT = Path(__file__).resolve().parents[4]
 METRICS_DIR = ROOT / "recipe/on_policy_wdl_sft/code_task/metrics/OnPolicyWDLSFT-CodeTask"
 OUT_DIR = ROOT / "docs/joint_training/reports/figures"
@@ -19,16 +20,14 @@ RUNS = [
     {
         "label": r"Cold-start 1.7B Stage1 $\beta=0.0$",
         "short": "beta0",
-        "path": METRICS_DIR
-        / "ONPOLICY-SFT-Qwen3-1P7B-COLDSTART-CODE-KODCODE-CTX8K-S1-BETA0-V1_1783319854.jsonl",
+        "path": METRICS_DIR / "ONPOLICY-SFT-Qwen3-1P7B-COLDSTART-CODE-KODCODE-CTX8K-S1-BETA0-V1_1783319854.jsonl",
         "color": "#2563eb",
         "marker": "o",
     },
     {
         "label": r"Cold-start 1.7B Stage1 $\beta=0.1$",
         "short": "beta01",
-        "path": METRICS_DIR
-        / "ONPOLICY-SFT-Qwen3-1P7B-COLDSTART-CODE-KODCODE-CTX8K-S1-BETA01-V1_1783329189.jsonl",
+        "path": METRICS_DIR / "ONPOLICY-SFT-Qwen3-1P7B-COLDSTART-CODE-KODCODE-CTX8K-S1-BETA01-V1_1783329189.jsonl",
         "color": "#dc2626",
         "marker": "s",
     },

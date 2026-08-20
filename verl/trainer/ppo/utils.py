@@ -128,10 +128,7 @@ def validate_submodel_kl_reference_paths(
 
     for name in ("model1", "model2"):
         model_cfg = _conf_get(submodel_kl, name)
-        if not (
-            _conf_get(model_cfg, "enabled", False)
-            and float(_conf_get(model_cfg, "coef", 0.0) or 0.0) > 0.0
-        ):
+        if not (_conf_get(model_cfg, "enabled", False) and float(_conf_get(model_cfg, "coef", 0.0) or 0.0) > 0.0):
             continue
         ref_path = _conf_get(model_cfg, "ref_path")
         if strict and not ref_path:

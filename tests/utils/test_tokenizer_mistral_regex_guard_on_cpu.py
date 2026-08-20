@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+
 from pathlib import Path
 
 from verl.utils.tokenizer import hf_tokenizer

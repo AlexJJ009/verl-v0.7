@@ -17,11 +17,10 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import sys
+from pathlib import Path
 
 import yaml
-
 
 ROOT = Path(__file__).resolve().parents[1]
 ALLOWLIST = ROOT / "tests/special_sanity/sft_input_ids_mismatch_allowlist.json"
@@ -52,10 +51,7 @@ def mismatch_overrides(root: Path) -> set[str]:
 def mismatch_override_digests(root: Path) -> dict[str, str]:
     import hashlib
 
-    return {
-        path: hashlib.sha256((root / path).read_bytes()).hexdigest()
-        for path in mismatch_overrides(root)
-    }
+    return {path: hashlib.sha256((root / path).read_bytes()).hexdigest() for path in mismatch_overrides(root)}
 
 
 def check(root: Path = ROOT) -> list[str]:

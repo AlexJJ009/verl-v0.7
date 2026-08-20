@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+
 import numpy as np
 import torch
 from omegaconf import OmegaConf
@@ -21,7 +23,6 @@ class _FakeRolloutManager:
             prompts_out = prompts.batch["input_ids"].clone()
         else:
             prompts_out = torch.tensor([[11, 12, 13]], dtype=torch.long).repeat(batch_size, 1)
-        prompt_length = prompts_out.shape[1]
         response_length = 3
         responses = torch.full((batch_size, response_length), 5, dtype=torch.long)
         seq = torch.cat([prompts_out, responses], dim=1)

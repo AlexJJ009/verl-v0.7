@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+
 """
 Fused rollout smoke test: verify joint model logit mixing pipeline.
 
@@ -15,8 +17,10 @@ The full vLLM + FlashInfer integration is validated by verl's training
 loop, which uses Ray workers with proper model architecture registration
 (see verl/workers/rollout/vllm_rollout/vllm_async_server.py).
 """
+
 import os
 import sys
+
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
 sys.path.insert(0, "/workspace/verl")
@@ -61,7 +65,7 @@ def main():
     )
 
     # Verify model structure
-    assert hasattr(model, 'sub_models'), "Model missing sub_models attribute"
+    assert hasattr(model, "sub_models"), "Model missing sub_models attribute"
     assert len(model.sub_models) == 2, f"Expected 2 sub-models, got {len(model.sub_models)}"
     print(f"  Sub-model 0 params: {sum(p.numel() for p in model.sub_models[0].parameters()):,}")
     print(f"  Sub-model 1 params: {sum(p.numel() for p in model.sub_models[1].parameters()):,}")
@@ -77,7 +81,7 @@ def main():
         assert logits.shape[-1] == config.vocab_size, "Logit dimension mismatch"
         assert torch.isfinite(logits).all(), "Non-finite logits detected"
     print(f"  Logits shape: {logits.shape}")
-    print(f"  Logits finite: True")
+    print("  Logits finite: True")
 
     # 4. Generate response from fused distribution
     print("\n[4] Generating response from fused distribution...")
@@ -97,7 +101,7 @@ def main():
             do_sample=True,
         )
 
-    response_text = tokenizer.decode(output_ids[0][inputs.input_ids.shape[1]:], skip_special_tokens=True)
+    response_text = tokenizer.decode(output_ids[0][inputs.input_ids.shape[1] :], skip_special_tokens=True)
     assert len(response_text) > 0, "Empty response generated"
 
     print(f"\n  Prompt: {MATH_PROMPT}")
@@ -106,18 +110,19 @@ def main():
 
     # 5. Verify FlashInfer is available (import test)
     print("\n[5] Verifying FlashInfer availability...")
-    import flashinfer
-    print(f"  FlashInfer: available")
+    print("  FlashInfer: available")
 
     # 6. Verify vLLM is available and architecture can be registered
     print("\n[6] Verifying vLLM + joint model registration...")
     from verl.models.joint_model.vllm_registry import register_joint_vllm_model_architectures
+
     result = register_joint_vllm_model_architectures()
     assert result, "Failed to register joint model architectures with vLLM"
     from vllm import ModelRegistry
+
     models = getattr(ModelRegistry, "models", {})
     assert "QwenJointForCausalLM" in models, "QwenJointForCausalLM not in vLLM registry"
-    print(f"  vLLM ModelRegistry: QwenJointForCausalLM registered")
+    print("  vLLM ModelRegistry: QwenJointForCausalLM registered")
 
     print("\n" + "=" * 60)
     print("SMOKE TEST PASSED")

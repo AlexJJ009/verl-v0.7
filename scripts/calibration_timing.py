@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Canonical validation timing semantics for operational calibration evidence."""
 
 from __future__ import annotations
@@ -7,12 +9,11 @@ import json
 import math
 from pathlib import Path
 
-
 EVENTS = ("validation_ready", "generation_complete", "metrics_complete")
 
 
 def _finite_number(value: object) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+    return isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(value)
 
 
 def load_validation_timing(path: Path, trainer_elapsed_seconds: object) -> dict[str, float]:

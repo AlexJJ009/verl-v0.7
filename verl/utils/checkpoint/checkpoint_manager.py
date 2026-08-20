@@ -160,7 +160,7 @@ class BaseCheckpointManager:
             for value in obj.values():
                 yield from BaseCheckpointManager.iter_tensors(value)
             return
-        if isinstance(obj, (list, tuple)):
+        if isinstance(obj, list | tuple):
             for value in obj:
                 yield from BaseCheckpointManager.iter_tensors(value)
 

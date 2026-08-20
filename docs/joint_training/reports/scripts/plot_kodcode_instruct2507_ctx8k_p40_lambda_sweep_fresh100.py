@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Plot fresh KodCode Instruct2507 CTX8K P40 Stage2 lambda sweep curves."""
 
 from __future__ import annotations
@@ -9,16 +11,13 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
-
 ROOT = Path(__file__).resolve().parents[4]
 STAGE1_METRICS = (
     ROOT
     / "recipe/on_policy_wdl_sft/code_task/metrics/OnPolicyWDLSFT-CodeTask/"
     / "ONPOLICY-SFT-Qwen3-4B-INSTRUCT2507-CODE-KODCODE-CTX8K-S1-BETA01-V1_1782398871.jsonl"
 )
-STAGE2_METRICS_DIR = (
-    ROOT / "recipe/on_policy_wdl_sft/staged_v1/metrics/OnPolicyWDLSFT-CodeTask"
-)
+STAGE2_METRICS_DIR = ROOT / "recipe/on_policy_wdl_sft/staged_v1/metrics/OnPolicyWDLSFT-CodeTask"
 OUT_DIR = ROOT / "docs/joint_training/reports/figures"
 DATA_DIR = ROOT / "docs/joint_training/reports/data"
 
@@ -181,9 +180,7 @@ def plot_pass_curves(rows: list[dict], runs: list[dict], filename: str, title: s
             series = [
                 row
                 for row in rows
-                if row["run"] == run["label"]
-                and row["metric"] == dataset
-                and 35 <= row["effective_step"] <= 100
+                if row["run"] == run["label"] and row["metric"] == dataset and 35 <= row["effective_step"] <= 100
             ]
             series.sort(key=lambda row: row["effective_step"])
             if not series:
@@ -226,9 +223,7 @@ def plot_diagnostics(rows: list[dict], runs: list[dict], filename: str) -> None:
             series = [
                 row
                 for row in rows
-                if row["run"] == run["label"]
-                and row["metric"] == metric_name
-                and 35 <= row["effective_step"] <= 100
+                if row["run"] == run["label"] and row["metric"] == metric_name and 35 <= row["effective_step"] <= 100
             ]
             series.sort(key=lambda row: row["effective_step"])
             if not series:
@@ -286,7 +281,9 @@ def main() -> None:
 
     write_rows(DATA_DIR / "kodcode_instruct2507_ctx8k_p40_lambda_sweep_fresh100_online_validation.csv", fresh_pass_rows)
     write_rows(DATA_DIR / "kodcode_instruct2507_ctx8k_p40_lambda_sweep_fresh100_diagnostics.csv", fresh_diag_rows)
-    write_rows(DATA_DIR / "kodcode_instruct2507_ctx8k_p40_lambda_sweep_old_vs_fresh_online_validation.csv", compare_pass_rows)
+    write_rows(
+        DATA_DIR / "kodcode_instruct2507_ctx8k_p40_lambda_sweep_old_vs_fresh_online_validation.csv", compare_pass_rows
+    )
 
     plot_pass_curves(
         fresh_pass_rows,

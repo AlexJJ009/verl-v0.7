@@ -1,12 +1,14 @@
+# SPDX-License-Identifier: Apache-2.0
+
 """Feature tests for joint training weight extraction utilities.
 
 Tests the pure logic of extracting model2 weights from a joint model's state dict,
 which is the core of the dual-mode weight sync in FSDP workers.
 """
 
-import pytest
-import torch
 from collections import OrderedDict
+
+import torch
 
 
 def _make_mock_joint_state_dict():
@@ -39,10 +41,12 @@ class TestJointWeightUtils:
         joint_sd = _make_mock_joint_state_dict()
         assert is_joint_model_state_dict(joint_sd) is True
 
-        normal_sd = OrderedDict({
-            "model.embed_tokens.weight": torch.randn(1000, 64),
-            "lm_head.weight": torch.randn(1000, 64),
-        })
+        normal_sd = OrderedDict(
+            {
+                "model.embed_tokens.weight": torch.randn(1000, 64),
+                "lm_head.weight": torch.randn(1000, 64),
+            }
+        )
         assert is_joint_model_state_dict(normal_sd) is False
 
     def test_extract_model2_weights(self):
@@ -99,9 +103,10 @@ class TestJointWeightUtils:
 
     def test_is_joint_model_config(self):
         """Detect if a model config is for a joint model."""
-        from verl.models.joint_model.weight_utils import is_joint_model_config
-        from verl.models.joint_model.configuration_joint_qwen3 import QwenJointConfig
         from transformers import Qwen3Config
+
+        from verl.models.joint_model.configuration_joint_qwen3 import QwenJointConfig
+        from verl.models.joint_model.weight_utils import is_joint_model_config
 
         joint_config = QwenJointConfig(vocab_size=1000, hidden_size=64)
         assert is_joint_model_config(joint_config) is True
@@ -127,16 +132,22 @@ class TestJointModelIntegration:
 
     def test_full_extraction_pipeline(self):
         """Full pipeline: create joint model, extract model2, load standalone."""
-        from verl.models.joint_model.modeling_joint_qwen3 import QwenJointForCausalLM
-        from verl.models.joint_model.configuration_joint_qwen3 import QwenJointConfig
-        from verl.models.joint_model.weight_utils import extract_sub_model_weights
         from transformers import Qwen3Config, Qwen3ForCausalLM
+
+        from verl.models.joint_model.configuration_joint_qwen3 import QwenJointConfig
+        from verl.models.joint_model.modeling_joint_qwen3 import QwenJointForCausalLM
+        from verl.models.joint_model.weight_utils import extract_sub_model_weights
 
         # Create joint model
         joint_config = QwenJointConfig(
-            vocab_size=1000, hidden_size=64, intermediate_size=128,
-            num_hidden_layers=2, num_attention_heads=4, num_key_value_heads=2,
-            head_dim=16, max_position_embeddings=128,
+            vocab_size=1000,
+            hidden_size=64,
+            intermediate_size=128,
+            num_hidden_layers=2,
+            num_attention_heads=4,
+            num_key_value_heads=2,
+            head_dim=16,
+            max_position_embeddings=128,
         )
         joint_model = QwenJointForCausalLM(joint_config)
 
@@ -145,9 +156,14 @@ class TestJointModelIntegration:
 
         # Load into standalone model
         standalone_config = Qwen3Config(
-            vocab_size=1000, hidden_size=64, intermediate_size=128,
-            num_hidden_layers=2, num_attention_heads=4, num_key_value_heads=2,
-            head_dim=16, max_position_embeddings=128,
+            vocab_size=1000,
+            hidden_size=64,
+            intermediate_size=128,
+            num_hidden_layers=2,
+            num_attention_heads=4,
+            num_key_value_heads=2,
+            head_dim=16,
+            max_position_embeddings=128,
         )
         standalone = Qwen3ForCausalLM(standalone_config)
         standalone.load_state_dict(model2_sd)

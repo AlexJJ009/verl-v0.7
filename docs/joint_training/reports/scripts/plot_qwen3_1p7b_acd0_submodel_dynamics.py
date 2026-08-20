@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Plot Model1/Model2 online-validation dynamics for the 1.7B Math/Code C and D0 arms."""
 
 from __future__ import annotations
@@ -10,7 +12,6 @@ from pathlib import Path
 from typing import Any
 
 import matplotlib.pyplot as plt
-
 
 ROOT = Path(__file__).resolve().parents[4]
 DATA_DIR = ROOT / "docs/joint_training/reports/data"
@@ -30,9 +31,7 @@ TASKS: dict[str, dict[str, Any]] = {
             "mwpt5/MAWPS",
             "ChilleD/SVAMP",
         },
-        "validation_root": Path(
-            "/data-2/model_weights/math_task/qwen3_1p7b_wdl_causal_p60/logs/validation"
-        ),
+        "validation_root": Path("/data-2/model_weights/math_task/qwen3_1p7b_wdl_causal_p60/logs/validation"),
         "runs": {
             "C": "MATH-WDL-CAUSAL-P60-ARM-C-QWEN3-1P7B_1785247036",
             "D0": "MATH-WDL-CAUSAL-P60-ARM-D0-QWEN3-1P7B_1785213811",
@@ -42,9 +41,7 @@ TASKS: dict[str, dict[str, Any]] = {
         "title": "Qwen3-1.7B Code C/D0 — Model1 and Model2 dynamics",
         "metric_label": "Code-3 macro mean@3 (%)",
         "sources": {"HumanEval+", "MBPP+", "LiveCodeBench"},
-        "validation_root": Path(
-            "/data-2/model_weights/code_task/qwen3_1p7b_wdl_acd0_p60/logs/validation"
-        ),
+        "validation_root": Path("/data-2/model_weights/code_task/qwen3_1p7b_wdl_acd0_p60/logs/validation"),
         "runs": {
             "C": "CODE-WDL-ACD0-P60-ARM-C-QWEN3-1P7B_1785746593",
             "D0": "CODE-WDL-ACD0-P60-ARM-D0-QWEN3-1P7B_1785430935",
@@ -60,9 +57,7 @@ def _mean(values: list[float]) -> float:
 
 
 def aggregate_file(path: Path, expected_sources: set[str]) -> dict[str, float | int]:
-    by_source: dict[str, dict[str, list[float]]] = defaultdict(
-        lambda: defaultdict(list)
-    )
+    by_source: dict[str, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
     response_count = 0
     native_truncation_count = 0
     format_success_count = 0
@@ -73,25 +68,14 @@ def aggregate_file(path: Path, expected_sources: set[str]) -> dict[str, float | 
             row = json.loads(line)
             source = str(row["data_source"])
             by_source[source]["accuracy"].append(float(bool(row.get("acc", False))))
-            by_source[source]["native_truncation"].append(
-                float(row.get("response_finish_reason") == "length")
-            )
-            by_source[source]["format_success"].append(
-                float(bool(row.get("format_contract_success", False)))
-            )
-            native_truncation_count += int(
-                row.get("response_finish_reason") == "length"
-            )
-            format_success_count += int(
-                bool(row.get("format_contract_success", False))
-            )
+            by_source[source]["native_truncation"].append(float(row.get("response_finish_reason") == "length"))
+            by_source[source]["format_success"].append(float(bool(row.get("format_contract_success", False))))
+            native_truncation_count += int(row.get("response_finish_reason") == "length")
+            format_success_count += int(bool(row.get("format_contract_success", False)))
             response_count += 1
 
     if set(by_source) != expected_sources:
-        raise ValueError(
-            f"{path}: source mismatch: expected={sorted(expected_sources)} "
-            f"observed={sorted(by_source)}"
-        )
+        raise ValueError(f"{path}: source mismatch: expected={sorted(expected_sources)} observed={sorted(by_source)}")
 
     source_accuracy = [_mean(values["accuracy"]) for values in by_source.values()]
     return {
@@ -170,11 +154,7 @@ def plot_task(rows: list[dict[str, Any]], task: str) -> tuple[Path, Path]:
     for axis, arm in zip(axes, ("C", "D0"), strict=True):
         axis.set_facecolor("#ffffff")
         for model_view in ("model1", "model2"):
-            points = [
-                row
-                for row in task_rows
-                if row["arm"] == arm and row["model_view"] == model_view
-            ]
+            points = [row for row in task_rows if row["arm"] == arm and row["model_view"] == model_view]
             points.sort(key=lambda row: int(row["step"]))
             frozen = arm == "D0" and model_view == "model1"
             axis.plot(
@@ -192,9 +172,7 @@ def plot_task(rows: list[dict[str, Any]], task: str) -> tuple[Path, Path]:
             other_endpoint = next(
                 row
                 for row in task_rows
-                if row["arm"] == arm
-                and row["model_view"] == other_view
-                and int(row["step"]) == EXPECTED_STEPS[-1]
+                if row["arm"] == arm and row["model_view"] == other_view and int(row["step"]) == EXPECTED_STEPS[-1]
             )
             endpoint_y = 100.0 * float(endpoint["macro_mean_at_3"])
             other_y = 100.0 * float(other_endpoint["macro_mean_at_3"])
@@ -209,9 +187,7 @@ def plot_task(rows: list[dict[str, Any]], task: str) -> tuple[Path, Path]:
             )
 
         axis.set_title(
-            "C: weak-logit mixture, both trainable"
-            if arm == "C"
-            else "D0: matched-scale no-weak, Model 1 frozen",
+            "C: weak-logit mixture, both trainable" if arm == "C" else "D0: matched-scale no-weak, Model 1 frozen",
             loc="left",
             weight="bold",
         )

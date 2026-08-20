@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Monitor the integrated 1.7B math queue and send deduplicated WxPusher milestones."""
 
 from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
 import subprocess
 import time
-
+from pathlib import Path
 
 NOTIFIER = Path("/root/agent-core/skills/wxpusher-notify/scripts/wxpusher_notify.py")
 

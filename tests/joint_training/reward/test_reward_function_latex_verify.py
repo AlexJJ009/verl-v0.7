@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+
 """
 Tests for the custom_reward_function_latex_verify module.
 
@@ -13,26 +15,31 @@ Run:
     python -m pytest tests/joint_training/reward/test_reward_function_latex_verify.py -v
 """
 
-import sys
 import os
+import sys
+
 import pytest
 
 # ---------------------------------------------------------------------------
 # Ensure the reward function module is importable from the recipe directory
 # ---------------------------------------------------------------------------
 REWARD_FN_DIR = os.path.join(
-    os.path.dirname(__file__), os.pardir, os.pardir, os.pardir,
-    "recipe", "joint_training",
+    os.path.dirname(__file__),
+    os.pardir,
+    os.pardir,
+    os.pardir,
+    "recipe",
+    "joint_training",
 )
 REWARD_FN_DIR = os.path.normpath(REWARD_FN_DIR)
 if REWARD_FN_DIR not in sys.path:
     sys.path.insert(0, REWARD_FN_DIR)
 
-from custom_reward_function_latex_verify import (
-    compute_score_latex_verify,
-    verify_with_latex,
-    extract_boxed_answer,
+from custom_reward_function_latex_verify import (  # noqa: E402
     MATH_VERIFY_AVAILABLE,
+    compute_score_latex_verify,
+    extract_boxed_answer,
+    verify_with_latex,
 )
 
 
@@ -43,6 +50,7 @@ def formatted_math(answer: str, reasoning: str = "Compute the requested value.")
 # ===========================================================================
 # Section 1: verify_with_latex — LaTeX semantic matching
 # ===========================================================================
+
 
 class TestVerifyWithLatex:
     """Tests for the primary LaTeX semantic verifier."""
@@ -98,6 +106,7 @@ class TestVerifyWithLatex:
 # Section 2: extract_boxed_answer
 # ===========================================================================
 
+
 class TestExtractBoxedAnswer:
     def test_simple_boxed(self):
         assert extract_boxed_answer("\\boxed{42}") == "42"
@@ -120,6 +129,7 @@ class TestExtractBoxedAnswer:
 # ===========================================================================
 # Section 3: compute_score_latex_verify — full pipeline
 # ===========================================================================
+
 
 class TestComputeScoreLatexVerify:
     """End-to-end tests for the reward function."""
@@ -245,9 +255,7 @@ class TestComputeScoreLatexVerify:
             solution_str=formatted_math("\\boxed{42}"),
             ground_truth="42",
         )
-        assert result["verification_method"] in {
-            "latex_semantic", "verl_math_verify", "string_match", "no_answer"
-        }
+        assert result["verification_method"] in {"latex_semantic", "verl_math_verify", "string_match", "no_answer"}
 
     def test_verification_order_uses_semantic_before_fallbacks(self, monkeypatch):
         monkeypatch.setattr(
@@ -311,6 +319,7 @@ class TestComputeScoreLatexVerify:
 # ===========================================================================
 # Section 4: Edge cases and robustness
 # ===========================================================================
+
 
 class TestEdgeCases:
     def test_empty_solution(self):
@@ -386,27 +395,33 @@ class TestEdgeCases:
 # Section 5: DAPO reward manager integration smoke test
 # ===========================================================================
 
+
 class TestDAPORewardManagerImport:
     """Verify that the DAPO reward manager can be instantiated with our custom
     reward function, without needing a full training loop."""
 
     def test_dapo_manager_importable(self):
         from verl.workers.reward_manager.dapo import DAPORewardManager
+
         assert DAPORewardManager is not None
 
     def test_dapo_manager_instantiation(self):
         """Create a DAPORewardManager with our custom compute_score function."""
-        from verl.workers.reward_manager.dapo import DAPORewardManager
         from unittest.mock import MagicMock
+
         from omegaconf import OmegaConf
 
+        from verl.workers.reward_manager.dapo import DAPORewardManager
+
         mock_tokenizer = MagicMock()
-        overlong_cfg = OmegaConf.create({
-            "enable": True,
-            "len": 1024,
-            "penalty_factor": 0.5,
-            "log": False,
-        })
+        overlong_cfg = OmegaConf.create(
+            {
+                "enable": True,
+                "len": 1024,
+                "penalty_factor": 0.5,
+                "log": False,
+            }
+        )
 
         manager = DAPORewardManager(
             tokenizer=mock_tokenizer,

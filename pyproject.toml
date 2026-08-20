@@ -30,7 +30,9 @@ requires-python = ">=3.10"
 # Note: While the formatter will attempt to format lines such that they remain within the line-length,
 # it isn't a hard upper bound, and formatted lines may exceed the line-length.
 line-length = 120
-exclude = ["scripts/legacy_model_merger.py"]
+# Project-local agent skills are managed assets with independent Python package
+# roots. They are not part of the verl source tree and are linted upstream.
+exclude = [".claude/skills", "scripts/legacy_model_merger.py"]
 
 [tool.ruff.lint]
 isort = {known-first-party = ["verl"]}
@@ -49,6 +51,9 @@ select = [
     "G",
 ]
 ignore = [
+    # Ruff's formatter owns line wrapping and intentionally leaves some long
+    # strings, URLs, and identifiers intact.
+    "E501",
     # star imports
     "F405", "F403",
     # lambda expression assignment
@@ -73,6 +78,7 @@ pretty            = true
 ignore_missing_imports = true
 explicit_package_bases = true
 follow_imports = "skip"
+exclude = "^\\.claude/skills/"
 
 # Blanket silence
 ignore_errors = true
