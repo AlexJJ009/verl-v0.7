@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Plot fresh KodCode Instruct2507 CTX8K P40 Stage2 lambda sweep curves."""
 
 from __future__ import annotations

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Summarize Qwen3-1.7B raw-base vs code format cold-start SFT fractions."""
 
 from __future__ import annotations

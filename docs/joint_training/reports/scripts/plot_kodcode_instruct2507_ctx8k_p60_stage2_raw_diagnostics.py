@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Plot raw Stage2 diagnostics for KodCode Instruct2507 CTX8K P60 runs."""
 
 from __future__ import annotations

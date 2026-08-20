@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Analyze raw validation outputs for KodCode Instruct2507 CTX8K P60 Stage2."""
 
 from __future__ import annotations

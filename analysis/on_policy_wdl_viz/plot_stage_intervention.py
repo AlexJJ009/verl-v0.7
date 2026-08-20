@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Plot Stage 1 -> Stage 2 intervention curves for the staged-v1 WDL-SFT report."""
 
 from __future__ import annotations

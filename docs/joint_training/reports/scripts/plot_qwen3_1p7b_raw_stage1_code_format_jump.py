@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Plot raw Qwen3-1.7B KodCode Stage1 online validation curves."""
 
 from __future__ import annotations

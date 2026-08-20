@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Plot KodCode Instruct2507 CTX8K P40 submodel-KL ablation curves."""
 
 from __future__ import annotations

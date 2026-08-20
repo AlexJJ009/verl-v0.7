@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Export and plot completed Qwen3-1.7B Code beta=0 A/C/D0 P60 results."""
 
 from __future__ import annotations

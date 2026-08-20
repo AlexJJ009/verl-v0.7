@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Compare Qwen3-1.7B KodCode Stage1 curves across cold-start SFT fractions."""
 
 from __future__ import annotations

@@ -44,6 +44,14 @@ license_headers = [
     license_head_huawei,
     license_head_spdx,
 ]
+repo_root = Path(__file__).resolve().parents[2]
+managed_python_roots = [(repo_root / ".claude/skills").resolve()]
+
+
+def is_managed_python(path: Path) -> bool:
+    """Return whether a Python file belongs to a managed, independently licensed tree."""
+    resolved = path.resolve()
+    return any(resolved.is_relative_to(root) for root in managed_python_roots)
 
 
 def get_py_files(path_arg: Path) -> Iterable[Path]:
@@ -76,7 +84,7 @@ if __name__ == "__main__":
 
     # Collect all Python files from specified directories
     pathlist = sorted(
-        {path for path_arg in args.directories for path in get_py_files(path_arg)},
+        {path for path_arg in args.directories for path in get_py_files(path_arg) if not is_managed_python(path)},
         key=lambda path: path.as_posix(),
     )
     missing_licenses = []

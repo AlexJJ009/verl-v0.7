@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Plot KodCode Instruct2507 CTX8K Stage1 vs P60 Stage2 online validation."""
 
 from __future__ import annotations

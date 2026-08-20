@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Export and plot Qwen3-1.7B Math GRPO and WDL online validation curves.
 
 The raw GRPO metrics may live outside the repository.  Set

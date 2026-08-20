@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+
 """
 Fused rollout smoke test: verify joint model logit mixing pipeline.
 

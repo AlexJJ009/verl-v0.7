@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Build the shared Math n=256 pass@k/diversity table and figures.
 
 The script deliberately uses one input contract for CS0, A, C, D0, and GRPO:

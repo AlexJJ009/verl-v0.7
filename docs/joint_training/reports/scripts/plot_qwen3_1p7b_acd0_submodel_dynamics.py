@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Plot Model1/Model2 online-validation dynamics for the 1.7B Math/Code C and D0 arms."""
 
 from __future__ import annotations

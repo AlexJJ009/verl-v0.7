@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Plot all available Qwen3-1.7B code Stage1 pass@1 curves together."""
 
 from __future__ import annotations
