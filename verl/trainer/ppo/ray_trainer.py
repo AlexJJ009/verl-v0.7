@@ -91,14 +91,18 @@ class ValidationObserver:
     """Minimal observer for generic validation lifecycle events."""
 
     def record(self, event: str, **context: Any) -> None:
+        """Observe a validation lifecycle event without retaining it."""
         pass
 
 
 class RecordingValidationObserver(ValidationObserver):
+    """Validation observer that retains events in emission order."""
+
     def __init__(self) -> None:
         self.events: list[dict[str, Any]] = []
 
     def record(self, event: str, **context: Any) -> None:
+        """Append an event name and its context to the in-memory event log."""
         self.events.append({"event": event, **context})
 
 
@@ -346,6 +350,7 @@ def build_validation_generation_samples(
     sample_uids: list[Any],
     reward_extra_infos_dict: dict[str, list[Any]],
 ) -> list[dict[str, Any]]:
+    """Build normalized per-example validation records from aligned batch fields."""
     sample_count = len(inputs)
     extra_info_keys = sorted(key for key, values in reward_extra_infos_dict.items() if len(values) == sample_count)
     samples = []
@@ -404,6 +409,7 @@ def build_response_telemetry(
 def select_validation_generation_samples(
     samples: list[dict[str, Any]], max_samples: int | None, seed: int = 42
 ) -> list[dict[str, Any]]:
+    """Select a deterministic, bounded subset of validation generation records."""
     if max_samples == 0:
         return []
 
@@ -581,12 +587,15 @@ class HFSyncRolloutManager:
         self.rollout_replicas = []  # no separate replicas for in-process rollout
 
     def generate_sequences(self, prompts: DataProto) -> DataProto:
+        """Delegate synchronous sequence generation to the colocated worker group."""
         return self.worker_group.generate_sequences(prompts)
 
     def start_profile(self, **kwargs):
+        """Accept the rollout profiling interface; no separate rollout process exists."""
         pass
 
     def stop_profile(self):
+        """Accept the rollout profiling interface; no separate rollout process exists."""
         pass
 
 
