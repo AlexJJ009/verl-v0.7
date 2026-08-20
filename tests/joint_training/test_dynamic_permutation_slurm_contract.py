@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 
 SBATCH = Path("tests/special_distributed/run_gon34_dynamic_permutation_fsdp_smoke.sbatch")
+RUNNER = Path("tests/special_distributed/test_dynamic_permutation_fsdp_smoke.py")
 
 
 def test_gpu_smoke_is_bounded_exclusive_and_controller_excluded():
@@ -54,6 +55,12 @@ def test_gpu_smoke_uses_fsdp_runner_and_unique_job_paths():
     assert "GLOO_SOCKET_IFNAME=lo" in text
     assert "test_dynamic_permutation_fsdp_smoke.py" in text
     assert "${SLURM_JOB_ID}" in text
+
+
+def test_gpu_smoke_normalizes_collective_inputs_and_loads_sharded_namespaces():
+    text = RUNNER.read_text()
+    assert "tensor = tensor.contiguous()" in text
+    assert "weights_only=False" in text
 
 
 def test_gpu_smoke_rejects_non_exact_lowercase_sha_without_shell_splice():

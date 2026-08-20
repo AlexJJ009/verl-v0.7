@@ -62,6 +62,7 @@ def _model_digest(model: FSDP) -> str:
 
 
 def _all_ranks_equal(tensor: torch.Tensor, label: str) -> None:
+    tensor = tensor.contiguous()
     gathered = [torch.empty_like(tensor) for _ in range(dist.get_world_size())]
     dist.all_gather(gathered, tensor)
     for rank_tensor in gathered[1:]:
@@ -216,7 +217,11 @@ def _validation_digest(model: FSDP) -> str:
 
 
 def _checkpoint_namespaces(checkpoint: Path, rank: int, world_size: int) -> list[str]:
-    state = torch.load(checkpoint / f"model_world_size_{world_size}_rank_{rank}.pt", map_location="cpu")
+    state = torch.load(
+        checkpoint / f"model_world_size_{world_size}_rank_{rank}.pt",
+        map_location="cpu",
+        weights_only=False,
+    )
     local = sorted({key.split(".")[0] + "." + key.split(".")[1] for key in state if key.startswith("sub_models.")})
     all_local: list[list[str] | None] = [None] * world_size
     dist.all_gather_object(all_local, local)
