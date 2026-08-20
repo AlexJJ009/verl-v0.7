@@ -42,7 +42,7 @@ from verl.workers.actor.dp_actor import DataParallelPPOActor
 from verl.workers.config import FSDPActorConfig, PolicyLossConfig, WeakLogitPermutationConfig
 
 SEED = 20260820
-SMOKE_ROW_CHUNK_SIZE = 8
+SMOKE_ROW_CHUNK_SIZE = 16
 SMOKE_AUDIT_ROWS = 4
 
 

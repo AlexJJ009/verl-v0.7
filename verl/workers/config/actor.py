@@ -144,7 +144,7 @@ class WeakLogitPermutationConfig(BaseConfig):
     enabled: bool = False
     rho: float = 0.0
     seed: int = 42
-    row_chunk_size: int = 8
+    row_chunk_size: int = 16
     audit_invariants: bool = True
     audit_frequency: int = 1
     audit_rows: int = 4

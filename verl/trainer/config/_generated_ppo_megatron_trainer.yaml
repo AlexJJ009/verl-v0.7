@@ -113,7 +113,7 @@ actor_rollout_ref:
       enabled: false
       rho: 0.0
       seed: 42
-      row_chunk_size: 8
+      row_chunk_size: 16
       audit_invariants: true
       audit_frequency: 1
       audit_rows: 4

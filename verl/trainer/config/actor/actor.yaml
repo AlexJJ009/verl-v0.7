@@ -164,7 +164,7 @@ weak_logit_permutation:
   seed: 42
 
   # Maximum active token rows whose permutation indices are materialized together
-  row_chunk_size: 8
+  row_chunk_size: 16
 
   # Whether to run bounded deterministic runtime invariant audits
   audit_invariants: true
