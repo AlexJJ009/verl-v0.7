@@ -837,7 +837,9 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
                 logger.info("Joint training eval mode: extracting %s weights only", weight_view)
                 params = extract_sub_model_weights(params, sub_model_index=sub_model_index)
             else:
-                print("[WDL-SFT VERIFY] WARNING: state_dict not recognized as joint — eval_only had no effect", flush=True)
+                print(
+                    "[WDL-SFT VERIFY] WARNING: state_dict not recognized as joint — eval_only had no effect", flush=True
+                )
 
         # Special handling for LoRA with sleep_level=2:
         # When sleep_level=2, base model weights are destroyed during each sleep cycle.
@@ -1173,6 +1175,7 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
                 # Run the coroutine in a thread with its own event loop + CUDA device.
                 import asyncio
                 import concurrent.futures
+
                 import torch
 
                 device_id = torch.cuda.current_device()
@@ -1243,10 +1246,8 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
         # Apply chat template to convert message dicts to formatted strings
         formatted = []
         for p in raw_prompts:
-            if isinstance(p, (list, dict)):
-                formatted.append(
-                    self.tokenizer.apply_chat_template(p, tokenize=False, add_generation_prompt=True)
-                )
+            if isinstance(p, list | dict):
+                formatted.append(self.tokenizer.apply_chat_template(p, tokenize=False, add_generation_prompt=True))
             else:
                 formatted.append(str(p))
 

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+
 """P1 tests: jointTraining/model_grad_norm_ratio and model_grad_cosine_similarity.
 
 These metrics are computed in dp_actor._compute_joint_grad_norm_metrics().
@@ -8,14 +10,13 @@ Run:
     python -m pytest tests/joint_training/feat/test_p1_grad_metrics.py -v
 """
 
-import pytest
 import torch
 import torch.nn as nn
-
 
 # ---------------------------------------------------------------------------
 # Minimal mock joint model (replicates sub_models structure without HF deps)
 # ---------------------------------------------------------------------------
+
 
 class _TinyLinearModel(nn.Module):
     def __init__(self, in_dim=8, out_dim=4):
@@ -31,10 +32,12 @@ class _MockJointModel(nn.Module):
 
     def __init__(self, in_dim=8, out_dim=4):
         super().__init__()
-        self.sub_models = nn.ModuleList([
-            _TinyLinearModel(in_dim, out_dim),
-            _TinyLinearModel(in_dim, out_dim),
-        ])
+        self.sub_models = nn.ModuleList(
+            [
+                _TinyLinearModel(in_dim, out_dim),
+                _TinyLinearModel(in_dim, out_dim),
+            ]
+        )
 
 
 def _populate_gradients(model, grad1_scale=1.0, grad2_scale=1.0):
@@ -51,8 +54,8 @@ def _populate_gradients(model, grad1_scale=1.0, grad2_scale=1.0):
 # Tests for grad_norm_ratio
 # ---------------------------------------------------------------------------
 
-class TestGradNormRatio:
 
+class TestGradNormRatio:
     def test_ratio_present_in_metrics(self):
         """_compute_joint_grad_norm_metrics should return model_grad_norm_ratio."""
         from verl.workers.actor.dp_actor import DataParallelPPOActor
@@ -105,19 +108,18 @@ class TestGradNormRatio:
 
         metrics = actor._compute_joint_grad_norm_metrics()
         assert metrics["jointTraining/model1_grad_norm_share"] > metrics["jointTraining/model2_grad_norm_share"]
-        assert abs(
-            metrics["jointTraining/model1_grad_norm_share"]
-            + metrics["jointTraining/model2_grad_norm_share"]
-            - 1.0
-        ) < 1e-6
+        assert (
+            abs(metrics["jointTraining/model1_grad_norm_share"] + metrics["jointTraining/model2_grad_norm_share"] - 1.0)
+            < 1e-6
+        )
 
 
 # ---------------------------------------------------------------------------
 # Tests for grad_cosine_similarity
 # ---------------------------------------------------------------------------
 
-class TestGradCosineSimilarity:
 
+class TestGradCosineSimilarity:
     def test_cosine_sim_present_in_metrics(self):
         """_compute_joint_grad_norm_metrics should return model_grad_cosine_similarity."""
         from verl.workers.actor.dp_actor import DataParallelPPOActor
@@ -177,8 +179,8 @@ class TestGradCosineSimilarity:
 # Tests for non-joint model (should return empty dict)
 # ---------------------------------------------------------------------------
 
-class TestNonJointModel:
 
+class TestNonJointModel:
     def test_non_joint_model_returns_empty(self):
         """For a non-joint model, _compute_joint_grad_norm_metrics returns {}."""
         from verl.workers.actor.dp_actor import DataParallelPPOActor

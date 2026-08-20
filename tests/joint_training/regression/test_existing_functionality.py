@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+
 """Regression tests to ensure joint training changes don't break existing functionality.
 
 These tests verify that:
@@ -9,7 +11,6 @@ These tests verify that:
 
 import pytest
 import torch
-import numpy as np
 
 
 class TestStandardModelNotAffected:
@@ -20,9 +21,14 @@ class TestStandardModelNotAffected:
         from transformers import Qwen3Config, Qwen3ForCausalLM
 
         config = Qwen3Config(
-            vocab_size=1000, hidden_size=64, intermediate_size=128,
-            num_hidden_layers=2, num_attention_heads=4, num_key_value_heads=2,
-            head_dim=16, max_position_embeddings=128,
+            vocab_size=1000,
+            hidden_size=64,
+            intermediate_size=128,
+            num_hidden_layers=2,
+            num_attention_heads=4,
+            num_key_value_heads=2,
+            head_dim=16,
+            max_position_embeddings=128,
         )
         model = Qwen3ForCausalLM(config)
         model.eval()
@@ -39,9 +45,14 @@ class TestStandardModelNotAffected:
         from transformers import Qwen3Config, Qwen3ForCausalLM
 
         config = Qwen3Config(
-            vocab_size=1000, hidden_size=64, intermediate_size=128,
-            num_hidden_layers=2, num_attention_heads=4, num_key_value_heads=2,
-            head_dim=16, max_position_embeddings=128,
+            vocab_size=1000,
+            hidden_size=64,
+            intermediate_size=128,
+            num_hidden_layers=2,
+            num_attention_heads=4,
+            num_key_value_heads=2,
+            head_dim=16,
+            max_position_embeddings=128,
         )
         model = Qwen3ForCausalLM(config)
         model.train()
@@ -69,8 +80,9 @@ class TestWeightUtilsOnNonJointModel:
 
     def test_is_joint_model_config_returns_false_for_standard(self):
         """is_joint_model_config returns False for standard configs."""
-        from verl.models.joint_model.weight_utils import is_joint_model_config
         from transformers import Qwen3Config
+
+        from verl.models.joint_model.weight_utils import is_joint_model_config
 
         config = Qwen3Config(vocab_size=1000)
         assert is_joint_model_config(config) is False
@@ -89,9 +101,9 @@ class TestCoreAlgosUnchanged:
 
     def test_grpo_advantage_computation(self):
         """GRPO advantage computation should work correctly."""
-        pytest.importorskip("verl.trainer.ppo.core_algos",
-                            reason="core_algos import chain requires full env",
-                            exc_type=ImportError)
+        pytest.importorskip(
+            "verl.trainer.ppo.core_algos", reason="core_algos import chain requires full env", exc_type=ImportError
+        )
         from verl.trainer.ppo.core_algos import compute_grpo_outcome_advantage
 
         batch_size = 8
@@ -116,9 +128,9 @@ class TestCoreAlgosUnchanged:
 
     def test_policy_loss_function(self):
         """Vanilla policy loss should still compute correctly."""
-        pytest.importorskip("verl.trainer.ppo.core_algos",
-                            reason="core_algos import chain requires full env",
-                            exc_type=ImportError)
+        pytest.importorskip(
+            "verl.trainer.ppo.core_algos", reason="core_algos import chain requires full env", exc_type=ImportError
+        )
         from types import SimpleNamespace
 
         from verl.trainer.ppo.core_algos import get_policy_loss_fn
@@ -156,8 +168,7 @@ class TestLogProbsComputation:
 
     def test_logprobs_from_logits(self):
         """logprobs_from_logits should work with any logits source."""
-        pytest.importorskip("verl.utils.torch_functional",
-                            reason="torch_functional import may require full env")
+        pytest.importorskip("verl.utils.torch_functional", reason="torch_functional import may require full env")
         from verl.utils.torch_functional import logprobs_from_logits
 
         logits = torch.randn(2, 8, 1000)
@@ -169,8 +180,7 @@ class TestLogProbsComputation:
 
     def test_logprobs_from_fused_vs_single(self):
         """Log probs from fused logits should differ from single model logits."""
-        pytest.importorskip("verl.utils.torch_functional",
-                            reason="torch_functional import may require full env")
+        pytest.importorskip("verl.utils.torch_functional", reason="torch_functional import may require full env")
         from verl.utils.torch_functional import logprobs_from_logits
 
         logits_0 = torch.randn(2, 8, 1000)

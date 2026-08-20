@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Compatibility wrapper for the server-wide agent context sync tool."""
 
 from __future__ import annotations
@@ -28,9 +30,7 @@ def find_tool() -> Path:
     for candidate in candidates:
         if candidate.is_file() and candidate.resolve() != here:
             return candidate.resolve()
-    raise SystemExit(
-        "agent context sync tool not found; set AGENT_CONTEXT_SYNC_TOOL=/path/to/sync_agent_context.py"
-    )
+    raise SystemExit("agent context sync tool not found; set AGENT_CONTEXT_SYNC_TOOL=/path/to/sync_agent_context.py")
 
 
 def main() -> None:

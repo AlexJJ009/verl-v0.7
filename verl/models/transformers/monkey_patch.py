@@ -345,8 +345,10 @@ def apply_monkey_patch(
         except ImportError:
             pass
         else:
+
             def state_dict(self, *args, **kwargs):
                 return torch.nn.Module.state_dict(self, *args, **kwargs)
+
             AutoModelForCausalLMWithValueHead.state_dict = state_dict
             print("Monkey patch state_dict in AutoModelForCausalLMWithValueHead.")
 

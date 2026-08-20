@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+
 """Comprehensive unit tests for the On-Policy WDL-SFT loss function.
 
 Tests cover:
@@ -12,9 +14,6 @@ Tests cover:
 - Masking behavior (padding tokens excluded)
 """
 
-import math
-
-import pytest
 import torch
 
 from verl.trainer.ppo.core_algos import compute_wdl_sft_loss
@@ -45,11 +44,13 @@ class TestForwardLossCorrectness:
     def test_all_correct_varying_log_probs(self):
         """All correct with different log probs per response. Hand-computed."""
         N, T = 3, 2
-        log_prob = torch.tensor([
-            [-0.5, -1.0],  # seq sum = -1.5
-            [-2.0, -0.3],  # seq sum = -2.3
-            [-1.0, -1.0],  # seq sum = -2.0
-        ])
+        log_prob = torch.tensor(
+            [
+                [-0.5, -1.0],  # seq sum = -1.5
+                [-2.0, -0.3],  # seq sum = -2.3
+                [-1.0, -1.0],  # seq sum = -2.0
+            ]
+        )
         response_mask = torch.ones(N, T)
         reward_labels = torch.ones(N)
 
@@ -63,15 +64,19 @@ class TestForwardLossCorrectness:
 
     def test_forward_loss_with_mask(self):
         """Forward loss respects response_mask (excludes padding tokens)."""
-        N, T = 2, 4
-        log_prob = torch.tensor([
-            [-1.0, -2.0, -3.0, -99.0],  # last token is padding
-            [-0.5, -0.5, -99.0, -99.0],  # last two are padding
-        ])
-        response_mask = torch.tensor([
-            [1.0, 1.0, 1.0, 0.0],
-            [1.0, 1.0, 0.0, 0.0],
-        ])
+        N = 2
+        log_prob = torch.tensor(
+            [
+                [-1.0, -2.0, -3.0, -99.0],  # last token is padding
+                [-0.5, -0.5, -99.0, -99.0],  # last two are padding
+            ]
+        )
+        response_mask = torch.tensor(
+            [
+                [1.0, 1.0, 1.0, 0.0],
+                [1.0, 1.0, 0.0, 0.0],
+            ]
+        )
         reward_labels = torch.ones(N)
 
         result = compute_wdl_sft_loss(log_prob, response_mask, reward_labels, beta=0.1)
@@ -105,12 +110,14 @@ class TestReverseLossCorrectness:
     def test_reverse_loss_mixed(self):
         """Test L- with known inputs where some are incorrect."""
         N, T = 4, 2
-        log_prob = torch.tensor([
-            [-1.0, -1.0],  # correct, seq = -2.0
-            [-0.5, -0.5],  # incorrect, seq = -1.0
-            [-2.0, -2.0],  # incorrect, seq = -4.0
-            [-1.5, -1.5],  # correct, seq = -3.0
-        ])
+        log_prob = torch.tensor(
+            [
+                [-1.0, -1.0],  # correct, seq = -2.0
+                [-0.5, -0.5],  # incorrect, seq = -1.0
+                [-2.0, -2.0],  # incorrect, seq = -4.0
+                [-1.5, -1.5],  # correct, seq = -3.0
+            ]
+        )
         response_mask = torch.ones(N, T)
         reward_labels = torch.tensor([1.0, -1.0, -1.0, 1.0])
         beta = 0.1
@@ -128,12 +135,14 @@ class TestReverseLossCorrectness:
     def test_reverse_loss_only_incorrect_subset(self):
         """3 correct, 1 incorrect. Verify L- uses 1/(N-k)=1/1 normalization."""
         N, T = 4, 2
-        log_prob = torch.tensor([
-            [-1.0, -1.0],  # correct
-            [-1.0, -1.0],  # correct
-            [-1.0, -1.0],  # correct
-            [-2.0, -3.0],  # incorrect, seq = -5.0
-        ])
+        log_prob = torch.tensor(
+            [
+                [-1.0, -1.0],  # correct
+                [-1.0, -1.0],  # correct
+                [-1.0, -1.0],  # correct
+                [-2.0, -3.0],  # incorrect, seq = -5.0
+            ]
+        )
         response_mask = torch.ones(N, T)
         reward_labels = torch.tensor([1.0, 1.0, 1.0, -1.0])
         beta = 0.5
@@ -156,16 +165,18 @@ class TestCombinedLossCorrectness:
         """N=8, 5 correct, 3 incorrect. Full hand-computed check."""
         N, T = 8, 2
         # Construct specific log probs
-        log_prob = torch.tensor([
-            [-0.5, -0.5],   # correct, seq = -1.0
-            [-1.0, -1.0],   # correct, seq = -2.0
-            [-0.8, -0.2],   # incorrect, seq = -1.0
-            [-1.5, -0.5],   # correct, seq = -2.0
-            [-0.3, -0.7],   # incorrect, seq = -1.0
-            [-2.0, -1.0],   # correct, seq = -3.0
-            [-0.1, -0.9],   # incorrect, seq = -1.0
-            [-1.0, -2.0],   # correct, seq = -3.0
-        ])
+        log_prob = torch.tensor(
+            [
+                [-0.5, -0.5],  # correct, seq = -1.0
+                [-1.0, -1.0],  # correct, seq = -2.0
+                [-0.8, -0.2],  # incorrect, seq = -1.0
+                [-1.5, -0.5],  # correct, seq = -2.0
+                [-0.3, -0.7],  # incorrect, seq = -1.0
+                [-2.0, -1.0],  # correct, seq = -3.0
+                [-0.1, -0.9],  # incorrect, seq = -1.0
+                [-1.0, -2.0],  # correct, seq = -3.0
+            ]
+        )
         response_mask = torch.ones(N, T)
         reward_labels = torch.tensor([1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0])
         beta = 0.2
@@ -184,12 +195,14 @@ class TestCombinedLossCorrectness:
     def test_beta_zero(self):
         """With beta=0, total loss should equal L+ regardless of L-."""
         N, T = 4, 2
-        log_prob = torch.tensor([
-            [-1.0, -1.0],  # correct
-            [-2.0, -2.0],  # incorrect
-            [-1.0, -1.0],  # correct
-            [-3.0, -3.0],  # incorrect
-        ])
+        log_prob = torch.tensor(
+            [
+                [-1.0, -1.0],  # correct
+                [-2.0, -2.0],  # incorrect
+                [-1.0, -1.0],  # correct
+                [-3.0, -3.0],  # incorrect
+            ]
+        )
         response_mask = torch.ones(N, T)
         reward_labels = torch.tensor([1.0, -1.0, 1.0, -1.0])
 
@@ -203,10 +216,12 @@ class TestCombinedLossCorrectness:
     def test_beta_one(self):
         """With beta=1.0, both components weighted equally."""
         N, T = 2, 2
-        log_prob = torch.tensor([
-            [-1.0, -1.0],  # correct, seq = -2.0
-            [-2.0, -2.0],  # incorrect, seq = -4.0
-        ])
+        log_prob = torch.tensor(
+            [
+                [-1.0, -1.0],  # correct, seq = -2.0
+                [-2.0, -2.0],  # incorrect, seq = -4.0
+            ]
+        )
         response_mask = torch.ones(N, T)
         reward_labels = torch.tensor([1.0, -1.0])
 
@@ -293,9 +308,7 @@ class TestNoNaNInf:
             # Ensure at least one token per response
             response_mask[:, 0] = 1.0
             # Random rewards: +1 or -1
-            reward_labels = torch.where(
-                torch.rand(N) > 0.5, torch.ones(N), -torch.ones(N)
-            )
+            reward_labels = torch.where(torch.rand(N) > 0.5, torch.ones(N), -torch.ones(N))
             beta = torch.rand(1).item()
 
             result = compute_wdl_sft_loss(log_prob, response_mask, reward_labels, beta)
@@ -366,10 +379,13 @@ class TestGradientFlow:
     def test_gradient_direction_correct(self):
         """Verify gradient pushes correct response log probs up (SFT direction)."""
         N, T = 2, 3
-        log_prob = torch.tensor([
-            [-2.0, -2.0, -2.0],  # correct
-            [-2.0, -2.0, -2.0],  # incorrect
-        ], requires_grad=True)
+        log_prob = torch.tensor(
+            [
+                [-2.0, -2.0, -2.0],  # correct
+                [-2.0, -2.0, -2.0],  # incorrect
+            ],
+            requires_grad=True,
+        )
         response_mask = torch.ones(N, T)
         reward_labels = torch.tensor([1.0, -1.0])
 
@@ -392,9 +408,7 @@ class TestGradientFlow:
             T = torch.randint(2, 16, (1,)).item()
             log_prob = torch.randn(N, T, requires_grad=True)
             response_mask = torch.ones(N, T)
-            reward_labels = torch.where(
-                torch.rand(N) > 0.3, torch.ones(N), -torch.ones(N)
-            )
+            reward_labels = torch.where(torch.rand(N) > 0.3, torch.ones(N), -torch.ones(N))
 
             result = compute_wdl_sft_loss(log_prob, response_mask, reward_labels, beta=0.1)
             result["total_loss"].backward()
@@ -472,11 +486,13 @@ class TestMaskBehavior:
         """Different response lengths within the same batch."""
         N, T = 3, 5
         log_prob = torch.full((N, T), -1.0)
-        response_mask = torch.tensor([
-            [1.0, 1.0, 1.0, 1.0, 1.0],  # 5 tokens
-            [1.0, 1.0, 1.0, 0.0, 0.0],  # 3 tokens
-            [1.0, 0.0, 0.0, 0.0, 0.0],  # 1 token
-        ])
+        response_mask = torch.tensor(
+            [
+                [1.0, 1.0, 1.0, 1.0, 1.0],  # 5 tokens
+                [1.0, 1.0, 1.0, 0.0, 0.0],  # 3 tokens
+                [1.0, 0.0, 0.0, 0.0, 0.0],  # 1 token
+            ]
+        )
         reward_labels = torch.ones(N)
 
         result = compute_wdl_sft_loss(log_prob, response_mask, reward_labels, beta=0.1)

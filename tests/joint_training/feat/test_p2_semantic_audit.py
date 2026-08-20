@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+
 """P2 semantic correctness audit tests.
 
 Covers:
@@ -37,6 +39,7 @@ def _make_joint_model(fusion_lambda=0.5, freeze_model1=False):
 # ===========================================================================
 # Section 1: Fused logits formula correctness (Task 4)
 # ===========================================================================
+
 
 class TestFusedLogitsFormula:
     """Verify logits_fused = (1-λ)*logits_m1 + λ*logits_m2 at various λ values."""
@@ -138,6 +141,7 @@ class TestFusedLogitsFormula:
 # Section 2: Old-log-prob recomputation consistency (Task 5)
 # ===========================================================================
 
+
 class TestOldLogProbConsistency:
     """Verify that log-probs computed from fused logits are consistent across calls."""
 
@@ -179,9 +183,7 @@ class TestOldLogProbConsistency:
             targets = input_ids[:, 1:]
             model2_lp = log_probs_2.gather(dim=-1, index=targets.unsqueeze(-1)).squeeze(-1)
 
-            assert not torch.allclose(fused_lp, model2_lp), (
-                "Fused and model2-only log-probs should differ"
-            )
+            assert not torch.allclose(fused_lp, model2_lp), "Fused and model2-only log-probs should differ"
 
     def test_log_probs_are_negative(self):
         """All log-probs should be <= 0."""
@@ -220,9 +222,7 @@ class TestOldLogProbConsistency:
             targets = input_ids[:, 1:]
 
             # Our manual computation
-            manual_lp = F.log_softmax(logits, dim=-1).gather(
-                dim=-1, index=targets.unsqueeze(-1)
-            ).squeeze(-1)
+            manual_lp = F.log_softmax(logits, dim=-1).gather(dim=-1, index=targets.unsqueeze(-1)).squeeze(-1)
 
             # verl's utility
             verl_lp = logprobs_from_logits(logits, targets, inplace_backward=False)
@@ -233,6 +233,7 @@ class TestOldLogProbConsistency:
 # ===========================================================================
 # Section 3: Reference-policy and eval-only extraction (Task 6)
 # ===========================================================================
+
 
 class TestEvalOnlyWeightExtraction:
     """Audit eval_only mode and weight extraction correctness."""
@@ -302,10 +303,16 @@ class TestEvalOnlyWeightExtraction:
 
         # Load into standalone model and verify
         from transformers import Qwen3Config, Qwen3ForCausalLM
+
         config = Qwen3Config(
-            vocab_size=1000, hidden_size=64, intermediate_size=128,
-            num_hidden_layers=2, num_attention_heads=4, num_key_value_heads=2,
-            head_dim=16, max_position_embeddings=128,
+            vocab_size=1000,
+            hidden_size=64,
+            intermediate_size=128,
+            num_hidden_layers=2,
+            num_attention_heads=4,
+            num_key_value_heads=2,
+            head_dim=16,
+            max_position_embeddings=128,
         )
         standalone = Qwen3ForCausalLM(config)
         standalone.load_state_dict(model2_weights)
@@ -328,10 +335,16 @@ class TestEvalOnlyWeightExtraction:
         model1_weights = extract_sub_model_weights(model.state_dict(), sub_model_index=0)
 
         from transformers import Qwen3Config, Qwen3ForCausalLM
+
         config = Qwen3Config(
-            vocab_size=1000, hidden_size=64, intermediate_size=128,
-            num_hidden_layers=2, num_attention_heads=4, num_key_value_heads=2,
-            head_dim=16, max_position_embeddings=128,
+            vocab_size=1000,
+            hidden_size=64,
+            intermediate_size=128,
+            num_hidden_layers=2,
+            num_attention_heads=4,
+            num_key_value_heads=2,
+            head_dim=16,
+            max_position_embeddings=128,
         )
         standalone = Qwen3ForCausalLM(config)
         standalone.load_state_dict(model1_weights)

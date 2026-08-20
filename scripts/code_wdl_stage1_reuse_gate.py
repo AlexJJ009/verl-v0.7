@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Audit whether a frozen Code Stage1 model is safe to reuse for A/C/D0.
 
 Native generation telemetry is authoritative for EOS/truncation.  Historical
@@ -46,12 +48,9 @@ def summarize(rows: list[dict]) -> dict:
         completed = [row for row in group if not native_truncated(row)]
         completed_fmt = sum(bool(row.get("format_contract_success")) for row in completed)
         format_bad = n - fmt
-        truncated_positive = sum(
-            native_truncated(row) and float(row.get("score") or 0.0) > 0 for row in group
-        )
+        truncated_positive = sum(native_truncated(row) and float(row.get("score") or 0.0) > 0 for row in group)
         format_bad_positive = sum(
-            not bool(row.get("format_contract_success")) and float(row.get("score") or 0.0) > 0
-            for row in group
+            not bool(row.get("format_contract_success")) and float(row.get("score") or 0.0) > 0 for row in group
         )
         return {
             "responses": n,
@@ -80,9 +79,7 @@ def summarize(rows: list[dict]) -> dict:
     retained = micro["strict_format_rate"]
     micro["estimated_positive_signal_loss_fraction"] = 1.0 - retained
     micro["expected_positive_responses_per_group_n8"] = 8.0 * micro["usable_positive_rate"]
-    micro["estimated_all_nonpositive_group_probability_n8"] = math.pow(
-        1.0 - micro["usable_positive_rate"], 8
-    )
+    micro["estimated_all_nonpositive_group_probability_n8"] = math.pow(1.0 - micro["usable_positive_rate"], 8)
     return {"micro": micro, "macro": macro, "sources": sources}
 
 

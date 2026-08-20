@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Build the shared Math n=256 pass@k/diversity table and figures.
 
 The script deliberately uses one input contract for CS0, A, C, D0, and GRPO:
@@ -18,7 +20,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-
 
 ROOT = Path(__file__).resolve().parents[4]
 DATA_DIR = ROOT / "docs/joint_training/reports/data"
@@ -259,7 +260,7 @@ def main() -> None:
     print(f"completed arms: {', '.join(str(value) for value in completed)}")
     print(SUMMARY_CSV)
     print(BY_DATASET_CSV)
-    print(PASSK_FIGURE.with_suffix('.png'))
+    print(PASSK_FIGURE.with_suffix(".png"))
 
 
 if __name__ == "__main__":

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Plot raw Stage2 diagnostics for KodCode Instruct2507 CTX8K P60 runs."""
 
 from __future__ import annotations
@@ -7,7 +9,6 @@ import json
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-
 
 ROOT = Path(__file__).resolve().parents[4]
 OUT_DIR = ROOT / "docs/joint_training/reports/figures"
@@ -134,7 +135,7 @@ def plot() -> None:
         "Online validation pass@1",
     ]
     ylabels = ["correct (%)", "loss", "norm", "tokens", "score", "pass@1 (%)"]
-    for ax, title, ylabel in zip(axes, titles, ylabels):
+    for ax, title, ylabel in zip(axes, titles, ylabels, strict=False):
         ax.set_title(title)
         ax.set_ylabel(ylabel)
         ax.set_xlabel("Stage2 raw step")

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Sync a W&B offline run while skipping artifact records.
 
 This is a narrow recovery helper for offline runs whose `.wandb` event stream
@@ -12,7 +14,6 @@ import os
 import subprocess
 import sys
 
-import wandb
 from wandb.proto import wandb_internal_pb2
 from wandb.sdk.internal import datastore, sender
 
@@ -35,7 +36,9 @@ def main() -> int:
     parser.add_argument("--release-gate-run-name", required=True)
     parser.add_argument(
         "--release-gate-script",
-        default=os.environ.get("TRAINING_RELEASE_GATE_SCRIPT", "/data-1/code/verl/scripts/training_result_release_gate.py"),
+        default=os.environ.get(
+            "TRAINING_RELEASE_GATE_SCRIPT", "/data-1/code/verl/scripts/training_result_release_gate.py"
+        ),
     )
     parser.add_argument("--mark-synced", action="store_true")
     args = parser.parse_args()

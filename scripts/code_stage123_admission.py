@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Create and validate immutable Code Stage123 admissions."""
 
 from __future__ import annotations
@@ -7,13 +9,11 @@ import argparse
 import hashlib
 import json
 import math
-from pathlib import Path
 import subprocess
-import sys
+from pathlib import Path
 
-from packaging.version import Version
 import yaml
-
+from packaging.version import Version
 
 RUNTIME_FILES = (
     "scripts/code_stage123_admission.py",
@@ -121,7 +121,9 @@ def validate_probe(report: dict, manifest: dict, manifest_path: Path) -> float:
     if len(candidate.get("zero_step", [])) != 1 or len(candidate.get("one_step", [])) != 2:
         raise SystemExit("GPU probe did not cover the admitted representative paths")
     validate_probe_training_arms(candidate)
-    if not all(item.get("runtime_contract_complete") is True for item in [*candidate["zero_step"], *candidate["one_step"]]):
+    if not all(
+        item.get("runtime_contract_complete") is True for item in [*candidate["zero_step"], *candidate["one_step"]]
+    ):
         raise SystemExit("GPU probe runtime contract is incomplete")
     if not candidate["zero_step"][0].get("validation_complete"):
         raise SystemExit("GPU probe full Code-3 validation is incomplete")
@@ -193,7 +195,10 @@ def validate(args: argparse.Namespace) -> int:
     if not args.admission.is_file():
         raise SystemExit(f"admission file missing: {args.admission}")
     admission = json.loads(args.admission.read_text())
-    if admission.get("decision") != "accepted" or admission.get("admission_type") != "code_stage123_step20_training_admission":
+    if (
+        admission.get("decision") != "accepted"
+        or admission.get("admission_type") != "code_stage123_step20_training_admission"
+    ):
         raise SystemExit("invalid Code Stage123 admission")
     if args.run_id not in admission.get("run_ids", []):
         raise SystemExit("run is absent from admission")

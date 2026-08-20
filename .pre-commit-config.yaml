@@ -4,13 +4,15 @@ repos:
     hooks:
       - id: ruff
         args: ["--fix", "--show-fixes", "--output-format=full"]
-        exclude: ^.*\.(ipynb)$
+        exclude: ^(?:\.claude/skills/|.*\.ipynb$)
       - id: ruff-format
+        exclude: ^\.claude/skills/
 
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: "v1.17.0"
     hooks:
       - id: mypy
+        exclude: ^\.claude/skills/
 
   - repo: local
     hooks:

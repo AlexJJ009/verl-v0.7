@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 from typing import Any
-
 
 RUNTIME_FILES = (
     "scripts/stage123_matrix_manifest.py",
@@ -111,9 +112,10 @@ def validate_memory_probe(probe: dict[str, Any], manifest: dict[str, Any]) -> No
     if int(probe.get("rollout_max_num_batched_tokens", 0)) < 16384:
         raise SystemExit("memory probe used safety-only token batching")
     profile = manifest["resource_profile"]
-    if probe.get("rollout_free_cache_engine") != profile["rollout_free_cache_engine"] or probe.get(
-        "rollout_enable_sleep_mode"
-    ) != profile["rollout_enable_sleep_mode"]:
+    if (
+        probe.get("rollout_free_cache_engine") != profile["rollout_free_cache_engine"]
+        or probe.get("rollout_enable_sleep_mode") != profile["rollout_enable_sleep_mode"]
+    ):
         raise SystemExit("memory probe rollout cache lifecycle mismatch")
     if probe.get("ref_fsdp_offload") is not True:
         raise SystemExit("memory probe did not exercise reference-model offload")
@@ -140,9 +142,10 @@ def validate_throughput_probe(probe: dict[str, Any], manifest: dict[str, Any], m
     batched_tokens = int(probe.get("rollout_max_num_batched_tokens", 0))
     if batched_tokens != int(manifest["resource_profile"]["rollout_max_num_batched_tokens"]):
         raise SystemExit("throughput probe token batching mismatch")
-    if probe.get("rollout_free_cache_engine") != manifest["resource_profile"]["rollout_free_cache_engine"] or probe.get(
-        "rollout_enable_sleep_mode"
-    ) != manifest["resource_profile"]["rollout_enable_sleep_mode"]:
+    if (
+        probe.get("rollout_free_cache_engine") != manifest["resource_profile"]["rollout_free_cache_engine"]
+        or probe.get("rollout_enable_sleep_mode") != manifest["resource_profile"]["rollout_enable_sleep_mode"]
+    ):
         raise SystemExit("throughput probe rollout cache lifecycle mismatch")
     if probe.get("ref_fsdp_offload") is not True:
         raise SystemExit("throughput probe did not exercise reference-model offload")
@@ -150,9 +153,7 @@ def validate_throughput_probe(probe: dict[str, Any], manifest: dict[str, Any], m
         raise SystemExit("throughput probe did not exercise optimizer offload")
     if probe.get("actor_param_offload") is not True:
         raise SystemExit("throughput probe did not exercise actor parameter offload")
-    if int(probe.get("minimum_gpu_headroom_mib", 0)) != int(
-        manifest["resource_profile"]["minimum_gpu_headroom_mib"]
-    ):
+    if int(probe.get("minimum_gpu_headroom_mib", 0)) != int(manifest["resource_profile"]["minimum_gpu_headroom_mib"]):
         raise SystemExit("throughput probe GPU headroom threshold mismatch")
     if int(probe.get("ref_log_prob_micro_batch_size", 0)) != int(
         manifest["resource_profile"]["ref_log_prob_micro_batch_size"]

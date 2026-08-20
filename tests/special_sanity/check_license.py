@@ -28,6 +28,7 @@ license_head_amazon_26 = "Copyright 2026 Amazon.com Inc and/or its affiliates"
 license_head_facebook = "Copyright (c) 2016-     Facebook, Inc"
 license_head_meituan = "Copyright 2025 Meituan Ltd. and/or its affiliates"
 license_head_huawei = "Copyright (c) 2025 Huawei Technologies Co., Ltd. All Rights Reserved."
+license_head_spdx = "SPDX-License-Identifier: Apache-2.0"
 license_headers = [
     license_head_bytedance,
     license_head_bytedance_25,
@@ -41,7 +42,16 @@ license_headers = [
     license_head_facebook,
     license_head_meituan,
     license_head_huawei,
+    license_head_spdx,
 ]
+repo_root = Path(__file__).resolve().parents[2]
+managed_python_roots = [(repo_root / ".claude/skills").resolve()]
+
+
+def is_managed_python(path: Path) -> bool:
+    """Return whether a Python file belongs to a managed, independently licensed tree."""
+    resolved = path.resolve()
+    return any(resolved.is_relative_to(root) for root in managed_python_roots)
 
 
 def get_py_files(path_arg: Path) -> Iterable[Path]:
@@ -73,7 +83,11 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Collect all Python files from specified directories
-    pathlist = set(path for path_arg in args.directories for path in get_py_files(path_arg))
+    pathlist = sorted(
+        {path for path_arg in args.directories for path in get_py_files(path_arg) if not is_managed_python(path)},
+        key=lambda path: path.as_posix(),
+    )
+    missing_licenses = []
 
     for path in pathlist:
         # because path is object not string
@@ -82,9 +96,7 @@ if __name__ == "__main__":
         with open(path_in_str, encoding="utf-8") as f:
             file_content = f.read()
 
-            has_license = False
-            for lh in license_headers:
-                if lh in file_content:
-                    has_license = True
-                    break
-            assert has_license, f"file {path_in_str} does not contain license"
+            if not any(license_header in file_content for license_header in license_headers):
+                missing_licenses.append(path_in_str)
+
+    assert not missing_licenses, "files missing license:\n" + "\n".join(missing_licenses)

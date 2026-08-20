@@ -1,8 +1,9 @@
+# SPDX-License-Identifier: Apache-2.0
+
 import logging
 import os
 import re
 from typing import Any
-
 
 logger = logging.getLogger(__file__)
 logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))

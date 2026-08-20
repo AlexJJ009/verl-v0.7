@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+
 """Regression coverage for the frozen Stage123 online validation decoder."""
 
 import hashlib
@@ -5,7 +7,6 @@ import json
 import os
 import subprocess
 from pathlib import Path
-
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PROFILE = REPO_ROOT / "recipe/on_policy_wdl_sft/code_task/qwen3_1p7b_stage123_resource_profile.sh"

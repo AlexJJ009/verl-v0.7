@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+
 """GPU end-to-end tests for joint training with FSDP.
 
 All tests are skipped if no CUDA GPU is available.
@@ -126,9 +128,7 @@ class TestTrainingStep:
         model = model.cuda()
         model.train()
 
-        optimizer = torch.optim.AdamW(
-            [p for p in model.parameters() if p.requires_grad], lr=1e-4
-        )
+        optimizer = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad], lr=1e-4)
 
         input_ids = torch.randint(0, 1000, (2, 8)).cuda()
         attention_mask = torch.ones_like(input_ids).cuda()
@@ -190,7 +190,7 @@ class TestTrainingStep:
         new_log_probs = new_log_probs[:, :-1].gather(-1, input_ids[:, 1:].unsqueeze(-1)).squeeze(-1)
 
         # 3. Compute policy ratio and clipped loss (simplified GRPO)
-        ratio = torch.exp(new_log_probs - old_log_probs[:, :new_log_probs.shape[1]])
+        ratio = torch.exp(new_log_probs - old_log_probs[:, : new_log_probs.shape[1]])
         advantages = torch.randn(4, 1).cuda()  # Mock advantages
         surr1 = ratio * advantages
         surr2 = torch.clamp(ratio, 0.8, 1.2) * advantages

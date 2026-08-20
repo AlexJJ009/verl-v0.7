@@ -1,13 +1,14 @@
+# SPDX-License-Identifier: Apache-2.0
+
 from __future__ import annotations
 
-import importlib.util
 import copy
+import importlib.util
 import json
 from pathlib import Path
 
 import pytest
 import yaml
-
 
 ROOT = Path(__file__).resolve().parents[2]
 MANIFEST = ROOT / "recipe/on_policy_wdl_sft/experiment_manifest/math_qwen3_1p7b_wdl_causal_p60.yaml"
@@ -127,9 +128,7 @@ def test_each_arm_wrapper_pins_its_treatment():
         "arm_d0": ("0.8", "strong_scaled"),
     }
     for suffix, (lambda_value, mode) in expected.items():
-        text = (
-            ROOT / f"recipe/on_policy_wdl_sft/math_task/run_math_qwen3_1p7b_wdl_causal_{suffix}.sh"
-        ).read_text()
+        text = (ROOT / f"recipe/on_policy_wdl_sft/math_task/run_math_qwen3_1p7b_wdl_causal_{suffix}.sh").read_text()
         assert f"export FUSION_LAMBDA={lambda_value}" in text
         assert f"export FUSION_MODE={mode}" in text
 

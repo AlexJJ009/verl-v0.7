@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Rebind accepted Stage123 calibration when the capacity plane is unchanged."""
 
 from __future__ import annotations
@@ -12,7 +14,6 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-
 
 ROOT = Path(__file__).resolve().parents[1]
 PRIMARY_RUN_IDS = ["frac25-stage1-control", "frac25-stage2", "frac25-stage3"]
@@ -76,7 +77,11 @@ def render_manifest(path: Path) -> dict[str, Any]:
 
 def profile_snapshot(path: Path) -> tuple[dict[str, str], str]:
     output = subprocess.check_output(
-        ["bash", "-lc", f"source {path}; stage123_profile_snapshot; printf '__HASH__=%s\\n' \"$(stage123_profile_hash)\""],
+        [
+            "bash",
+            "-lc",
+            f"source {path}; stage123_profile_snapshot; printf '__HASH__=%s\\n' \"$(stage123_profile_hash)\"",
+        ],
         cwd=ROOT,
         text=True,
     )
@@ -271,7 +276,9 @@ def main() -> int:
         }
     )
     args.calibration_output.write_text(json.dumps(derived, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    print(json.dumps({"ok": True, "decision": decision, "report_sha256": file_sha256(args.report_output)}, sort_keys=True))
+    print(
+        json.dumps({"ok": True, "decision": decision, "report_sha256": file_sha256(args.report_output)}, sort_keys=True)
+    )
     return 0
 
 
@@ -280,4 +287,4 @@ if __name__ == "__main__":
         raise SystemExit(main())
     except (OSError, KeyError, ValueError, json.JSONDecodeError, subprocess.CalledProcessError) as error:
         print(json.dumps({"ok": False, "error": str(error)}, sort_keys=True), file=sys.stderr)
-        raise SystemExit(1)
+        raise SystemExit(1) from error

@@ -126,19 +126,14 @@ class RewardLoopWorker:
             reward_router_address: str, the address of reward router.
         """
         self.config = config
-        self.max_concurrency = self._validate_max_concurrency(
-            self.config.reward.max_concurrency_per_worker
-        )
+        self.max_concurrency = self._validate_max_concurrency(self.config.reward.max_concurrency_per_worker)
         self.reward_router_address = reward_router_address
         self._init_reward_fn()
 
     @staticmethod
     def _validate_max_concurrency(value: int) -> int:
         if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-            raise ValueError(
-                "reward.max_concurrency_per_worker must be a positive integer, "
-                f"got {value!r}"
-            )
+            raise ValueError(f"reward.max_concurrency_per_worker must be a positive integer, got {value!r}")
         return value
 
     def _init_reward_fn(self):
@@ -167,10 +162,7 @@ class RewardLoopWorker:
                 next_index += 1
                 outputs[index] = await self.compute_score(data[index : index + 1])
 
-        tasks = [
-            asyncio.create_task(consume_scores())
-            for _ in range(min(self.max_concurrency, len(data)))
-        ]
+        tasks = [asyncio.create_task(consume_scores()) for _ in range(min(self.max_concurrency, len(data)))]
         try:
             await asyncio.gather(*tasks)
         except BaseException:

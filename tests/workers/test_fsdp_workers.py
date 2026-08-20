@@ -21,8 +21,8 @@ import pytest
 import torch
 from omegaconf import OmegaConf
 
-from verl import DataProto
 import verl.workers.fsdp_workers as fsdp_workers_module
+from verl import DataProto
 from verl.workers.fsdp_workers import ActorRolloutRefWorker
 
 

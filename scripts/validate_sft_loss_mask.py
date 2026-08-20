@@ -19,8 +19,8 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-from pathlib import Path
 import sys
+from pathlib import Path
 
 from omegaconf import OmegaConf
 from transformers import AutoTokenizer
@@ -56,9 +56,7 @@ def validate(args: argparse.Namespace) -> dict:
             "ignore_input_ids_mismatch": False,
         }
     )
-    dataset = MultiTurnSFTDataset(
-        str(args.dataset), tokenizer, config, max_samples=args.samples
-    )
+    dataset = MultiTurnSFTDataset(str(args.dataset), tokenizer, config, max_samples=args.samples)
     failures = []
     rows = []
     for index in range(len(dataset)):
@@ -82,9 +80,7 @@ def validate(args: argparse.Namespace) -> dict:
                 if message["role"] in {"system", "user"}
             ),
             "all_reasoning_present": all(
-                tokenizer.decode(
-                    tokenizer.encode(reasoning_body(message["content"]), add_special_tokens=False)
-                ).strip()
+                tokenizer.decode(tokenizer.encode(reasoning_body(message["content"]), add_special_tokens=False)).strip()
                 in supervised_text
                 for message in assistant_messages
             ),

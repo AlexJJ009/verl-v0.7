@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+
 import argparse
 import asyncio
 from types import SimpleNamespace
@@ -53,8 +55,8 @@ class _FakeRolloutWorkerGroup:
 
 
 def test_checkpoint_manager_propagates_eval_only_for_server_rollouts(monkeypatch):
-    from verl.checkpoint_engine.base import CheckpointEngineManager
     import verl.checkpoint_engine.base as checkpoint_base
+    from verl.checkpoint_engine.base import CheckpointEngineManager
 
     trainer = _FakeTrainer()
     rollout_group = _FakeRolloutWorkerGroup()
@@ -77,8 +79,8 @@ def test_checkpoint_manager_propagates_eval_only_for_server_rollouts(monkeypatch
 
 
 def test_checkpoint_manager_propagates_explicit_model1_view(monkeypatch):
-    from verl.checkpoint_engine.base import CheckpointEngineManager
     import verl.checkpoint_engine.base as checkpoint_base
+    from verl.checkpoint_engine.base import CheckpointEngineManager
 
     trainer = _FakeTrainer()
     monkeypatch.setattr(checkpoint_base.ray, "get", lambda value: value)
@@ -388,6 +390,7 @@ def test_process_vllm_weights_after_loading_falls_back_for_legacy_vllm(monkeypat
     pytest.importorskip("vllm")
 
     import vllm.model_executor.model_loader.utils as loader_utils
+
     loader_module = pytest.importorskip("vllm.model_executor.model_loader.loader")
 
     from verl.workers.rollout.vllm_rollout.utils import _process_vllm_weights_after_loading

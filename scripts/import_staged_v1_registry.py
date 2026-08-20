@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Import staged-v1 On-Policy SFT and Stage-2 WDL-SFT runs into the registry.
 
 The importer is source-driven and idempotent. It parses local JSONL metric
@@ -11,7 +13,6 @@ import argparse
 import datetime as dt
 import hashlib
 import json
-import re
 import sqlite3
 import subprocess
 import sys
@@ -20,13 +21,11 @@ from typing import Any
 
 import pyarrow.parquet as pq
 
-
 REGISTRY_TOOLS = Path("/data-1/agent-tools/experiment_registry")
 if str(REGISTRY_TOOLS) not in sys.path:
     sys.path.insert(0, str(REGISTRY_TOOLS))
 
 from registry_core import connect, init_db, slug, utc_now  # noqa: E402
-
 
 PROJECT_NAME = "verl:feature/on-policy-wdl-sft"
 PROJECT_KEY = "verl_feature_on_policy_wdl_sft"
@@ -43,11 +42,21 @@ RELEASE_GATE_SCRIPT = REPO / "scripts/training_result_release_gate.py"
 
 TRAIN_STAGE1 = Path("/data-1/dataset/EnsembleLLM-data-processed/train_rl_format.parquet")
 TRAIN_STAGE1_BOXED = Path("/data-1/dataset/EnsembleLLM-data-processed/staged_v1/train_rl_format_boxed_prompt.parquet")
-TRAIN_STAGE1_BOXED_MANIFEST = Path("/data-1/dataset/EnsembleLLM-data-processed/staged_v1/train_rl_format_boxed_prompt.manifest.json")
-TRAIN_STAGE2 = Path("/data-1/dataset/EnsembleLLM-data-processed/staged_v1/stage2_after_s1_150steps_seed20260528_75steps.parquet")
-TRAIN_STAGE2_MANIFEST = Path("/data-1/dataset/EnsembleLLM-data-processed/staged_v1/stage2_after_s1_150steps_seed20260528_75steps.manifest.json")
-TRAIN_STAGE2_BOXED = Path("/data-1/dataset/EnsembleLLM-data-processed/staged_v1/stage2_boxed_after_s1_150steps_seed20260528_75steps.parquet")
-TRAIN_STAGE2_BOXED_MANIFEST = Path("/data-1/dataset/EnsembleLLM-data-processed/staged_v1/stage2_boxed_after_s1_150steps_seed20260528_75steps.manifest.json")
+TRAIN_STAGE1_BOXED_MANIFEST = Path(
+    "/data-1/dataset/EnsembleLLM-data-processed/staged_v1/train_rl_format_boxed_prompt.manifest.json"
+)
+TRAIN_STAGE2 = Path(
+    "/data-1/dataset/EnsembleLLM-data-processed/staged_v1/stage2_after_s1_150steps_seed20260528_75steps.parquet"
+)
+TRAIN_STAGE2_MANIFEST = Path(
+    "/data-1/dataset/EnsembleLLM-data-processed/staged_v1/stage2_after_s1_150steps_seed20260528_75steps.manifest.json"
+)
+TRAIN_STAGE2_BOXED = Path(
+    "/data-1/dataset/EnsembleLLM-data-processed/staged_v1/stage2_boxed_after_s1_150steps_seed20260528_75steps.parquet"
+)
+TRAIN_STAGE2_BOXED_MANIFEST = Path(
+    "/data-1/dataset/EnsembleLLM-data-processed/staged_v1/stage2_boxed_after_s1_150steps_seed20260528_75steps.manifest.json"
+)
 MATH500 = Path("/data-1/dataset/MATH-500/math500-test_with_system_prompt.parquet")
 AIME2025 = Path("/data-1/dataset/AIME-2025/aime-2025_with_system_prompt.parquet")
 
@@ -373,12 +382,20 @@ def upsert_project(conn: sqlite3.Connection) -> int:
           default_branch=excluded.default_branch,
           notes=coalesce(excluded.notes, projects.notes)
         """,
-        (PROJECT_KEY, PROJECT_NAME, str(REPO), BRANCH, "Branch-scoped registry form for feature/on-policy-wdl-sft runs."),
+        (
+            PROJECT_KEY,
+            PROJECT_NAME,
+            str(REPO),
+            BRANCH,
+            "Branch-scoped registry form for feature/on-policy-wdl-sft runs.",
+        ),
     )
     return int(conn.execute("select id from projects where name=?", (PROJECT_NAME,)).fetchone()["id"])
 
 
-def upsert_dataset(conn: sqlite3.Connection, key: str, name: str, path: Path, split: str, notes: str | None = None) -> int:
+def upsert_dataset(
+    conn: sqlite3.Connection, key: str, name: str, path: Path, split: str, notes: str | None = None
+) -> int:
     conn.execute(
         """
         insert into datasets(dataset_key, name, domain, path, split, row_count, format, notes)
@@ -402,7 +419,9 @@ def dataset_row_count(conn: sqlite3.Connection, dataset_id: int) -> int | None:
     return int(row["row_count"]) if row and row["row_count"] is not None else None
 
 
-def link_training_dataset(conn: sqlite3.Connection, tr_id: int, dataset_id: int, role: str, notes: str | None = None) -> None:
+def link_training_dataset(
+    conn: sqlite3.Connection, tr_id: int, dataset_id: int, role: str, notes: str | None = None
+) -> None:
     conn.execute(
         """
         insert into training_run_datasets(training_run_id, dataset_id, role, row_count, notes)
@@ -415,7 +434,9 @@ def link_training_dataset(conn: sqlite3.Connection, tr_id: int, dataset_id: int,
     )
 
 
-def link_experiments(conn: sqlite3.Connection, from_exp_id: int, to_exp_id: int, link_type: str, notes: str | None = None) -> None:
+def link_experiments(
+    conn: sqlite3.Connection, from_exp_id: int, to_exp_id: int, link_type: str, notes: str | None = None
+) -> None:
     conn.execute(
         """
         insert into experiment_links(from_experiment_id, to_experiment_id, link_type, notes)
@@ -492,7 +513,9 @@ def upsert_model(
     return int(conn.execute("select id from models where model_key=?", (model_key,)).fetchone()["id"])
 
 
-def upsert_experiment(conn: sqlite3.Connection, project_id: int, run: dict[str, Any], best: dict[str, Any], latest: int | None) -> int:
+def upsert_experiment(
+    conn: sqlite3.Connection, project_id: int, run: dict[str, Any], best: dict[str, Any], latest: int | None
+) -> int:
     stage = run["stage"]
     method_variant = "wdl_sft"
     method_version = "staged_v1_stage1" if stage == 1 else "staged_v1_stage2_model2_rollout"
@@ -566,15 +589,27 @@ def upsert_experiment(conn: sqlite3.Connection, project_id: int, run: dict[str, 
             run.get("notes"),
         ),
     )
-    return int(conn.execute("select id from experiments where experiment_key=?", (experiment_key(run),)).fetchone()["id"])
+    return int(
+        conn.execute("select id from experiments where experiment_key=?", (experiment_key(run),)).fetchone()["id"]
+    )
 
 
 def add_tag(conn: sqlite3.Connection, entity_type: str, entity_id: int, tag: str) -> None:
-    conn.execute("insert or ignore into entity_tags(entity_type, entity_id, tag) values (?, ?, ?)", (entity_type, entity_id, tag))
+    conn.execute(
+        "insert or ignore into entity_tags(entity_type, entity_id, tag) values (?, ?, ?)", (entity_type, entity_id, tag)
+    )
 
 
-def add_training_metric(conn: sqlite3.Connection, tr_id: int, name: str, value: Any, step: int | None, scope: str = "training", notes: str | None = None) -> None:
-    if not isinstance(value, (int, float)) or isinstance(value, bool):
+def add_training_metric(
+    conn: sqlite3.Connection,
+    tr_id: int,
+    name: str,
+    value: Any,
+    step: int | None,
+    scope: str = "training",
+    notes: str | None = None,
+) -> None:
+    if not isinstance(value, int | float) or isinstance(value, bool):
         return
     conn.execute(
         """
@@ -588,7 +623,16 @@ def add_training_metric(conn: sqlite3.Connection, tr_id: int, name: str, value: 
     )
 
 
-def add_artifact(conn: sqlite3.Connection, exp_id: int, tr_id: int | None, model_id: int | None, kind: str, path: str, desc: str, notes: str | None = None) -> None:
+def add_artifact(
+    conn: sqlite3.Connection,
+    exp_id: int,
+    tr_id: int | None,
+    model_id: int | None,
+    kind: str,
+    path: str,
+    desc: str,
+    notes: str | None = None,
+) -> None:
     key = slug(f"{kind}.{path}.{exp_id}.{tr_id}.{model_id}")
     p = Path(path)
     stat = p.stat() if p.exists() else None
@@ -629,7 +673,15 @@ def add_artifact(conn: sqlite3.Connection, exp_id: int, tr_id: int | None, model
     )
 
 
-def add_source_record(conn: sqlite3.Connection, path: Path, section: str, kind: str, record_id: int, entity_key: str, notes: str | None = None) -> None:
+def add_source_record(
+    conn: sqlite3.Connection,
+    path: Path,
+    section: str,
+    kind: str,
+    record_id: int,
+    entity_key: str,
+    notes: str | None = None,
+) -> None:
     mtime, size, sha = source_meta(path)
     conn.execute(
         """
@@ -647,7 +699,21 @@ def add_source_record(conn: sqlite3.Connection, path: Path, section: str, kind: 
           record_id=excluded.record_id,
           notes=coalesce(excluded.notes, source_records.notes)
         """,
-        (str(path), "jsonl" if path.suffix == ".jsonl" else "json", section, mtime, size, sha, utc_now(), IMPORTER, kind, record_id, kind, entity_key, notes),
+        (
+            str(path),
+            "jsonl" if path.suffix == ".jsonl" else "json",
+            section,
+            mtime,
+            size,
+            sha,
+            utc_now(),
+            IMPORTER,
+            kind,
+            record_id,
+            kind,
+            entity_key,
+            notes,
+        ),
     )
 
 
@@ -738,10 +804,20 @@ def upsert_training_run(
             run.get("notes"),
         ),
     )
-    return int(conn.execute("select id from training_runs where training_run_key=?", (training_run_key(run),)).fetchone()["id"])
+    return int(
+        conn.execute("select id from training_runs where training_run_key=?", (training_run_key(run),)).fetchone()["id"]
+    )
 
 
-def add_quality_flag(conn: sqlite3.Connection, entity_type: str, entity_id: int, flag: str, severity: str, reason: str, notes: str | None = None) -> None:
+def add_quality_flag(
+    conn: sqlite3.Connection,
+    entity_type: str,
+    entity_id: int,
+    flag: str,
+    severity: str,
+    reason: str,
+    notes: str | None = None,
+) -> None:
     conn.execute(
         """
         insert into quality_flags(entity_type, entity_id, flag, severity, reason, notes)
@@ -801,12 +877,39 @@ def main() -> None:
 
     with connect(db) as conn:
         project_id = upsert_project(conn)
-        ds_stage1 = upsert_dataset(conn, "math.ensemblellm_train_rl_format", "EnsembleLLM train RL format", TRAIN_STAGE1, "train")
-        ds_stage1_boxed = upsert_dataset(conn, "math.ensemblellm_staged_v1_train_rl_format_boxed_prompt", "EnsembleLLM staged-v1 boxed-prompt train RL format", TRAIN_STAGE1_BOXED, "train", "Train prompts aligned to validation boxed final-answer instruction.")
-        ds_stage2 = upsert_dataset(conn, "math.ensemblellm_staged_v1_stage2_nonoverlap_seed20260528", "EnsembleLLM staged-v1 Stage-2 non-overlap shard", TRAIN_STAGE2, "train", "Skip first 9600 eligible prompts and use next 4800 prompts.")
-        ds_stage2_boxed = upsert_dataset(conn, "math.ensemblellm_staged_v1_stage2_boxed_nonoverlap_seed20260528", "EnsembleLLM staged-v1 boxed Stage-2 non-overlap shard", TRAIN_STAGE2_BOXED, "train", "Boxed-prompt Stage-2 shard; skip first 9600 eligible prompts and use next 4800 prompts.")
-        ds_math500 = upsert_dataset(conn, "math.math500_test_with_system_prompt", "MATH-500 with system prompt", MATH500, "validation")
-        ds_aime2025 = upsert_dataset(conn, "math.aime2025_with_system_prompt", "AIME-2025 with system prompt", AIME2025, "validation")
+        ds_stage1 = upsert_dataset(
+            conn, "math.ensemblellm_train_rl_format", "EnsembleLLM train RL format", TRAIN_STAGE1, "train"
+        )
+        ds_stage1_boxed = upsert_dataset(
+            conn,
+            "math.ensemblellm_staged_v1_train_rl_format_boxed_prompt",
+            "EnsembleLLM staged-v1 boxed-prompt train RL format",
+            TRAIN_STAGE1_BOXED,
+            "train",
+            "Train prompts aligned to validation boxed final-answer instruction.",
+        )
+        ds_stage2 = upsert_dataset(
+            conn,
+            "math.ensemblellm_staged_v1_stage2_nonoverlap_seed20260528",
+            "EnsembleLLM staged-v1 Stage-2 non-overlap shard",
+            TRAIN_STAGE2,
+            "train",
+            "Skip first 9600 eligible prompts and use next 4800 prompts.",
+        )
+        ds_stage2_boxed = upsert_dataset(
+            conn,
+            "math.ensemblellm_staged_v1_stage2_boxed_nonoverlap_seed20260528",
+            "EnsembleLLM staged-v1 boxed Stage-2 non-overlap shard",
+            TRAIN_STAGE2_BOXED,
+            "train",
+            "Boxed-prompt Stage-2 shard; skip first 9600 eligible prompts and use next 4800 prompts.",
+        )
+        ds_math500 = upsert_dataset(
+            conn, "math.math500_test_with_system_prompt", "MATH-500 with system prompt", MATH500, "validation"
+        )
+        ds_aime2025 = upsert_dataset(
+            conn, "math.aime2025_with_system_prompt", "AIME-2025 with system prompt", AIME2025, "validation"
+        )
         train_dataset_ids = {
             "stage1": ds_stage1,
             "stage1_boxed": ds_stage1_boxed,
@@ -879,13 +982,15 @@ def main() -> None:
             link_training_dataset(conn, tr_id, ds_math500, "validation")
             link_training_dataset(conn, tr_id, ds_aime2025, "validation")
             if run["stage"] == 2:
-                parent_key = experiment_key({
-                    "stage": 1,
-                    "beta": run["stage1_beta"],
-                    "run_name": run["stage1_run"],
-                    "train_dataset": "stage1_boxed" if run.get("train_dataset") == "stage2_boxed" else None,
-                    "chain_group": run.get("chain_group"),
-                })
+                parent_key = experiment_key(
+                    {
+                        "stage": 1,
+                        "beta": run["stage1_beta"],
+                        "run_name": run["stage1_run"],
+                        "train_dataset": "stage1_boxed" if run.get("train_dataset") == "stage2_boxed" else None,
+                        "chain_group": run.get("chain_group"),
+                    }
+                )
                 parent = conn.execute("select id from experiments where experiment_key=?", (parent_key,)).fetchone()
                 if parent:
                     link_experiments(
@@ -912,11 +1017,34 @@ def main() -> None:
                     "peak_metric",
                     "Metric-specific maximum over validation rows.",
                 )
-                add_training_metric(conn, tr_id, f"best_math_step/{key}", best_math["data"].get(key), best_math["step"], "best_math_step")
-                add_training_metric(conn, tr_id, f"best_aime_step/{key}", best_aime["data"].get(key), best_aime["step"], "best_aime_step")
+                add_training_metric(
+                    conn,
+                    tr_id,
+                    f"best_math_step/{key}",
+                    best_math["data"].get(key),
+                    best_math["step"],
+                    "best_math_step",
+                )
+                add_training_metric(
+                    conn,
+                    tr_id,
+                    f"best_aime_step/{key}",
+                    best_aime["data"].get(key),
+                    best_aime["step"],
+                    "best_aime_step",
+                )
                 if final_val:
-                    add_training_metric(conn, tr_id, f"final_validation/{key}", final_val["data"].get(key), final_val["step"], "final_validation")
-            add_training_metric(conn, tr_id, "best_checkpoint/selection_metric", best["metric_value"], best["step"], "best_checkpoint")
+                    add_training_metric(
+                        conn,
+                        tr_id,
+                        f"final_validation/{key}",
+                        final_val["data"].get(key),
+                        final_val["step"],
+                        "final_validation",
+                    )
+            add_training_metric(
+                conn, tr_id, "best_checkpoint/selection_metric", best["metric_value"], best["step"], "best_checkpoint"
+            )
             add_training_metric(conn, tr_id, "latest_checkpoint/step", latest, latest, "checkpoint")
 
             add_validation_check(
@@ -955,31 +1083,85 @@ def main() -> None:
                 "Peak validation MATH-500 mean@3 in metrics JSONL equals registry training_metrics.",
             )
 
-            add_artifact(conn, exp_id, tr_id, model_id, "training_metrics_jsonl", str(metrics_path), "Training metrics JSONL.")
-            add_artifact(conn, exp_id, tr_id, model_id, "best_checkpoint_json", str(best_path), "Best checkpoint metadata.")
-            add_artifact(conn, exp_id, tr_id, model_id, "checkpoint_dir", best["checkpoint_dir"], "Best checkpoint directory.")
+            add_artifact(
+                conn, exp_id, tr_id, model_id, "training_metrics_jsonl", str(metrics_path), "Training metrics JSONL."
+            )
+            add_artifact(
+                conn, exp_id, tr_id, model_id, "best_checkpoint_json", str(best_path), "Best checkpoint metadata."
+            )
+            add_artifact(
+                conn, exp_id, tr_id, model_id, "checkpoint_dir", best["checkpoint_dir"], "Best checkpoint directory."
+            )
             log_path = REPO / f"recipe/on_policy_wdl_sft/staged_v1/{run['run_name']}.log"
             add_artifact(conn, exp_id, tr_id, model_id, "training_log", str(log_path), "Training stdout/stderr log.")
             for extra_log in run.get("extra_logs", []):
-                add_artifact(conn, exp_id, tr_id, model_id, "training_log", str(REPO / extra_log), "Additional training stdout/stderr log.")
+                add_artifact(
+                    conn,
+                    exp_id,
+                    tr_id,
+                    model_id,
+                    "training_log",
+                    str(REPO / extra_log),
+                    "Additional training stdout/stderr log.",
+                )
             manifest = manifest_for_run(run)
             if manifest:
                 add_artifact(conn, exp_id, tr_id, None, "dataset_manifest", str(manifest), "Training dataset manifest.")
             if run.get("stage1_source_json"):
-                add_artifact(conn, exp_id, tr_id, None, "stage1_source_json", run["stage1_source_json"], "Fixed merged Model2 provenance from Stage 1.")
+                add_artifact(
+                    conn,
+                    exp_id,
+                    tr_id,
+                    None,
+                    "stage1_source_json",
+                    run["stage1_source_json"],
+                    "Fixed merged Model2 provenance from Stage 1.",
+                )
 
             add_source_record(conn, metrics_path, "full", "training_runs", tr_id, training_run_key(run))
-            add_source_record(conn, best_path, "best_checkpoint", "models", model_id, slug(f"{run['run_name']}.best.step_{best['step']}"))
+            add_source_record(
+                conn,
+                best_path,
+                "best_checkpoint",
+                "models",
+                model_id,
+                slug(f"{run['run_name']}.best.step_{best['step']}"),
+            )
             if run.get("stage1_source_json"):
-                add_source_record(conn, Path(run["stage1_source_json"]), "stage1_source", "training_runs", tr_id, training_run_key(run))
+                add_source_record(
+                    conn,
+                    Path(run["stage1_source_json"]),
+                    "stage1_source",
+                    "training_runs",
+                    tr_id,
+                    training_run_key(run),
+                )
 
             if run["stage"] == 2:
                 final_math = final_val["data"].get("val-core/HuggingFaceH4/MATH-500/acc/mean@3") if final_val else None
                 best_math_value = best_math["data"].get("val-core/HuggingFaceH4/MATH-500/acc/mean@3")
-                if isinstance(final_math, (int, float)) and isinstance(best_math_value, (int, float)) and final_math < best_math_value - 0.3:
-                    add_quality_flag(conn, "training_run", tr_id, "online_validation_collapse", "warning", "Final MATH-500 mean@3 is far below early best checkpoint.")
+                if (
+                    isinstance(final_math, int | float)
+                    and isinstance(best_math_value, int | float)
+                    and final_math < best_math_value - 0.3
+                ):
+                    add_quality_flag(
+                        conn,
+                        "training_run",
+                        tr_id,
+                        "online_validation_collapse",
+                        "warning",
+                        "Final MATH-500 mean@3 is far below early best checkpoint.",
+                    )
             if run["status"] != "completed":
-                add_quality_flag(conn, "training_run", tr_id, "interrupted_run", "warning", "Run did not complete the intended beta-grid schedule.")
+                add_quality_flag(
+                    conn,
+                    "training_run",
+                    tr_id,
+                    "interrupted_run",
+                    "warning",
+                    "Run did not complete the intended beta-grid schedule.",
+                )
 
         conn.commit()
     print("imported", len(RUNS), "staged-v1 runs")

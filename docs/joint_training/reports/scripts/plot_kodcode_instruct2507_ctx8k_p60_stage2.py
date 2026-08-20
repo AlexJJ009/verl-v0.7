@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Plot KodCode Instruct2507 CTX8K Stage1 vs P60 Stage2 online validation."""
 
 from __future__ import annotations
@@ -8,7 +10,6 @@ import json
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-
 
 ROOT = Path(__file__).resolve().parents[4]
 OUT_DIR = ROOT / "docs/joint_training/reports/figures"
@@ -125,14 +126,12 @@ def plot(rows: list[dict], out_png: Path, out_pdf: Path) -> None:
         }
     )
     fig, axes = plt.subplots(1, 3, figsize=(14, 4.4), sharex=True)
-    for ax, (dataset, _key) in zip(axes, DATASETS):
+    for ax, (dataset, _key) in zip(axes, DATASETS, strict=False):
         for run in RUNS:
             series = [
                 r
                 for r in rows
-                if r["dataset"] == dataset
-                and r["run"] == run["label"]
-                and 0 <= r["effective_step"] <= 150
+                if r["dataset"] == dataset and r["run"] == run["label"] and 0 <= r["effective_step"] <= 150
             ]
             series.sort(key=lambda r: r["effective_step"])
             if not series:
@@ -178,10 +177,7 @@ def print_key_table(rows: list[dict]) -> None:
         ("Stage2 P60 beta=0.1", 90),
         ("Stage2 P60 beta=0.1", 100),
     ]
-    by_key = {
-        (r["run"], r["effective_step"], r["dataset"]): r["pass_at_1"]
-        for r in rows
-    }
+    by_key = {(r["run"], r["effective_step"], r["dataset"]): r["pass_at_1"] for r in rows}
     print("run,effective_step,HumanEval+,MBPP+,LiveCodeBench")
     for run, step in checkpoints:
         vals = [by_key.get((run, step, ds)) for ds, _ in DATASETS]

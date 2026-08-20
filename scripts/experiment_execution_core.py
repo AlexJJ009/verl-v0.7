@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """CPU-testable experiment execution state machine."""
 
 from __future__ import annotations
 
 import argparse
-from dataclasses import asdict, dataclass, field
 import hashlib
 import json
 import os
-from pathlib import Path
 import signal
 import subprocess
 import sys
 import time
-from typing import Any, Callable, Protocol
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
+from typing import Any, Protocol
 
 SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(SCRIPTS_DIR) not in sys.path:
@@ -23,7 +25,12 @@ if str(SCRIPTS_DIR) not in sys.path:
 TERMINAL_STATES = {"succeeded", "failed", "deadline_exceeded", "cleanup_failed"}
 BATCH_TERMINAL_STATES = {"completed", "completed_with_failures", "shared_failure", "stopped"}
 CONTROL_ACTIONS = {"pause_after_current", "stop_now", "continue_remaining"}
-ACCEPTED_ADAPTER_TYPES = {"stage123_queue_v1", "stage123_treatment_reuse_v1", "stage123_stage2_handoff_v1", "cpu_fixture_v1"}
+ACCEPTED_ADAPTER_TYPES = {
+    "stage123_queue_v1",
+    "stage123_treatment_reuse_v1",
+    "stage123_stage2_handoff_v1",
+    "cpu_fixture_v1",
+}
 
 
 @dataclass(frozen=True)
@@ -178,7 +185,9 @@ class BatchValidationError(ValueError):
     pass
 
 
-def recovery_decision(state: ExecutionState, spec: RunSpec, failure_code: str, checkpoint_available: bool) -> dict[str, Any]:
+def recovery_decision(
+    state: ExecutionState, spec: RunSpec, failure_code: str, checkpoint_available: bool
+) -> dict[str, Any]:
     resumable = failure_code in spec.resumable_failure_codes and state.attempt < spec.max_attempts
     if failure_code == "checkpoint_available_child_exit" and not checkpoint_available:
         resumable = False
@@ -270,22 +279,39 @@ def validate_admission_bundle(
 ) -> dict[str, Any]:
     if bundle.get("bundle_type") in {"stage123_treatment_reuse_admission", "stage123_stage2_handoff_admission"}:
         admission_hash = bundle.get("admission_sha256")
-        if not isinstance(admission_hash, str) or admission_hash != sha256_json(_without_hash(bundle, "admission_sha256")):
+        if not isinstance(admission_hash, str) or admission_hash != sha256_json(
+            _without_hash(bundle, "admission_sha256")
+        ):
             raise BatchValidationError("treatment admission file hash mismatch")
         if bundle.get("status") != "authorized":
             raise BatchValidationError("treatment admission is prepared but not authorized")
         treatment_check = subprocess.run(
-            [sys.executable, str(repo_root / "scripts/stage123_control_reuse.py"), "validate-treatment", "--admission", str(bundle_path), "--run-id", str(bundle.get("expected_run_ids", [""])[0])],
+            [
+                sys.executable,
+                str(repo_root / "scripts/stage123_control_reuse.py"),
+                "validate-treatment",
+                "--admission",
+                str(bundle_path),
+                "--run-id",
+                str(bundle.get("expected_run_ids", [""])[0]),
+            ],
             text=True,
             capture_output=True,
             check=False,
         )
         if treatment_check.returncode != 0:
-            raise BatchValidationError(f"treatment admission validation failed: {treatment_check.stderr.strip() or treatment_check.stdout.strip()}")
+            raise BatchValidationError(
+                f"treatment admission validation failed: {treatment_check.stderr.strip() or treatment_check.stdout.strip()}"
+            )
         identity = bundle.get("control_plane_identity")
         if not isinstance(identity, dict):
             raise BatchValidationError("treatment admission control-plane identity is required")
-        for key, length in (("plan_sha256", 64), ("implementation_tree_sha256", 64), ("evidence_commit", 40), ("recipe_gitlink", 40)):
+        for key, length in (
+            ("plan_sha256", 64),
+            ("implementation_tree_sha256", 64),
+            ("evidence_commit", 40),
+            ("recipe_gitlink", 40),
+        ):
             value = _validate_hex(identity.get(key), length, key)
             if set(value) == {"0"}:
                 raise BatchValidationError(f"treatment admission {key} cannot be all-zero")
@@ -315,14 +341,19 @@ def validate_admission_bundle(
             for run_id in run_ids
         ]
         return {
-            "adapter_type": "stage123_treatment_reuse_v1" if bundle["bundle_type"] == "stage123_treatment_reuse_admission" else "stage123_stage2_handoff_v1",
+            "adapter_type": "stage123_treatment_reuse_v1"
+            if bundle["bundle_type"] == "stage123_treatment_reuse_admission"
+            else "stage123_stage2_handoff_v1",
             "commands": commands,
             "command_sha256": sha256_json(commands),
             "bindings": {
                 "implementation_tree_sha256": identity["implementation_tree_sha256"],
                 "evidence_commit": identity["evidence_commit"],
                 "recipe_gitlink": identity["recipe_gitlink"],
-                "input_hashes": {str(certificate_path): bundle["certificate_sha256"], str(manifest_path): bundle["treatment_manifest_sha256"]},
+                "input_hashes": {
+                    str(certificate_path): bundle["certificate_sha256"],
+                    str(manifest_path): bundle["treatment_manifest_sha256"],
+                },
             },
         }
     if bundle.get("bundle_type") == "stage123_admission_bundle":
@@ -358,7 +389,9 @@ def validate_admission_bundle(
         selected_run_ids = tuple(expected_run_ids or all_run_ids)
         if selected_run_ids not in (all_run_ids, ("frac25-stage2", "frac25-stage3")):
             raise BatchValidationError("unsupported Stage123 run subset")
-        commands = [command for run_id, command in zip(all_run_ids, all_commands, strict=True) if run_id in selected_run_ids]
+        commands = [
+            command for run_id, command in zip(all_run_ids, all_commands, strict=True) if run_id in selected_run_ids
+        ]
         bindings = bundle["bindings"]
         input_hashes = {
             path: file_sha256(Path(path))
@@ -386,7 +419,13 @@ def validate_admission_bundle(
     bindings = bundle.get("bindings")
     if not isinstance(bindings, dict):
         raise BatchValidationError("admission bundle bindings are required")
-    required = ("implementation_tree_sha256", "evidence_commit", "recipe_gitlink", "input_hashes", "protected_asset_hashes")
+    required = (
+        "implementation_tree_sha256",
+        "evidence_commit",
+        "recipe_gitlink",
+        "input_hashes",
+        "protected_asset_hashes",
+    )
     missing = [key for key in required if key not in bindings]
     if missing:
         raise BatchValidationError(f"admission bundle missing bindings: {missing}")
@@ -406,8 +445,10 @@ def validate_admission_bundle(
         if protected_asset_sha256(repo_root / relative) != expected_hash:
             raise BatchValidationError(f"protected asset hash mismatch: {relative}")
     implementation_paths = bundle.get("implementation_paths")
-    if not isinstance(implementation_paths, list) or not implementation_paths or not all(
-        isinstance(item, str) and item and not Path(item).is_absolute() for item in implementation_paths
+    if (
+        not isinstance(implementation_paths, list)
+        or not implementation_paths
+        or not all(isinstance(item, str) and item and not Path(item).is_absolute() for item in implementation_paths)
     ):
         raise BatchValidationError("implementation_paths must be relative non-empty paths")
     tree_hash = implementation_tree_sha256(repo_root, implementation_paths)
@@ -416,9 +457,13 @@ def validate_admission_bundle(
     commands = bundle.get("canonical_commands")
     if commands is None and bundle.get("canonical_command") is not None:
         commands = [bundle["canonical_command"]]
-    if not isinstance(commands, list) or not commands or not all(
-        isinstance(command, list) and command and all(isinstance(value, str) for value in command)
-        for command in commands
+    if (
+        not isinstance(commands, list)
+        or not commands
+        or not all(
+            isinstance(command, list) and command and all(isinstance(value, str) for value in command)
+            for command in commands
+        )
     ):
         raise BatchValidationError("canonical_commands must be a non-empty array of string arrays")
     command_hash = sha256_json(commands)
@@ -642,7 +687,9 @@ class ExecutionCore:
             checkpoint_available = failure_code == "checkpoint_available_child_exit"
             decision = recovery_decision(state, spec, failure_code, checkpoint_available)
             if not decision["resume"]:
-                state.transitions.append({"from": state.status, "to": state.status, "at": self.clock.now(), "recovery": decision})
+                state.transitions.append(
+                    {"from": state.status, "to": state.status, "at": self.clock.now(), "recovery": decision}
+                )
                 self.persist(state)
                 return state
             state.resume_from_checkpoint = decision["resume_from_checkpoint"]
@@ -664,7 +711,13 @@ class ExecutionCore:
             returncode = self.adapter.poll(state.child_id)
             if returncode is not None:
                 if returncode == 0:
-                    transition(state, "succeeded", now, completed_at=now, cleanup={"resources_released": True, "term_sent": False, "kill_sent": False})
+                    transition(
+                        state,
+                        "succeeded",
+                        now,
+                        completed_at=now,
+                        cleanup={"resources_released": True, "term_sent": False, "kill_sent": False},
+                    )
                 else:
                     cleanup = self.adapter.terminate(state.child_id, spec.cleanup_grace_seconds)
                     status = "failed" if cleanup.get("resources_released") else "cleanup_failed"
@@ -687,7 +740,12 @@ class ExecutionCore:
                     now,
                     completed_at=now,
                     cleanup=cleanup,
-                    failure=failure("deadline_exceeded", "execution deadline exceeded", deadline_at=state.deadline_at, observed_at=now),
+                    failure=failure(
+                        "deadline_exceeded",
+                        "execution deadline exceeded",
+                        deadline_at=state.deadline_at,
+                        observed_at=now,
+                    ),
                 )
                 self.persist(state)
                 return state
@@ -787,6 +845,7 @@ class BatchExecutor:
         )
         if validated["command_sha256"] != item.command_sha256:
             raise BatchValidationError(f"command binding changed for active item {item.item_id}")
+
     def _persist(self, state: dict[str, Any], event: str, **fields: Any) -> None:
         self.state_root.mkdir(parents=True, exist_ok=True)
         state["batch_revision"] = self.batch_revision
@@ -832,10 +891,22 @@ class BatchExecutor:
     def _apply_control(self, control: dict[str, Any]) -> None:
         if not isinstance(control, dict) or control.get("schema_version") != 1:
             raise OperatorControlError("unsupported control schema")
-        required = ("batch_id", "batch_manifest_sha256", "control_seq", "expected_batch_revision", "action", "authorization_id", "issued_at", "control_sha256")
+        required = (
+            "batch_id",
+            "batch_manifest_sha256",
+            "control_seq",
+            "expected_batch_revision",
+            "action",
+            "authorization_id",
+            "issued_at",
+            "control_sha256",
+        )
         if any(key not in control for key in required):
             raise OperatorControlError("control envelope is incomplete")
-        if control["batch_id"] != self.manifest.batch_id or control["batch_manifest_sha256"] != self.manifest.batch_manifest_sha256:
+        if (
+            control["batch_id"] != self.manifest.batch_id
+            or control["batch_manifest_sha256"] != self.manifest.batch_manifest_sha256
+        ):
             raise OperatorControlError("control batch binding mismatch")
         if control["authorization_id"] != self.manifest.authorization_id:
             raise OperatorControlError("control authorization mismatch")
@@ -915,10 +986,18 @@ class BatchExecutor:
                     or event.get("batch_manifest_sha256") != self.manifest.batch_manifest_sha256
                 ):
                     raise BatchValidationError(f"event ledger batch binding mismatch at line {index}")
-                if event.get("state") not in BATCH_TERMINAL_STATES | {"pending", "running", "paused_after_current", "stopping"}:
+                if event.get("state") not in BATCH_TERMINAL_STATES | {
+                    "pending",
+                    "running",
+                    "paused_after_current",
+                    "stopping",
+                }:
                     raise BatchValidationError(f"batch event schema mismatch at line {index}")
             elif "run_id" in event:
-                if not isinstance(event.get("run_id"), str) or event.get("status") not in TERMINAL_STATES | {"pending", "running"}:
+                if not isinstance(event.get("run_id"), str) or event.get("status") not in TERMINAL_STATES | {
+                    "pending",
+                    "running",
+                }:
                     raise BatchValidationError(f"atomic event schema mismatch at line {index}")
                 if not isinstance(event.get("attempt", 0), int):
                     raise BatchValidationError(f"atomic event attempt mismatch at line {index}")
@@ -951,7 +1030,7 @@ class BatchExecutor:
         }
 
     class _ControlledAdapter:
-        def __init__(self, owner: "BatchExecutor", inner: ChildAdapter, grace_seconds: float) -> None:
+        def __init__(self, owner: BatchExecutor, inner: ChildAdapter, grace_seconds: float) -> None:
             self.owner = owner
             self.inner = inner
             self.grace_seconds = grace_seconds
@@ -1002,7 +1081,9 @@ class BatchExecutor:
         state.setdefault("items", [])
         state.setdefault("phases", [])
         failure_codes = [
-            str(record.get("failure_code") or ((record.get("failure") or {}).get("code", "unknown_failure"))).split(":", 1)[0]
+            str(record.get("failure_code") or ((record.get("failure") or {}).get("code", "unknown_failure"))).split(
+                ":", 1
+            )[0]
             for record in state["items"]
             if record.get("status") == "inconclusive_operational_failure"
         ]
@@ -1018,7 +1099,9 @@ class BatchExecutor:
             if any(record.get("item_id") == item.item_id for record in state["items"]):
                 continue
             active_admission = state.get("current_item_admission")
-            continuing_started_item = state.get("current_item_id") == item.item_id and isinstance(active_admission, dict)
+            continuing_started_item = state.get("current_item_id") == item.item_id and isinstance(
+                active_admission, dict
+            )
             try:
                 if continuing_started_item:
                     self._validate_live_item_admission(item, active_admission)
@@ -1028,7 +1111,9 @@ class BatchExecutor:
                     state["current_item_id"] = item.item_id
                     state["current_item_admission"] = active_admission
                     self.batch_revision += 1
-                    self._persist(state, "item_started", item_id=item.item_id, admission_record_sha256=active_admission["sha256"])
+                    self._persist(
+                        state, "item_started", item_id=item.item_id, admission_record_sha256=active_admission["sha256"]
+                    )
             except BatchValidationError as exc:
                 return self._stop_for_shared_failure(state, "admission_binding_changed", str(exc))
             item_failed = False
@@ -1089,7 +1174,9 @@ class BatchExecutor:
                 state["phases"].append(phase_record)
                 phase_records.append(phase_record)
                 self.batch_revision += 1
-                self._persist(state, "phase_terminal", item_id=item.item_id, run_id=run_id, phase_status=atomic_state.status)
+                self._persist(
+                    state, "phase_terminal", item_id=item.item_id, run_id=run_id, phase_status=atomic_state.status
+                )
                 if atomic_state.status == "succeeded" and not self.stop_requested:
                     continue
                 if atomic_state.status == "succeeded":
@@ -1130,7 +1217,9 @@ class BatchExecutor:
                 self.batch_revision += 1
                 self._persist(state, "batch_paused", reason="operator_pause_after_current")
                 return state
-        state["status"] = "completed_with_failures" if any(item["status"] != "succeeded" for item in state["items"]) else "completed"
+        state["status"] = (
+            "completed_with_failures" if any(item["status"] != "succeeded" for item in state["items"]) else "completed"
+        )
         self.batch_revision += 1
         self._persist(state, "batch_completed")
         return state
@@ -1161,8 +1250,16 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("mode", choices=("queue", "phase", "batch-validate", "batch-run"))
     parser.add_argument("--run-id", default=os.environ.get("CALIBRATION_RUN_ID", "operational-calibration"))
-    parser.add_argument("--state-root", type=Path, default=Path(os.environ.get("CALIBRATION_STATE_ROOT", "/data-1/tmp/verl_agent_scratch/experiment_workflow/state")))
-    parser.add_argument("--timeout-seconds", type=float, default=float(os.environ.get("CALIBRATION_DEADLINE_SECONDS", "1800")))
+    parser.add_argument(
+        "--state-root",
+        type=Path,
+        default=Path(
+            os.environ.get("CALIBRATION_STATE_ROOT", "/data-1/tmp/verl_agent_scratch/experiment_workflow/state")
+        ),
+    )
+    parser.add_argument(
+        "--timeout-seconds", type=float, default=float(os.environ.get("CALIBRATION_DEADLINE_SECONDS", "1800"))
+    )
     parser.add_argument("--command-json", default=os.environ.get("CALIBRATION_CHILD_COMMAND_JSON"))
     parser.add_argument("--recovery-policy", type=Path)
     parser.add_argument("--resume", action="store_true")
@@ -1171,16 +1268,43 @@ def main() -> int:
     args, legacy = parser.parse_known_args()
     if args.mode in {"batch-validate", "batch-run"}:
         if args.manifest is None:
-            print(json.dumps({"ok": False, "failure": failure("missing_batch_manifest", "--manifest is required")}, sort_keys=True))
+            print(
+                json.dumps(
+                    {"ok": False, "failure": failure("missing_batch_manifest", "--manifest is required")},
+                    sort_keys=True,
+                )
+            )
             return 2
         if args.resume or args.recovery_policy is not None:
-            print(json.dumps({"ok": False, "failure": failure("batch_recovery_forbidden", "batch mode forbids --resume and --recovery-policy")}, sort_keys=True))
+            print(
+                json.dumps(
+                    {
+                        "ok": False,
+                        "failure": failure(
+                            "batch_recovery_forbidden", "batch mode forbids --resume and --recovery-policy"
+                        ),
+                    },
+                    sort_keys=True,
+                )
+            )
             return 2
         try:
-            static_items = active_item_ids_for_restart(args.manifest, args.state_root) if args.mode == "batch-run" else set()
+            static_items = (
+                active_item_ids_for_restart(args.manifest, args.state_root) if args.mode == "batch-run" else set()
+            )
             manifest = load_batch_manifest(args.manifest, args.repo_root, static_after_item_start=static_items)
             if args.mode == "batch-validate":
-                print(json.dumps({"ok": True, "batch_id": manifest.batch_id, "batch_manifest_sha256": manifest.batch_manifest_sha256, "items": [item.item_id for item in manifest.items]}, sort_keys=True))
+                print(
+                    json.dumps(
+                        {
+                            "ok": True,
+                            "batch_id": manifest.batch_id,
+                            "batch_manifest_sha256": manifest.batch_manifest_sha256,
+                            "items": [item.item_id for item in manifest.items],
+                        },
+                        sort_keys=True,
+                    )
+                )
                 return 0
             state = BatchExecutor(manifest, args.state_root, SubprocessAdapter()).run()
             completed = state.get("status") in {"completed", "completed_with_failures"}
@@ -1191,12 +1315,20 @@ def main() -> int:
             return 2
     command_json = args.command_json
     if command_json is None:
-        result = failure("missing_child_command", "CALIBRATION_CHILD_COMMAND_JSON or --command-json is required", legacy_args=legacy)
+        result = failure(
+            "missing_child_command", "CALIBRATION_CHILD_COMMAND_JSON or --command-json is required", legacy_args=legacy
+        )
         print(json.dumps({"ok": False, "failure": result}, sort_keys=True))
         return 2
     try:
         max_attempts, resumable_codes = load_recovery_policy(args.recovery_policy)
-        spec = RunSpec(args.run_id, parse_command(command_json), args.timeout_seconds, max_attempts=max_attempts, resumable_failure_codes=resumable_codes)
+        spec = RunSpec(
+            args.run_id,
+            parse_command(command_json),
+            args.timeout_seconds,
+            max_attempts=max_attempts,
+            resumable_failure_codes=resumable_codes,
+        )
         core = ExecutionCore(args.state_root, SubprocessAdapter())
         state = core.resume(spec) if args.resume else core.run(spec)
     except (OSError, ValueError, json.JSONDecodeError) as exc:

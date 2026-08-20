@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Run Qwen3-1.7B Code Cold Start with full Code-3 validation every five steps."""
 
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
 import json
 import os
-from pathlib import Path
 import subprocess
 import sys
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 import yaml
-
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -308,29 +309,32 @@ def main() -> int:
                 env = dict(os.environ)
                 env.update(
                     {
-                    "ALLOW_FORMAT_COLD_START_SFT": "1",
-                    "RUN_NAME": run_name,
-                    "RUN_PREFIX": run_name,
-                    "MODEL_PATH": str(paths["raw_model"]),
-                    "TRAIN_FILE": str(paths["train_file"]),
-                    "CKPT_ROOT": str(paths["checkpoint_root"]),
-                    "TOTAL_TRAINING_STEPS": str(step),
-                    "SAVE_FREQ": str(training["step_interval"]),
-                    "MAX_CKPT_TO_KEEP": str(training["max_steps"] // training["step_interval"]),
-                    "TRAIN_BATCH_SIZE": str(training["train_batch_size"]),
-                    "LR": str(training["learning_rate"]),
-                    "LR_WARMUP_STEPS": str(training["warmup_steps"]),
-                    "MAX_LENGTH": str(training["max_length"]),
-                    "MAX_RESPONSE_LENGTH": str(training["max_response_length"]),
-                    "MAX_TOKEN_LEN_PER_GPU": str(training["max_length"]),
-                    "TRAIN_SEED": str(manifest["seed"]),
-                    "DATA_SHUFFLE": "False",
+                        "ALLOW_FORMAT_COLD_START_SFT": "1",
+                        "RUN_NAME": run_name,
+                        "RUN_PREFIX": run_name,
+                        "MODEL_PATH": str(paths["raw_model"]),
+                        "TRAIN_FILE": str(paths["train_file"]),
+                        "CKPT_ROOT": str(paths["checkpoint_root"]),
+                        "TOTAL_TRAINING_STEPS": str(step),
+                        "SAVE_FREQ": str(training["step_interval"]),
+                        "MAX_CKPT_TO_KEEP": str(training["max_steps"] // training["step_interval"]),
+                        "TRAIN_BATCH_SIZE": str(training["train_batch_size"]),
+                        "LR": str(training["learning_rate"]),
+                        "LR_WARMUP_STEPS": str(training["warmup_steps"]),
+                        "MAX_LENGTH": str(training["max_length"]),
+                        "MAX_RESPONSE_LENGTH": str(training["max_response_length"]),
+                        "MAX_TOKEN_LEN_PER_GPU": str(training["max_length"]),
+                        "TRAIN_SEED": str(manifest["seed"]),
+                        "DATA_SHUFFLE": "False",
                     }
                 )
                 run(
                     [
                         "bash",
-                        str(ROOT / "recipe/on_policy_wdl_sft/format_cold_start/run_sft_code_qwen3_1p7b_kodcode_format.sh"),
+                        str(
+                            ROOT
+                            / "recipe/on_policy_wdl_sft/format_cold_start/run_sft_code_qwen3_1p7b_kodcode_format.sh"
+                        ),
                     ],
                     env=env,
                     dry_run=args.dry_run,

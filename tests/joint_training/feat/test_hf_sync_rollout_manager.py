@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+
 """Unit tests for HFSyncRolloutManager and HFRollout worker-side tokenization.
 
 Verifies that:
@@ -11,8 +13,9 @@ Verifies that:
 """
 
 import asyncio
+from unittest.mock import MagicMock
+
 import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
 
 from verl import DataProto
 
@@ -54,6 +57,7 @@ class TestHFSyncRolloutManagerInterface:
     def test_generate_sequences_returns_dataproto(self):
         """generate_sequences() must return DataProto (same contract as AgentLoopManager)."""
         import torch
+
         batch = DataProto.from_dict({"input_ids": torch.zeros(2, 4, dtype=torch.long)})
         self.mock_wg.generate_sequences.return_value = batch
 
@@ -141,9 +145,7 @@ class TestGetGenBatchForHFRollout:
 
         # gen_batch.batch is None because dataset doesn't provide input_ids
         # The worker's _tokenize_raw_prompts_for_hf() handles tokenization
-        assert gen_batch.batch is None or (
-            gen_batch.batch is not None and "input_ids" not in gen_batch.batch.keys()
-        )
+        assert gen_batch.batch is None or (gen_batch.batch is not None and "input_ids" not in gen_batch.batch.keys())
         # raw_prompt must be present for worker-side tokenization
         assert "raw_prompt" in gen_batch.non_tensor_batch
 
@@ -221,6 +223,7 @@ class TestTokenizeRawPromptsForHF:
     def test_tokenize_raw_prompts_produces_input_ids(self):
         """After tokenization, prompts.batch must have input_ids, attention_mask, position_ids."""
         from transformers import AutoTokenizer
+
         from verl.workers.fsdp_workers import ActorRolloutRefWorker
 
         tokenizer = AutoTokenizer.from_pretrained(TOKENIZER_PATH, trust_remote_code=True)
@@ -242,6 +245,7 @@ class TestTokenizeRawPromptsForHF:
     def test_tokenize_raw_prompts_correct_shape(self):
         """Tokenized tensors must have shape (n_prompts, max_prompt_length)."""
         from transformers import AutoTokenizer
+
         from verl.workers.fsdp_workers import ActorRolloutRefWorker
 
         tokenizer = AutoTokenizer.from_pretrained(TOKENIZER_PATH, trust_remote_code=True)
@@ -277,6 +281,7 @@ class TestTokenizeRawPromptsForHF:
     def test_tokenize_uses_left_padding(self):
         """Tokenization must use left-padding for HFRollout (causal LM generation)."""
         from transformers import AutoTokenizer
+
         from verl.workers.fsdp_workers import ActorRolloutRefWorker
 
         tokenizer = AutoTokenizer.from_pretrained(TOKENIZER_PATH, trust_remote_code=True)
@@ -289,6 +294,7 @@ class TestTokenizeRawPromptsForHF:
 
         # Use prompts of different lengths to test padding behavior
         import numpy as np
+
         short_msg = [{"role": "user", "content": "Hi"}]
         long_msg = [{"role": "user", "content": "Solve this step by step: " + "x " * 20}]
         prompts = DataProto(
@@ -306,6 +312,7 @@ class TestTokenizeRawPromptsForHF:
     def test_tokenizer_padding_side_restored_after_tokenization(self):
         """Tokenizer padding_side must be restored to its original value after tokenization."""
         from transformers import AutoTokenizer
+
         from verl.workers.fsdp_workers import ActorRolloutRefWorker
 
         tokenizer = AutoTokenizer.from_pretrained(TOKENIZER_PATH, trust_remote_code=True)
@@ -320,6 +327,4 @@ class TestTokenizeRawPromptsForHF:
         prompts = self._make_prompts_with_raw_prompt(n_prompts=2)
         worker._tokenize_raw_prompts_for_hf(prompts)
 
-        assert tokenizer.padding_side == "right", (
-            "padding_side must be restored to 'right' after tokenization"
-        )
+        assert tokenizer.padding_side == "right", "padding_side must be restored to 'right' after tokenization"

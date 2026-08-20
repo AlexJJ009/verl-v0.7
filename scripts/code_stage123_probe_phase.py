@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Run one Code Stage123 probe phase without producing formal checkpoints."""
 
 from __future__ import annotations
@@ -8,14 +10,11 @@ import hashlib
 import json
 import math
 import os
-from pathlib import Path
 import subprocess
-import sys
 import threading
-import time
+from pathlib import Path
 
 import yaml
-
 
 ROOT = Path(__file__).resolve().parents[1]
 WRAPPERS = {
@@ -181,7 +180,15 @@ def main() -> int:
         }
     )
     if args.mode == "validation":
-        env.update({"TOTAL_TRAINING_STEPS": "0", "VAL_ONLY": "True", "VAL_BEFORE_TRAIN": "True", "TEST_FREQ": "1", "SAVE_FREQ": "1000"})
+        env.update(
+            {
+                "TOTAL_TRAINING_STEPS": "0",
+                "VAL_ONLY": "True",
+                "VAL_BEFORE_TRAIN": "True",
+                "TEST_FREQ": "1",
+                "SAVE_FREQ": "1000",
+            }
+        )
     else:
         env.update(
             {
@@ -195,7 +202,6 @@ def main() -> int:
         )
     source_run = next((item for item in manifest["runs"] if item["id"] == run.get("source_run")), None)
     proxy_model = model1
-    proxy_provenance = selection_path
     wrapper_phase = run["phase"]
     if wrapper_phase == "stage1_control":
         wrapper_phase = "stage1"

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Create fail-closed evaluator and launch-review receipts for Code A/D0/C."""
 
 from __future__ import annotations
@@ -8,14 +10,13 @@ import hashlib
 import importlib.util
 import json
 import os
-from pathlib import Path
 import shutil
 import subprocess
 import sys
+from pathlib import Path
 from typing import Any
 
 import yaml
-
 
 ROOT = Path(__file__).resolve().parents[1]
 OFFICIAL_SOURCES = ("HumanEval+", "MBPP+", "LiveCodeBench")
@@ -32,7 +33,7 @@ def sha256(path: Path) -> str:
 def _jsonable(value: Any) -> Any:
     if isinstance(value, dict):
         return {str(key): _jsonable(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple)):
+    if isinstance(value, list | tuple):
         return [_jsonable(item) for item in value]
     if hasattr(value, "item"):
         return value.item()
@@ -46,19 +47,16 @@ def validate_evaluator_results(results: dict[str, Any]) -> dict[str, bool]:
         known_pass = source_result.get("known_pass", {})
         known_fail = source_result.get("known_fail", {})
         checks[f"{source}_known_pass"] = (
-            float(known_pass.get("score", -1.0)) == 1.0
-            and int(known_pass.get("code_reward_dependency_error", 1)) == 0
+            float(known_pass.get("score", -1.0)) == 1.0 and int(known_pass.get("code_reward_dependency_error", 1)) == 0
         )
         checks[f"{source}_known_fail"] = (
-            float(known_fail.get("score", 1.0)) == -1.0
-            and int(known_fail.get("code_reward_dependency_error", 1)) == 0
+            float(known_fail.get("score", 1.0)) == -1.0 and int(known_fail.get("code_reward_dependency_error", 1)) == 0
         )
     fail_closed = results.get("fail_closed", {})
     malformed = fail_closed.get("malformed", {})
     missing_eos = fail_closed.get("missing_eos", {})
     checks["malformed_rejected_before_execution"] = (
-        float(malformed.get("score", 1.0)) == -1.0
-        and malformed.get("code_reward_status") == "format_error"
+        float(malformed.get("score", 1.0)) == -1.0 and malformed.get("code_reward_status") == "format_error"
     )
     checks["missing_eos_rejected"] = (
         float(missing_eos.get("score", 1.0)) == -1.0
@@ -112,13 +110,10 @@ def evaluator_probe(manifest_path: Path, validation_jsonl: Path, output: Path) -
     extra = {"response_eos_present": True, "valid_response_length": 1, "max_resp_len": 8192}
     for source, row in examples.items():
         ground_truth = json.loads(row["gts"]) if isinstance(row["gts"], str) else row["gts"]
-        known_pass = compute_score_code_official_aligned(
-            source, row["output"], ground_truth, extra_info=extra
-        )
+        known_pass = compute_score_code_official_aligned(source, row["output"], ground_truth, extra_info=extra)
         known_fail = compute_score_code_official_aligned(
             source,
-            "<think>Return an intentionally wrong implementation.</think>\n"
-            "<answer>\n```python\npass\n```\n</answer>",
+            "<think>Return an intentionally wrong implementation.</think>\n<answer>\n```python\npass\n```\n</answer>",
             ground_truth,
             extra_info=extra,
         )
@@ -199,9 +194,7 @@ def review(manifest_path: Path, output: Path) -> dict[str, Any]:
             target_checks[run["id"]] = False
         else:
             target_checks[run["id"]] = True
-    wrapper_checks = {
-        run_id: path.is_file() for run_id, path in queue.WRAPPERS.items()
-    }
+    wrapper_checks = {run_id: path.is_file() for run_id, path in queue.WRAPPERS.items()}
     disk = {}
     for mount, minimum_gib in (("/data-1", 180), ("/data-2", 300)):
         free = shutil.disk_usage(mount).free // (1024**3)

@@ -1,12 +1,13 @@
+# SPDX-License-Identifier: Apache-2.0
+
 from __future__ import annotations
 
 import importlib.util
 import json
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 from types import SimpleNamespace
-
 
 ROOT = Path(__file__).resolve().parents[2]
 CORE = ROOT / "scripts/experiment_execution_core.py"
@@ -98,10 +99,22 @@ def make_manifest(tool, tmp_path: Path, items):
 
 def write_valid_manifest(tool, tmp_path: Path) -> Path:
     commands = [
-        ["/data-1/verl07/run_train.sh", "python", "/workspace/verl/scripts/stage123_phase_adapter.py", "--manifest", "/workspace/verl/recipe/on_policy_wdl_sft/experiment_manifest/stage123.yaml", "--run-id", run_id]
+        [
+            "/data-1/verl07/run_train.sh",
+            "python",
+            "/workspace/verl/scripts/stage123_phase_adapter.py",
+            "--manifest",
+            "/workspace/verl/recipe/on_policy_wdl_sft/experiment_manifest/stage123.yaml",
+            "--run-id",
+            run_id,
+        ]
         for run_id in ("frac25-stage1-control", "frac25-stage2", "frac25-stage3")
     ]
-    implementation_paths = ["scripts/experiment_execution_core.py", "scripts/stage123_manifest_monitor.py", "scripts/stage123_phase_adapter.py"]
+    implementation_paths = [
+        "scripts/experiment_execution_core.py",
+        "scripts/stage123_manifest_monitor.py",
+        "scripts/stage123_phase_adapter.py",
+    ]
     recipe_head = subprocess.check_output(["git", "-C", str(ROOT / "recipe"), "rev-parse", "HEAD"], text=True).strip()
     evidence_commit = subprocess.check_output(["git", "-C", str(ROOT), "rev-parse", "HEAD"], text=True).strip()
     bundle = {
@@ -117,8 +130,12 @@ def write_valid_manifest(tool, tmp_path: Path) -> Path:
             "recipe_gitlink": recipe_head,
             "input_hashes": {},
             "protected_asset_hashes": {
-                ".claude/skills/experiment-registry": tool.protected_asset_sha256(ROOT / ".claude/skills/experiment-registry"),
-                "docs/joint_training/plans/active/qwen3_1p7b_code_stage123_plateau_breakthrough.md": tool.protected_asset_sha256(ROOT / "docs/joint_training/plans/active/qwen3_1p7b_code_stage123_plateau_breakthrough.md"),
+                ".claude/skills/experiment-registry": tool.protected_asset_sha256(
+                    ROOT / ".claude/skills/experiment-registry"
+                ),
+                "docs/joint_training/plans/active/qwen3_1p7b_code_stage123_plateau_breakthrough.md": tool.protected_asset_sha256(
+                    ROOT / "docs/joint_training/plans/active/qwen3_1p7b_code_stage123_plateau_breakthrough.md"
+                ),
                 "test_data": tool.protected_asset_sha256(ROOT / "test_data"),
             },
         },
@@ -176,7 +193,9 @@ def test_manifest_validation_binds_admission_command_and_implementation(tmp_path
     assert manifest.items[0].adapter_type == "stage123_queue_v1"
     raw = json.loads(path.read_text())
     raw["items"][0]["command_sha256"] = "0" * 64
-    raw["batch_manifest_sha256"] = tool.sha256_json({key: value for key, value in raw.items() if key != "batch_manifest_sha256"})
+    raw["batch_manifest_sha256"] = tool.sha256_json(
+        {key: value for key, value in raw.items() if key != "batch_manifest_sha256"}
+    )
     path.write_text(json.dumps(raw))
     try:
         tool.load_batch_manifest(path, ROOT)
@@ -220,7 +239,11 @@ def test_local_failure_is_inconclusive_and_falls_forward_without_retry(tmp_path:
 
 def test_two_equal_normalized_failures_stop_batch(tmp_path: Path) -> None:
     tool = load_core()
-    items = [make_item(tool, "one", "run-one"), make_item(tool, "two", "run-two"), make_item(tool, "three", "run-three")]
+    items = [
+        make_item(tool, "one", "run-one"),
+        make_item(tool, "two", "run-two"),
+        make_item(tool, "three", "run-three"),
+    ]
     adapter = FakeAdapter([7, 9, 0])
     state = tool.BatchExecutor(make_manifest(tool, tmp_path, items), tmp_path / "state", adapter, FakeClock()).run()
     assert state["status"] == "shared_failure"
@@ -248,16 +271,13 @@ def test_pause_continue_and_replay_controls_are_revision_bound(tmp_path: Path) -
 def test_stop_now_during_active_item_terminates_and_stops_batch(tmp_path: Path) -> None:
     tool = load_core()
     manifest = make_manifest(tool, tmp_path, [make_item(tool, "one", "run-one"), make_item(tool, "two", "run-two")])
-    holder = {}
 
     def issue_stop() -> None:
-        executor = holder["executor"]
         with manifest.operator_control_path.open("a") as handle:
             handle.write(json.dumps(control(tool, manifest, 1, 2, "stop_now")) + "\n")
 
     adapter = FakeAdapter([0, 0], on_start=issue_stop)
     executor = tool.BatchExecutor(manifest, tmp_path / "state", adapter, FakeClock())
-    holder["executor"] = executor
     state = executor.run()
     assert state["status"] == "stopped"
     assert len(adapter.started) == 1
@@ -294,7 +314,13 @@ def test_batch_cli_rejects_resume_and_recovery_policy(tmp_path: Path) -> None:
 
 def test_committed_batch_fixture_validates_without_starting_child() -> None:
     result = subprocess.run(
-        [sys.executable, str(CORE), "batch-validate", "--manifest", str(ROOT / "tests/experiment_workflow/fixtures/experiment_batch_v1.json")],
+        [
+            sys.executable,
+            str(CORE),
+            "batch-validate",
+            "--manifest",
+            str(ROOT / "tests/experiment_workflow/fixtures/experiment_batch_v1.json"),
+        ],
         text=True,
         capture_output=True,
         check=False,
@@ -308,15 +334,23 @@ def test_stage123_accepted_bundle_maps_to_frozen_phase_adapter_commands(tmp_path
     import execution_results
 
     freshness_modes = []
-    monkeypatch.setattr(execution_results, "validate_admission_bundle", lambda bundle, require_accepted: SimpleNamespace(authorized=True, code="accepted", message="ok"))
+    monkeypatch.setattr(
+        execution_results,
+        "validate_admission_bundle",
+        lambda bundle, require_accepted: SimpleNamespace(authorized=True, code="accepted", message="ok"),
+    )
     monkeypatch.setattr(
         execution_results,
         "validate_current_checkout",
-        lambda bundle, repo_root, protected_baseline, require_accepted, **kwargs: freshness_modes.append(kwargs["enforce_result_freshness"])
+        lambda bundle, repo_root, protected_baseline, require_accepted, **kwargs: freshness_modes.append(
+            kwargs["enforce_result_freshness"]
+        )
         or SimpleNamespace(authorized=True, code="authorized", message="ok"),
     )
-    input_path = tmp_path / "input.json"; input_path.write_text("{}")
-    report_path = tmp_path / "acceptance.json"; report_path.write_text("{}")
+    input_path = tmp_path / "input.json"
+    input_path.write_text("{}")
+    report_path = tmp_path / "acceptance.json"
+    report_path.write_text("{}")
     bundle = {
         "schema_version": 1,
         "bundle_type": "stage123_admission_bundle",
@@ -331,7 +365,11 @@ def test_stage123_accepted_bundle_maps_to_frozen_phase_adapter_commands(tmp_path
     validated = tool.validate_admission_bundle(bundle, tmp_path / "bundle.json", ROOT)
     tool.validate_admission_bundle(bundle, tmp_path / "bundle.json", ROOT, static_after_item_start=True)
     assert validated["adapter_type"] == "stage123_queue_v1"
-    assert [command[-1] for command in validated["commands"]] == ["frac25-stage1-control", "frac25-stage2", "frac25-stage3"]
+    assert [command[-1] for command in validated["commands"]] == [
+        "frac25-stage1-control",
+        "frac25-stage2",
+        "frac25-stage3",
+    ]
     assert all(command[2] == "/workspace/verl/scripts/stage123_phase_adapter.py" for command in validated["commands"])
     assert freshness_modes == [True, False]
 
@@ -348,6 +386,13 @@ def test_batch_item_persists_live_admission_and_passes_it_to_all_phases(tmp_path
     record = json.loads(record_path.read_text())
     assert record["status"] == "active"
     assert record["expected_run_ids"] == list(item.expected_run_ids)
-    assert all(environment["STAGE123_BATCH_ADMISSION_RECORD"] == str(record_path) for environment in adapter.environments)
-    assert all(environment["STAGE123_BATCH_ADMISSION_RECORD_SHA256"] == record["record_sha256"] for environment in adapter.environments)
-    assert all(environment["STAGE123_BATCH_COMMAND_SHA256"] == item.command_sha256 for environment in adapter.environments)
+    assert all(
+        environment["STAGE123_BATCH_ADMISSION_RECORD"] == str(record_path) for environment in adapter.environments
+    )
+    assert all(
+        environment["STAGE123_BATCH_ADMISSION_RECORD_SHA256"] == record["record_sha256"]
+        for environment in adapter.environments
+    )
+    assert all(
+        environment["STAGE123_BATCH_COMMAND_SHA256"] == item.command_sha256 for environment in adapter.environments
+    )

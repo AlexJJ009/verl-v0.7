@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Validate and sandbox-exercise the PM2-only CI keepalive contract."""
 
 from __future__ import annotations
@@ -10,7 +12,6 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
-
 
 FORBIDDEN = ("systemctl", "pm2 startup", ".service")
 

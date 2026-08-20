@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Execute an admitted Qwen3-1.7B Math or Code Stage1/2/3 matrix sequentially."""
 
 from __future__ import annotations
@@ -7,15 +9,14 @@ import argparse
 import hashlib
 import json
 import os
-from pathlib import Path
 import re
 import subprocess
 import sys
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 
 import yaml
-
 
 ROOT = Path(__file__).resolve().parents[1]
 MATH_WRAPPERS = {
@@ -93,7 +94,9 @@ def load_completed_outputs(artifact_root: Path, run_spec: dict) -> dict[str, str
     return {str(name): str(output_path) for name, output_path in outputs.items()}
 
 
-def continuation_state(manifest: dict, artifact_root: Path, start_run: str | None) -> tuple[dict[str, dict], list[dict]]:
+def continuation_state(
+    manifest: dict, artifact_root: Path, start_run: str | None
+) -> tuple[dict[str, dict], list[dict]]:
     runs = manifest["runs"]
     if start_run is None:
         return {}, runs
@@ -101,18 +104,13 @@ def continuation_state(manifest: dict, artifact_root: Path, start_run: str | Non
     if start_run not in run_ids:
         raise RuntimeError(f"unknown continuation run {start_run}; expected one of {run_ids}")
     start_index = run_ids.index(start_run)
-    outputs = {
-        run_spec["id"]: load_completed_outputs(artifact_root, run_spec)
-        for run_spec in runs[:start_index]
-    }
+    outputs = {run_spec["id"]: load_completed_outputs(artifact_root, run_spec) for run_spec in runs[:start_index]}
     return outputs, runs[start_index:]
 
 
 def checkpoint_after(prefix: str, started_at: float, final_step: int) -> Path:
     checkpoint_roots = [
-        path
-        for path in Path("/data-1/checkpoints").glob(f"{prefix}_*")
-        if path.stat().st_mtime >= started_at - 5
+        path for path in Path("/data-1/checkpoints").glob(f"{prefix}_*") if path.stat().st_mtime >= started_at - 5
     ]
     candidates = []
     for path in checkpoint_roots:
@@ -158,15 +156,37 @@ def is_transient_port_collision(log_path: Path) -> bool:
 
 
 def execute(command: list[str], env: dict[str, str], dry_run: bool, run_id: str) -> None:
-    printable = {key: env[key] for key in sorted(env) if key in {
-        "RUN_PREFIX", "INIT_MODEL_PATH", "BASE_MODEL_PATH", "MODEL2_PATH", "STAGE2_MODEL_PATH",
-        "MODEL_PATH",
-        "TRAIN_FILE", "CODE_TRAIN_FILE", "CODE_VAL_FILES", "TEST_FILES", "TOTAL_TRAINING_STEPS", "WDL_SFT_BETA", "SUBMODEL_KL_ENABLED",
-        "SUBMODEL_KL_MODEL2_ENABLED", "SUBMODEL_KL_MODEL2_COEF", "SUBMODEL_KL_MODEL2_REF_PATH",
-        "LR", "LR_WARMUP_STEPS", "ROLLOUT_GPU_MEMORY_UTILIZATION",
-        "ACTOR_CALCULATE_ENTROPY", "CALCULATE_ENTROPY",
-        "EXPECTED_MODEL1_PATH", "STAGE1_MODEL2_PROVENANCE_FILE", "FUSION_LAMBDA",
-    }}
+    printable = {
+        key: env[key]
+        for key in sorted(env)
+        if key
+        in {
+            "RUN_PREFIX",
+            "INIT_MODEL_PATH",
+            "BASE_MODEL_PATH",
+            "MODEL2_PATH",
+            "STAGE2_MODEL_PATH",
+            "MODEL_PATH",
+            "TRAIN_FILE",
+            "CODE_TRAIN_FILE",
+            "CODE_VAL_FILES",
+            "TEST_FILES",
+            "TOTAL_TRAINING_STEPS",
+            "WDL_SFT_BETA",
+            "SUBMODEL_KL_ENABLED",
+            "SUBMODEL_KL_MODEL2_ENABLED",
+            "SUBMODEL_KL_MODEL2_COEF",
+            "SUBMODEL_KL_MODEL2_REF_PATH",
+            "LR",
+            "LR_WARMUP_STEPS",
+            "ROLLOUT_GPU_MEMORY_UTILIZATION",
+            "ACTOR_CALCULATE_ENTROPY",
+            "CALCULATE_ENTROPY",
+            "EXPECTED_MODEL1_PATH",
+            "STAGE1_MODEL2_PROVENANCE_FILE",
+            "FUSION_LAMBDA",
+        }
+    }
     print(json.dumps({"command": command, "environment": printable}, sort_keys=True), flush=True)
     if dry_run:
         return
@@ -248,7 +268,18 @@ def verify_dataset_receipt(receipt_path: Path, source_path: Path, seed: int, dry
 
 def merge_single(actor: Path, target: Path) -> None:
     subprocess.run(
-        [sys.executable, "-m", "verl.model_merger", "merge", "--backend", "fsdp", "--local_dir", str(actor), "--target_dir", str(target)],
+        [
+            sys.executable,
+            "-m",
+            "verl.model_merger",
+            "merge",
+            "--backend",
+            "fsdp",
+            "--local_dir",
+            str(actor),
+            "--target_dir",
+            str(target),
+        ],
         cwd=ROOT,
         check=True,
     )
@@ -259,13 +290,34 @@ def merge_stage2(actor: Path, artifact_dir: Path) -> dict[str, str]:
     model1 = artifact_dir / "stage2_final_model1"
     model2 = artifact_dir / "stage2_final_model2"
     subprocess.run(
-        [sys.executable, "-m", "verl.model_merger", "merge", "--backend", "fsdp", "--local_dir", str(actor), "--target_dir", str(joint), "--trust-remote-code"],
+        [
+            sys.executable,
+            "-m",
+            "verl.model_merger",
+            "merge",
+            "--backend",
+            "fsdp",
+            "--local_dir",
+            str(actor),
+            "--target_dir",
+            str(joint),
+            "--trust-remote-code",
+        ],
         cwd=ROOT,
         check=True,
     )
     for index, target in ((0, model1), (1, model2)):
         subprocess.run(
-            [sys.executable, str(ROOT / "recipe/joint_training/extract_sub_model.py"), "--joint_model_path", str(joint), "--output_path", str(target), "--sub_model_index", str(index)],
+            [
+                sys.executable,
+                str(ROOT / "recipe/joint_training/extract_sub_model.py"),
+                "--joint_model_path",
+                str(joint),
+                "--output_path",
+                str(target),
+                "--sub_model_index",
+                str(index),
+            ],
             cwd=ROOT,
             check=True,
         )
@@ -301,7 +353,9 @@ def verify_model_identity(selection: dict) -> Path:
         "chat_template_sha256": model_path / "chat_template.jinja",
     }
     for field, path in files.items():
-        if field in identity and (not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != identity[field]):
+        if field in identity and (
+            not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != identity[field]
+        ):
             raise RuntimeError(f"Model1 identity mismatch: {path}")
     for weight in identity.get("weight_files", []):
         path = Path(weight["path"])
@@ -387,12 +441,13 @@ def main() -> int:
     else:
         selected_model = selected_model_from_receipt(manifest, selection_path)
     model1_identity_env = (
-        model1_identity_environment(selection_path)
-        if task == "code" and selection_path.exists()
-        else {}
+        model1_identity_environment(selection_path) if task == "code" and selection_path.exists() else {}
     )
     if args.dry_run and not receipt_path.exists():
-        shards = {name: {"path": f"/DATASET_PENDING/{name}.parquet"} for name in ("stage1", "stage2", "stage3", "stage1_control")}
+        shards = {
+            name: {"path": f"/DATASET_PENDING/{name}.parquet"}
+            for name in ("stage1", "stage2", "stage3", "stage1_control")
+        }
     else:
         shards = json.loads(receipt_path.read_text())["shards"]
 
@@ -404,29 +459,29 @@ def main() -> int:
             artifact_dir = artifact_root / run_spec["id"]
             env = dict(os.environ)
             env.update(
-            {
-                "RUN_PREFIX": run_prefix(run_spec),
-                "TRAIN_FILE": shards[run_spec["train_shard"]]["path"],
-                "TOTAL_TRAINING_STEPS": str(run_spec["final_step"]),
-                "WDL_SFT_BETA": str(run_spec["beta"]),
-                "DATA_SEED": str(manifest["seed"]),
-                "DATA_SHUFFLE": "False",
-                "LR": "1e-6",
-                "LR_WARMUP_STEPS": "0",
-                "ROLLOUT_GPU_MEMORY_UTILIZATION": str(manifest["resources"]["rollout_gpu_memory_utilization"]),
-                "ACTOR_CALCULATE_ENTROPY": "False",
-                "CALCULATE_ENTROPY": "False",
-                "CODE_STAGE123_QUEUE_ADMITTED": "1",
-                "CODE_STAGE123_MANIFEST": str(args.manifest),
-                "CODE_STAGE123_MANIFEST_SHA256": os.environ.get("CODE_STAGE123_MANIFEST_SHA256", "dry-run"),
-                "CODE_STAGE123_MODEL1_SELECTION_SHA256": os.environ.get(
-                    "CODE_STAGE123_MODEL1_SELECTION_SHA256", "dry-run"
-                ),
-                "CODE_STAGE123_DATASET_RECEIPT_SHA256": os.environ.get(
-                    "CODE_STAGE123_DATASET_RECEIPT_SHA256", "dry-run"
-                ),
-                "STAGE123_RUN_ID": run_spec["id"],
-            }
+                {
+                    "RUN_PREFIX": run_prefix(run_spec),
+                    "TRAIN_FILE": shards[run_spec["train_shard"]]["path"],
+                    "TOTAL_TRAINING_STEPS": str(run_spec["final_step"]),
+                    "WDL_SFT_BETA": str(run_spec["beta"]),
+                    "DATA_SEED": str(manifest["seed"]),
+                    "DATA_SHUFFLE": "False",
+                    "LR": "1e-6",
+                    "LR_WARMUP_STEPS": "0",
+                    "ROLLOUT_GPU_MEMORY_UTILIZATION": str(manifest["resources"]["rollout_gpu_memory_utilization"]),
+                    "ACTOR_CALCULATE_ENTROPY": "False",
+                    "CALCULATE_ENTROPY": "False",
+                    "CODE_STAGE123_QUEUE_ADMITTED": "1",
+                    "CODE_STAGE123_MANIFEST": str(args.manifest),
+                    "CODE_STAGE123_MANIFEST_SHA256": os.environ.get("CODE_STAGE123_MANIFEST_SHA256", "dry-run"),
+                    "CODE_STAGE123_MODEL1_SELECTION_SHA256": os.environ.get(
+                        "CODE_STAGE123_MODEL1_SELECTION_SHA256", "dry-run"
+                    ),
+                    "CODE_STAGE123_DATASET_RECEIPT_SHA256": os.environ.get(
+                        "CODE_STAGE123_DATASET_RECEIPT_SHA256", "dry-run"
+                    ),
+                    "STAGE123_RUN_ID": run_spec["id"],
+                }
             )
             if task == "code":
                 code_validation_files = [
@@ -453,34 +508,46 @@ def main() -> int:
             elif run_spec["phase"] == "stage2":
                 stage1_model = source.get("model", f"/SOURCE_PENDING/{run_spec['source_run']}")
                 env.update(
-                {
-                    "BASE_MODEL_PATH": str(selected_model),
-                    "MODEL2_PATH": stage1_model,
-                    "STAGE1_MODEL2_PROVENANCE_FILE": str(
-                        artifact_root / run_spec["source_run"] / "provenance.json"
-                    ),
-                    "ALLOW_EXTERNAL_MODEL2": "1" if not args.dry_run else "0",
-                    "ALLOW_EXTERNAL_MODEL2_FOR_DRY_RUN": "1" if args.dry_run else "0",
-                    "MODEL_PATH": str(stage2_joint_cache_path(artifact_root, run_spec["id"], task)),
-                    "STAGE1_RUN_PREFIX": run_prefix(next(item for item in manifest["runs"] if item["id"] == run_spec["source_run"]), task),
-                    "EXPECTED_STAGE1_RUN_PREFIX": run_prefix(next(item for item in manifest["runs"] if item["id"] == run_spec["source_run"]), task),
-                    "STAGE1_STEP": str(next(item["final_step"] for item in manifest["runs"] if item["id"] == run_spec["source_run"])),
-                    "STAGE2_HANDOFF_STEP": str(next(item["final_step"] for item in manifest["runs"] if item["id"] == run_spec["source_run"])),
-                    "EXPECTED_STAGE1_BETA": str(run_spec["beta"]),
-                    "SUBMODEL_KL_ENABLED": "true" if run_spec["kl"] == "m2kl" else "false",
-                    "SUBMODEL_KL_MODEL1_ENABLED": "false",
-                    "SUBMODEL_KL_MODEL2_ENABLED": "true" if run_spec["kl"] == "m2kl" else "false",
-                    "SUBMODEL_KL_MODEL2_COEF": str(manifest["matrix"]["model2_kl_coef"] if run_spec["kl"] == "m2kl" else 0.0),
-                    "SUBMODEL_KL_MODEL2_REF_PATH": stage1_model,
-                }
+                    {
+                        "BASE_MODEL_PATH": str(selected_model),
+                        "MODEL2_PATH": stage1_model,
+                        "STAGE1_MODEL2_PROVENANCE_FILE": str(
+                            artifact_root / run_spec["source_run"] / "provenance.json"
+                        ),
+                        "ALLOW_EXTERNAL_MODEL2": "1" if not args.dry_run else "0",
+                        "ALLOW_EXTERNAL_MODEL2_FOR_DRY_RUN": "1" if args.dry_run else "0",
+                        "MODEL_PATH": str(stage2_joint_cache_path(artifact_root, run_spec["id"], task)),
+                        "STAGE1_RUN_PREFIX": run_prefix(
+                            next(item for item in manifest["runs"] if item["id"] == run_spec["source_run"]), task
+                        ),
+                        "EXPECTED_STAGE1_RUN_PREFIX": run_prefix(
+                            next(item for item in manifest["runs"] if item["id"] == run_spec["source_run"]), task
+                        ),
+                        "STAGE1_STEP": str(
+                            next(
+                                item["final_step"] for item in manifest["runs"] if item["id"] == run_spec["source_run"]
+                            )
+                        ),
+                        "STAGE2_HANDOFF_STEP": str(
+                            next(
+                                item["final_step"] for item in manifest["runs"] if item["id"] == run_spec["source_run"]
+                            )
+                        ),
+                        "EXPECTED_STAGE1_BETA": str(run_spec["beta"]),
+                        "SUBMODEL_KL_ENABLED": "true" if run_spec["kl"] == "m2kl" else "false",
+                        "SUBMODEL_KL_MODEL1_ENABLED": "false",
+                        "SUBMODEL_KL_MODEL2_ENABLED": "true" if run_spec["kl"] == "m2kl" else "false",
+                        "SUBMODEL_KL_MODEL2_COEF": str(
+                            manifest["matrix"]["model2_kl_coef"] if run_spec["kl"] == "m2kl" else 0.0
+                        ),
+                        "SUBMODEL_KL_MODEL2_REF_PATH": stage1_model,
+                    }
                 )
             else:
                 submodel = run_spec["submodel"]
                 env["STAGE2_MODEL_PATH"] = source.get(submodel, f"/SOURCE_PENDING/{run_spec['source_run']}/{submodel}")
                 env["STAGE2_SUBMODEL"] = submodel
-                env["STAGE2_PROVENANCE_FILE"] = str(
-                    artifact_root / run_spec["source_run"] / "provenance.json"
-                )
+                env["STAGE2_PROVENANCE_FILE"] = str(artifact_root / run_spec["source_run"] / "provenance.json")
 
             started_at = time.time()
             if not args.dry_run:
@@ -488,7 +555,11 @@ def main() -> int:
             env["RUN_PREFIX"] = run_prefix(run_spec, task)
             execute(["bash", str(wrappers[run_spec["phase"]])], env, args.dry_run, run_spec["id"])
             if args.dry_run:
-                outputs[run_spec["id"]] = {"model": f"/DRY_RUN/{run_spec['id']}/model", "model1": f"/DRY_RUN/{run_spec['id']}/model1", "model2": f"/DRY_RUN/{run_spec['id']}/model2"}
+                outputs[run_spec["id"]] = {
+                    "model": f"/DRY_RUN/{run_spec['id']}/model",
+                    "model1": f"/DRY_RUN/{run_spec['id']}/model1",
+                    "model2": f"/DRY_RUN/{run_spec['id']}/model2",
+                }
                 continue
             actor = checkpoint_after(env["RUN_PREFIX"], started_at, run_spec["final_step"])
             artifact_dir.mkdir(parents=True, exist_ok=False)
@@ -509,10 +580,10 @@ def main() -> int:
                     "extracted_model1": outputs[run_spec["id"]]["model1"],
                     "extracted_model2": outputs[run_spec["id"]]["model2"],
                 }
-            (artifact_dir / "provenance.json").write_text(
-                json.dumps(provenance, indent=2, sort_keys=True) + "\n"
+            (artifact_dir / "provenance.json").write_text(json.dumps(provenance, indent=2, sort_keys=True) + "\n")
+            emit_event(
+                "stage_run_completed", run_id=run_spec["id"], phase=run_spec["phase"], outputs=outputs[run_spec["id"]]
             )
-            emit_event("stage_run_completed", run_id=run_spec["id"], phase=run_spec["phase"], outputs=outputs[run_spec["id"]])
     except Exception as exc:
         if not args.dry_run:
             emit_queue_terminal("queue_failed", reason=str(exc), task=task)

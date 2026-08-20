@@ -1,12 +1,13 @@
+# SPDX-License-Identifier: Apache-2.0
+
 from __future__ import annotations
 
-import json
 import copy
 import importlib.util
-from pathlib import Path
+import json
 import subprocess
 import sys
-
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 TOOL = ROOT / "scripts/stage123_matrix_manifest.py"

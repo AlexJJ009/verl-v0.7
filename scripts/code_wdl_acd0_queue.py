@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Fail-closed beta=0 Code A/D0/C P60 queue."""
 
 from __future__ import annotations
@@ -13,7 +15,6 @@ import time
 from pathlib import Path
 
 import yaml
-
 
 ROOT = Path(__file__).resolve().parents[1]
 WRAPPERS = {
@@ -72,9 +73,7 @@ def validate_manifest(manifest: dict, require_launch: bool) -> None:
         Path(paths["train_file"]): identity["train_sha256"],
         ROOT / manifest["evaluator_contract"]["reward_path"]: identity["reward_sha256"],
         ROOT / "verl/workers/reward_manager/dapo.py": identity["dapo_reward_manager_sha256"],
-        ROOT / "verl/experimental/reward_loop/reward_manager/dapo.py": identity[
-            "async_dapo_reward_manager_sha256"
-        ],
+        ROOT / "verl/experimental/reward_loop/reward_manager/dapo.py": identity["async_dapo_reward_manager_sha256"],
     }
     for path, expected in checks.items():
         if not path.is_file() or sha256(path) != expected:
@@ -115,7 +114,10 @@ def validate_manifest(manifest: dict, require_launch: bool) -> None:
         raise RuntimeError("run prefixes differ from the frozen collision-safe contract")
     if (run_map["arm-c-mixture"]["fusion_lambda"], run_map["arm-c-mixture"]["fusion_mode"]) != (0.8, "mixture"):
         raise RuntimeError("Arm C must be lambda=0.8 mixture")
-    if (run_map["arm-d0-matched-scale-no-weak"]["fusion_lambda"], run_map["arm-d0-matched-scale-no-weak"]["fusion_mode"]) != (0.8, "strong_scaled"):
+    if (
+        run_map["arm-d0-matched-scale-no-weak"]["fusion_lambda"],
+        run_map["arm-d0-matched-scale-no-weak"]["fusion_mode"],
+    ) != (0.8, "strong_scaled"):
         raise RuntimeError("Arm D0 must be lambda=0.8 strong_scaled")
 
 
@@ -147,15 +149,12 @@ def require_clean_targets(manifest: dict, run: dict) -> None:
             collisions.append(candidate)
     if collisions:
         raise RuntimeError(
-            "refusing implicit overwrite/resume for "
-            f"{run['id']}: " + ", ".join(str(path) for path in collisions)
+            f"refusing implicit overwrite/resume for {run['id']}: " + ", ".join(str(path) for path in collisions)
         )
 
 
 def _metrics_path(run_name: str, env: dict[str, str]) -> Path:
-    metrics_root = Path(
-        env.get("VERL_FILE_LOGGER_ROOT", ROOT / "recipe/on_policy_wdl_sft/code_task/metrics")
-    )
+    metrics_root = Path(env.get("VERL_FILE_LOGGER_ROOT", ROOT / "recipe/on_policy_wdl_sft/code_task/metrics"))
     return metrics_root / env.get("WANDB_PROJECT", "OnPolicyWDLSFT-CodeTask") / f"{run_name}.jsonl"
 
 
@@ -190,9 +189,7 @@ def _record_gate_event(
     env: dict[str, str],
     notes: str,
 ) -> None:
-    state = Path(
-        env.get("TRAINING_RELEASE_GATE_STATE", "/data-1/experiment_registry/training_release_gate.jsonl")
-    )
+    state = Path(env.get("TRAINING_RELEASE_GATE_STATE", "/data-1/experiment_registry/training_release_gate.jsonl"))
     command = [
         sys.executable,
         str(ROOT / "scripts/training_result_release_gate.py"),
@@ -321,19 +318,21 @@ def main() -> int:
         if not args.dry_run:
             require_clean_targets(manifest, run)
         env = dict(os.environ)
-        env.update({
-            "RUN_PREFIX": run["run_prefix"],
-            "INIT_MODEL_PATH": manifest["paths"]["model2"],
-            "BASE_MODEL_PATH": manifest["paths"]["model1"],
-            "EXPECTED_MODEL1_PATH": manifest["paths"]["model1"],
-            "MODEL2_PATH": manifest["paths"]["model2"],
-            "STAGE1_MODEL2_PROVENANCE_FILE": manifest["paths"]["model2_provenance"],
-            "TRAIN_FILE": manifest["paths"]["train_file"],
-            "BASE_CKPT_DIR": manifest["paths"]["checkpoint_root"],
-            "FUSION_LAMBDA": str(run.get("fusion_lambda") or ""),
-            "FUSION_MODE": str(run.get("fusion_mode") or ""),
-            "DRY_RUN": "1" if args.dry_run else "0",
-        })
+        env.update(
+            {
+                "RUN_PREFIX": run["run_prefix"],
+                "INIT_MODEL_PATH": manifest["paths"]["model2"],
+                "BASE_MODEL_PATH": manifest["paths"]["model1"],
+                "EXPECTED_MODEL1_PATH": manifest["paths"]["model1"],
+                "MODEL2_PATH": manifest["paths"]["model2"],
+                "STAGE1_MODEL2_PROVENANCE_FILE": manifest["paths"]["model2_provenance"],
+                "TRAIN_FILE": manifest["paths"]["train_file"],
+                "BASE_CKPT_DIR": manifest["paths"]["checkpoint_root"],
+                "FUSION_LAMBDA": str(run.get("fusion_lambda") or ""),
+                "FUSION_MODE": str(run.get("fusion_mode") or ""),
+                "DRY_RUN": "1" if args.dry_run else "0",
+            }
+        )
         env.setdefault("LOG_DIR", str(Path(manifest["paths"]["artifact_root"]) / "logs"))
         env.setdefault("VERL_FILE_LOGGER_ROOT", str(Path(env["LOG_DIR"]) / "metrics"))
         launch_timestamp = int(time.time())
