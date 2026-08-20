@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Fail-closed CPU audit for the frozen Stage123 execution contract."""
 
 import argparse

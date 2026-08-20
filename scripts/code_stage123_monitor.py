@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Monitor the Code Stage123 event stream and send deduplicated milestones."""
 
 from __future__ import annotations

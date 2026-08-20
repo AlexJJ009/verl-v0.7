@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+
 """
 Tests for the custom_reward_function_latex_verify module.
 

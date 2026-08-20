@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Deterministic release gate for training-result publication.
 
 The gate records terminal monitor events and answers whether a run is allowed

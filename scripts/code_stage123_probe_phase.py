@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Run one Code Stage123 probe phase without producing formal checkpoints."""
 
 from __future__ import annotations

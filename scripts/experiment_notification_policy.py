@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Emit only reviewed experiment lifecycle events through an injectable sender."""
 
 from __future__ import annotations

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Monitor the integrated 1.7B math queue and send deduplicated WxPusher milestones."""
 
 from __future__ import annotations

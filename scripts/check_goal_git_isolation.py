@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Verify content-addressed dirty baselines and the controlled recipe adoption."""
 
 from __future__ import annotations

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Enforce validation hard walls using explicit run ownership evidence."""
 
 from __future__ import annotations

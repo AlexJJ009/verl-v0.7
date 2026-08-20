@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Structured validator for experiment execution results."""
 
 from __future__ import annotations

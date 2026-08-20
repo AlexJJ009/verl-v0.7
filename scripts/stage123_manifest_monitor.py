@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Read-only persisted-event monitor for atomic, batch, and Stage123 execution."""
 
 from __future__ import annotations

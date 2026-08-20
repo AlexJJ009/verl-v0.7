@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Compare preflight reports without allowing semantic downscope."""
 
 from __future__ import annotations

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Compatibility wrapper for the server-wide agent context sync tool."""
 
 from __future__ import annotations

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Block launch when a preflight report violates hard or soft policy."""
 
 from __future__ import annotations

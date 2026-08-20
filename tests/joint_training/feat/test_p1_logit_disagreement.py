@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+
 """P1 tests: jointTraining/submodel_logit_disagreement.
 
 The logit disagreement metric measures the mean absolute difference between

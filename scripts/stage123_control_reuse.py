@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Prepare and validate the non-training Stage123 certified-control recovery."""
 
 from __future__ import annotations

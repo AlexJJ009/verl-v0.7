@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Build a deterministic workflow baseline from structured local evidence."""
 
 from __future__ import annotations

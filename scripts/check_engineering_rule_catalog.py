@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Validate trigger/action/failure engineering rule records."""
 
 from __future__ import annotations

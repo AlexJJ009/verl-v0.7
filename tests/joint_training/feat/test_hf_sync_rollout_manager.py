@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+
 """Unit tests for HFSyncRolloutManager and HFRollout worker-side tokenization.
 
 Verifies that:

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """CPU-testable experiment execution state machine."""
 
 from __future__ import annotations

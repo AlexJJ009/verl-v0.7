@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Fail closed unless a math reward module enforces the structured format contract."""
 
 from __future__ import annotations

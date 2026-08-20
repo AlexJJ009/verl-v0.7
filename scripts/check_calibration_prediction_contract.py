@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Generate and verify dynamic calibration prediction contracts.
 
 The module is intentionally CPU-only and importable by later assemblers/checkers.

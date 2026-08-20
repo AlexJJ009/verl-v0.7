@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Import a completed code-task training run into the local experiment registry."""
 
 from __future__ import annotations

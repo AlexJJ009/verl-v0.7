@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Probe the admitted Code Stage123 matrix at 8K context."""
 
 from __future__ import annotations

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+
 """Prepare joint model weights from one or two base models.
 
 Mode 1 (single model): Both sub-models share the same initial weights.

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Run Qwen3-1.7B Code Cold Start with full Code-3 validation every five steps."""
 
 from __future__ import annotations

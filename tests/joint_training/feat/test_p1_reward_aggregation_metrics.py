@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+
 """P1 tests: reward metadata aggregation metrics in ray_trainer._val_metrics_update().
 
 Tests the following jointTraining/ metrics computed from reward_extra_infos_dict:

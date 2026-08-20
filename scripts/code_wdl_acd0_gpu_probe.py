@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Run fresh one-step GPU probes for Code A, D0, and C."""
 
 from __future__ import annotations

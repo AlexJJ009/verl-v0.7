@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+
 """QwenJointForCausalLM: Joint training model with logit fusion.
 
 Two Qwen3ForCausalLM sub-models perform independent forward passes.

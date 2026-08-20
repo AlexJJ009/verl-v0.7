@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+
 """Tests for AutoModel loading with trust_remote_code.
 
 Verifies the joint model can be loaded through HuggingFace's AutoModel

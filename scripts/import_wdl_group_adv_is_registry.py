@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Import the completed WDL group-advantage IS run into the local registry.
 
 The importer is intentionally source-driven: every value comes from the

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+
 """Feature tests for joint training weight extraction utilities.
 
 Tests the pure logic of extracting model2 weights from a joint model's state dict,

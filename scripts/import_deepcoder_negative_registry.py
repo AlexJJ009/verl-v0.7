@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Import DeepCoder 4K negative-result code-task runs into SQLite registry.
 
 This is a supplemental importer for source-backed metrics that the generic

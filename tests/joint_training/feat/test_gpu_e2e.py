@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+
 """GPU end-to-end tests for joint training with FSDP.
 
 All tests are skipped if no CUDA GPU is available.

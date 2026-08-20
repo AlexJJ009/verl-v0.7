@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+
 """Configuration class for QwenJointForCausalLM.
 
 Extends Qwen3Config with joint training specific parameters:

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Audit whether a frozen Code Stage1 model is safe to reuse for A/C/D0.
 
 Native generation telemetry is authoritative for EOS/truncation.  Historical

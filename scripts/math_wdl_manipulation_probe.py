@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Fail-closed tiny-model manipulation receipt for the Math WDL C/D/D0 arms."""
 
 from __future__ import annotations

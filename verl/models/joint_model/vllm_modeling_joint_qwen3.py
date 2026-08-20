@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+
 from collections.abc import Iterable, Mapping
 from typing import Optional
 

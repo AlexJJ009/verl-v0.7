@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+
 """P2 semantic correctness audit tests.
 
 Covers:

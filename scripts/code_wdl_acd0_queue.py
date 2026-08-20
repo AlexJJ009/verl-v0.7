@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Fail-closed beta=0 Code A/D0/C P60 queue."""
 
 from __future__ import annotations

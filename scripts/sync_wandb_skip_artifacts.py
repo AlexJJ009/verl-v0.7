@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Sync a W&B offline run while skipping artifact records.
 
 This is a narrow recovery helper for offline runs whose `.wandb` event stream

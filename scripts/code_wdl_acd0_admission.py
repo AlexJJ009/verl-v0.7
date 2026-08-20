@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Create fail-closed evaluator and launch-review receipts for Code A/D0/C."""
 
 from __future__ import annotations

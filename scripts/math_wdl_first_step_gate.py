@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Wait for and validate the first optimizer step of a Math WDL causal arm."""
 
 from __future__ import annotations

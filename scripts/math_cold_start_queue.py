@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Run guarded Qwen3-1.7B math cold-start in five-step increments with full Math-7 validation."""
 
 from __future__ import annotations

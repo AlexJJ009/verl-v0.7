@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+
 """Comprehensive unit tests for the On-Policy WDL-SFT loss function.
 
 Tests cover:

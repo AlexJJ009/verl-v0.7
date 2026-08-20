@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Import staged-v1 On-Policy SFT and Stage-2 WDL-SFT runs into the registry.
 
 The importer is source-driven and idempotent. It parses local JSONL metric

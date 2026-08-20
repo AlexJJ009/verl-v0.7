@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Sample all-GPU idle wall time with NVML without spawning nvidia-smi."""
 
 from __future__ import annotations

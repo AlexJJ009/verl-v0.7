@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Validate and execute required Math WDL causal-P60 arms D0 and C.
 
 The direct-Model2 D arm is optional and is omitted by default after its

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Authoritative result classes and fail-closed legacy evidence migration."""
 
 from __future__ import annotations

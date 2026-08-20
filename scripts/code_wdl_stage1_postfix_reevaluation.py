@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Run and finalize the frozen Code Stage1 step40 post-fix reevaluation.
 
 The real launch is validation-only and must run inside tmux.  Finalization

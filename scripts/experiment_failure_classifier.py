@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Classify experiment terminal failures into one deterministic primary reason."""
 
 from __future__ import annotations

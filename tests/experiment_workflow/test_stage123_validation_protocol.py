@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+
 """Regression coverage for the frozen Stage123 online validation decoder."""
 
 import hashlib

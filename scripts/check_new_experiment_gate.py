@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Reject new or changed runnable workflows that are not manifest-native."""
 
 from __future__ import annotations

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+
 from omegaconf import OmegaConf
 
 from verl.trainer.ppo.utils import (

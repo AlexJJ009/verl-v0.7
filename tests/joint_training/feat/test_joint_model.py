@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+
 """Feature tests for QwenJointForCausalLM model class.
 
 Tests are written BEFORE implementation (TDD).

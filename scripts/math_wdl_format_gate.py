@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Check the causal-P60 validation stream for a sustained format-contract collapse."""
 
 from __future__ import annotations

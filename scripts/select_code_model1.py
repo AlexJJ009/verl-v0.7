@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Create an immutable, explicit Code Cold Start Model1 selection receipt."""
 
 from __future__ import annotations

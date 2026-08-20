@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Create and validate immutable Code Stage123 admissions."""
 
 from __future__ import annotations

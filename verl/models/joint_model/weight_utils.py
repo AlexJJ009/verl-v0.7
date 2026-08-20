@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+
 """Weight utilities for joint training models.
 
 Provides functions to:

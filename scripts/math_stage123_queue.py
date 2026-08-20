@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Execute an admitted Qwen3-1.7B Math or Code Stage1/2/3 matrix sequentially."""
 
 from __future__ import annotations

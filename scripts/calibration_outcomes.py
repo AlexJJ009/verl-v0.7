@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Outcome-schema-v2 extraction for calibration generation evidence."""
 
 from __future__ import annotations

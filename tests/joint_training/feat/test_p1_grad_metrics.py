@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+
 """P1 tests: jointTraining/model_grad_norm_ratio and model_grad_cosine_similarity.
 
 These metrics are computed in dp_actor._compute_joint_grad_norm_metrics().

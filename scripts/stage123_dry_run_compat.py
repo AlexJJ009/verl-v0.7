@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Render legacy Stage123 dry-run evidence without launching lifecycle work."""
 
 from __future__ import annotations

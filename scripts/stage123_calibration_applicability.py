@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+
 """Rebind accepted Stage123 calibration when the capacity plane is unchanged."""
 
 from __future__ import annotations

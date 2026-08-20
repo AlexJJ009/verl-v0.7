@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+
 """Regression tests to ensure joint training changes don't break existing functionality.
 
 These tests verify that:
