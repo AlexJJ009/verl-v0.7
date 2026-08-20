@@ -61,6 +61,8 @@ def test_gpu_smoke_normalizes_collective_inputs_and_loads_sharded_namespaces():
     text = RUNNER.read_text()
     assert "tensor = tensor.contiguous()" in text
     assert "weights_only=False" in text
+    assert "SMOKE_ROW_CHUNK_SIZE = 8" in text
+    assert "SMOKE_AUDIT_ROWS = 4" in text
 
 
 def test_gpu_smoke_rejects_non_exact_lowercase_sha_without_shell_splice():

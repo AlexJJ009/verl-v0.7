@@ -42,6 +42,8 @@ from verl.workers.actor.dp_actor import DataParallelPPOActor
 from verl.workers.config import FSDPActorConfig, PolicyLossConfig, WeakLogitPermutationConfig
 
 SEED = 20260820
+SMOKE_ROW_CHUNK_SIZE = 8
+SMOKE_AUDIT_ROWS = 4
 
 
 def _digest(data: bytes) -> str:
@@ -114,10 +116,10 @@ def _build_actor(*, freeze_model1: bool, enabled: bool, rho: float):
             enabled=enabled,
             rho=rho,
             seed=SEED,
-            row_chunk_size=64,
+            row_chunk_size=SMOKE_ROW_CHUNK_SIZE,
             audit_invariants=True,
             audit_frequency=1,
-            audit_rows=32,
+            audit_rows=SMOKE_AUDIT_ROWS,
         ),
     )
     return model, optimizer, scheduler, DataParallelPPOActor(actor_config, model, optimizer)
@@ -141,8 +143,8 @@ def _micro_batch(*, enabled: bool, rho: float, step: int) -> dict[str, torch.Ten
         "dynperm_base_seed": SEED,
         "dynperm_global_step": step,
         "dynperm_actor_update_index": 0,
-        "dynperm_row_chunk_size": 64,
-        "dynperm_audit_rows": 32,
+        "dynperm_row_chunk_size": SMOKE_ROW_CHUNK_SIZE,
+        "dynperm_audit_rows": SMOKE_AUDIT_ROWS,
         "dynperm_entropy_atol": 2e-6,
         "dynperm_multiset_atol": 0.0,
         "return_submodel_log_probs": False,
