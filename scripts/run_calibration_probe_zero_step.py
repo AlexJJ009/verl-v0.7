@@ -8,7 +8,7 @@ import errno
 import hashlib
 import json
 import os
-from pathlib import Path
+import re
 import shutil
 import signal
 import subprocess
@@ -16,18 +16,20 @@ import sys
 import threading
 import time
 import tokenize
-from io import StringIO
-from typing import Any
-import re
 from datetime import datetime, timezone
+from io import StringIO
+from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-from scripts.calibration_prediction import qualify
+from scripts.calibration_prediction import qualify  # noqa: E402
 
 PHASE_SCRIPT = ROOT / "recipe/on_policy_wdl_sft/code_task/run_code_task_operational_calibration_phase.sh"
-PHASE_SCRIPT_CONTAINER = "/workspace/verl/recipe/on_policy_wdl_sft/code_task/run_code_task_operational_calibration_phase.sh"
+PHASE_SCRIPT_CONTAINER = (
+    "/workspace/verl/recipe/on_policy_wdl_sft/code_task/run_code_task_operational_calibration_phase.sh"
+)
 REQUIRED_PHASES = ["stage1", "stage2", "stage3"]
 TREATMENT_ONLY_PHASES = ["stage2", "stage3"]
 ALLOWED_PHASE_SETS = (REQUIRED_PHASES, TREATMENT_ONLY_PHASES)
@@ -79,9 +81,15 @@ def build_prediction_comparison(history_result_path: Path, phase_reports: list[d
         raise ValueError("prediction history result is not accepted")
     history_policy_sha256 = history_result.get("policy_sha256")
     source_policy_sha256 = source.get("policy_sha256", history_policy_sha256)
-    if history_result.get("policy_id") != policy.get("policy_id") or source.get("policy_id", history_result.get("policy_id")) != policy.get("policy_id"):
+    if history_result.get("policy_id") != policy.get("policy_id") or source.get(
+        "policy_id", history_result.get("policy_id")
+    ) != policy.get("policy_id"):
         raise ValueError("prediction history policy id mismatch")
-    if not isinstance(history_policy_sha256, str) or len(history_policy_sha256) != 64 or source_policy_sha256 != history_policy_sha256:
+    if (
+        not isinstance(history_policy_sha256, str)
+        or len(history_policy_sha256) != 64
+        or source_policy_sha256 != history_policy_sha256
+    ):
         raise ValueError("prediction history policy binding mismatch")
     source_comparisons = source.get("comparisons")
     if not isinstance(source_comparisons, list):
@@ -101,17 +109,23 @@ def build_prediction_comparison(history_result_path: Path, phase_reports: list[d
         source_item = by_metric[metric]
         history = source_item.get("history")
         predicted = source_item.get("predicted_bound")
-        if not isinstance(history, list) or not all(isinstance(value, (int, float)) for value in history) or not isinstance(predicted, (int, float)):
+        if (
+            not isinstance(history, list)
+            or not all(isinstance(value, int | float) for value in history)
+            or not isinstance(predicted, int | float)
+        ):
             raise ValueError(f"invalid prediction history for {metric}")
         decision = qualify([float(value) for value in history], float(predicted), float(observed[metric]), policy)
-        comparisons.append({
-            "metric": metric,
-            "history": history,
-            "history_count": len(history),
-            "predicted_bound": predicted,
-            "observed_maximum": observed[metric],
-            "decision": decision.as_dict(),
-        })
+        comparisons.append(
+            {
+                "metric": metric,
+                "history": history,
+                "history_count": len(history),
+                "predicted_bound": predicted,
+                "observed_maximum": observed[metric],
+                "decision": decision.as_dict(),
+            }
+        )
     return {
         "qualified": all(item["decision"]["qualified"] for item in comparisons),
         "comparisons": comparisons,
@@ -155,7 +169,8 @@ def load_manifest(path: Path) -> dict[str, Any]:
 
 
 def split_workload(root: Path) -> dict[str, Path]:
-    from scripts.split_calibration_workload import EXPECTED_COUNTS, split_workload as split_with_pandas
+    from scripts.split_calibration_workload import EXPECTED_COUNTS
+    from scripts.split_calibration_workload import split_workload as split_with_pandas
 
     output_root = root / "workload"
     if Path("/.dockerenv").exists():
@@ -189,7 +204,9 @@ def split_workload(root: Path) -> dict[str, Path]:
     return outputs
 
 
-def phase_environment(rendered: dict[str, Any], phase: str, repetition: int, output: Path, splits: dict[str, Path]) -> dict[str, str]:
+def phase_environment(
+    rendered: dict[str, Any], phase: str, repetition: int, output: Path, splits: dict[str, Path]
+) -> dict[str, str]:
     runs = {item["phase"]: item for item in rendered["runs"]}
     stage2_sources = {item["role"]: item for item in rendered["calibration_workloads"]["stage2"]["model_sources"]}
     model2_source = Path(stage2_sources["model2"]["path"])
@@ -209,7 +226,10 @@ def phase_environment(rendered: dict[str, Any], phase: str, repetition: int, out
         if stage3_source.get("state") != "pending" or not proxy:
             raise RuntimeError("stage3 pending source has no explicit calibration proxy")
         stage3_model = Path(proxy["path"])
-        if not stage3_model.is_dir() or proxy["rollout_model_parameter_count"] != stage3_workload["rollout_model_parameter_count_sum"]:
+        if (
+            not stage3_model.is_dir()
+            or proxy["rollout_model_parameter_count"] != stage3_workload["rollout_model_parameter_count_sum"]
+        ):
             raise RuntimeError("stage3 calibration proxy identity mismatch")
         proxy_kind = proxy["purpose"]
     phase_code = {"stage1": "1", "stage2": "2", "stage3": "3"}[phase]
@@ -283,23 +303,26 @@ def sample_resources(process: subprocess.Popen[str], output: Path, interval: flo
         }
         for index in sorted(peak_gpu_memory_mib)
     ]
-    write_json(output, {
-        "schema_version": 1,
-        "sample_interval_seconds": interval,
-        "gpu_idle_threshold_pct": 2,
-        "gpu_sample_count": samples,
-        "gpu_idle_sample_count": idle,
-        "gpu_wait_fraction": idle / samples if samples else None,
-        "peak_rss_gib": peak / (1024 ** 3) if peak else None,
-        "memory_source": "calibration_container_cgroup_v2",
-        "gpu_memory_source": "nvidia_smi_device_memory_used",
-        "per_gpu_memory": per_gpu,
-        "peak_gpu_memory_used_mib": max(peak_gpu_memory_mib.values(), default=None),
-        "peak_gpu_memory_fraction": max(
-            (item["peak_memory_fraction"] for item in per_gpu if item["peak_memory_fraction"] is not None),
-            default=None,
-        ),
-    })
+    write_json(
+        output,
+        {
+            "schema_version": 1,
+            "sample_interval_seconds": interval,
+            "gpu_idle_threshold_pct": 2,
+            "gpu_sample_count": samples,
+            "gpu_idle_sample_count": idle,
+            "gpu_wait_fraction": idle / samples if samples else None,
+            "peak_rss_gib": peak / (1024**3) if peak else None,
+            "memory_source": "calibration_container_cgroup_v2",
+            "gpu_memory_source": "nvidia_smi_device_memory_used",
+            "per_gpu_memory": per_gpu,
+            "peak_gpu_memory_used_mib": max(peak_gpu_memory_mib.values(), default=None),
+            "peak_gpu_memory_fraction": max(
+                (item["peak_memory_fraction"] for item in per_gpu if item["peak_memory_fraction"] is not None),
+                default=None,
+            ),
+        },
+    )
 
 
 def read_metrics(output: Path) -> tuple[dict[str, Any], list[str]]:
@@ -411,7 +434,9 @@ def run_repetition(
             returncode = process.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
             timed_out = True
-            subprocess.run(["docker", "kill", container_name], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(
+                ["docker", "kill", container_name], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
             os.killpg(process.pid, signal.SIGTERM)
             try:
                 returncode = process.wait(timeout=30)
@@ -427,7 +452,14 @@ def run_repetition(
     cleanup = owned_cleanup(Path(env_delta["CALIBRATION_RAY_TMPDIR"]), process)
     cleanup["reaped_descendant_count"] = reaped_descendants
     elapsed = time.time() - start
-    status = "passed" if returncode == 0 and REQUIRED_METRICS <= metrics.keys() and not checkpoint_files and cleanup["resources_released"] else "failed"
+    status = (
+        "passed"
+        if returncode == 0
+        and REQUIRED_METRICS <= metrics.keys()
+        and not checkpoint_files
+        and cleanup["resources_released"]
+        else "failed"
+    )
     value = {
         "schema_version": 1,
         "phase": phase,
@@ -482,7 +514,10 @@ def main() -> int:
     if not str(args.scratch_root).startswith("/data-1/tmp/verl_agent_scratch/"):
         raise SystemExit("scratch_root")
     rendered = load_manifest(args.manifest)
-    if rendered["manifest_sha256"] != args.manifest_sha256 or rendered["resource_profile"]["sha256"] != args.resource_profile_sha256:
+    if (
+        rendered["manifest_sha256"] != args.manifest_sha256
+        or rendered["resource_profile"]["sha256"] != args.resource_profile_sha256
+    ):
         raise SystemExit("identity_mismatch")
     if [item["id"] for item in rendered["runs"]] != PRIMARY_RUN_IDS:
         raise SystemExit("primary_run_set")
@@ -539,7 +574,16 @@ def main() -> int:
     }
     write_json(run_root / "probe-candidate.json", candidate)
     checked = subprocess.run(
-        [sys.executable, str(ROOT / "scripts/check_code_task_operational_calibration.py"), "--report", str(run_root / "probe-candidate.json"), "--manifest", str(args.manifest), "--authorization-scope", scope],
+        [
+            sys.executable,
+            str(ROOT / "scripts/check_code_task_operational_calibration.py"),
+            "--report",
+            str(run_root / "probe-candidate.json"),
+            "--manifest",
+            str(args.manifest),
+            "--authorization-scope",
+            scope,
+        ],
         text=True,
         capture_output=True,
         check=False,
@@ -547,32 +591,52 @@ def main() -> int:
     verification = json.loads(checked.stdout)
     prediction_comparison = build_prediction_comparison(args.prediction_history_result, phase_reports)
     if not prediction_comparison["qualified"]:
-        verification["failures"].append({"code": "prediction_exceeded", "message": "fresh probe exceeds the accepted prediction policy", "context": {}})
+        verification["failures"].append(
+            {
+                "code": "prediction_exceeded",
+                "message": "fresh probe exceeds the accepted prediction policy",
+                "context": {},
+            }
+        )
         verification["ok"] = False
         verification["decision"] = "blocked"
-    report = {**candidate, "status": "passed" if verification["ok"] else "failed", "verification": verification, "failures": verification["failures"]}
+    report = {
+        **candidate,
+        "status": "passed" if verification["ok"] else "failed",
+        "verification": verification,
+        "failures": verification["failures"],
+    }
     report["optimizer_steps"] = 0
     report["formal_checkpoints"] = []
     report["prediction_comparison"] = prediction_comparison
-    report["cleanup"] = {"resources_released": all(item.get("cleanup", {}).get("resources_released") is True for phase in phase_reports for item in phase.get("repetitions", []))}
+    report["cleanup"] = {
+        "resources_released": all(
+            item.get("cleanup", {}).get("resources_released") is True
+            for phase in phase_reports
+            for item in phase.get("repetitions", [])
+        )
+    }
     report_started = datetime.fromtimestamp(started, timezone.utc).isoformat().replace("+00:00", "Z")
     report_completed = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     report["report_started_at_utc"] = report_started
     report["report_completed_at_utc"] = report_completed
     write_json(run_root / "probe-report.json", report)
     report_path = run_root / "probe-report.json"
-    write_json(args.scratch_root / "latest-probe.json", {
-        "schema_version": 2,
-        "run_id": args.execution_run_id,
-        "authorization_decision_id": args.authorization_decision_id,
-        "report_sha256": sha256(report_path),
-        "generated_at_utc": report_completed,
-        "report_started_at_utc": report_started,
-        "report_completed_at_utc": report_completed,
-        "run_root": str(run_root),
-        "report": str(report_path),
-        "status": report["status"],
-    })
+    write_json(
+        args.scratch_root / "latest-probe.json",
+        {
+            "schema_version": 2,
+            "run_id": args.execution_run_id,
+            "authorization_decision_id": args.authorization_decision_id,
+            "report_sha256": sha256(report_path),
+            "generated_at_utc": report_completed,
+            "report_started_at_utc": report_started,
+            "report_completed_at_utc": report_completed,
+            "run_root": str(run_root),
+            "report": str(report_path),
+            "status": report["status"],
+        },
+    )
     print(json.dumps({"ok": verification["ok"], "probe_report": str(run_root / "probe-report.json")}, sort_keys=True))
     return 0 if verification["ok"] else 1
 

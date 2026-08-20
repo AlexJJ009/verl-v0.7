@@ -10,7 +10,6 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
-
 ROOT = Path(__file__).resolve().parents[4]
 METRICS_DIR = ROOT / "recipe/on_policy_wdl_sft/code_task/metrics/OnPolicyWDLSFT-CodeTask"
 OUT_DIR = ROOT / "docs/joint_training/reports/figures"
@@ -21,16 +20,14 @@ RUNS = [
     {
         "label": r"Raw 1.7B Stage1 $\beta=0.0$",
         "short": "beta0",
-        "path": METRICS_DIR
-        / "ONPOLICY-SFT-Qwen3-1P7B-INSTRUCT-CODE-KODCODE-CTX8K-S1-BETA0-V1_1783242212.jsonl",
+        "path": METRICS_DIR / "ONPOLICY-SFT-Qwen3-1P7B-INSTRUCT-CODE-KODCODE-CTX8K-S1-BETA0-V1_1783242212.jsonl",
         "color": "#2563eb",
         "marker": "o",
     },
     {
         "label": r"Raw 1.7B Stage1 $\beta=0.1$",
         "short": "beta01",
-        "path": METRICS_DIR
-        / "ONPOLICY-SFT-Qwen3-1P7B-INSTRUCT-CODE-KODCODE-CTX8K-S1-BETA01-V1_1783258331.jsonl",
+        "path": METRICS_DIR / "ONPOLICY-SFT-Qwen3-1P7B-INSTRUCT-CODE-KODCODE-CTX8K-S1-BETA01-V1_1783258331.jsonl",
         "color": "#dc2626",
         "marker": "s",
     },
@@ -100,11 +97,7 @@ def plot(rows: list[dict]) -> None:
     fig, axes = plt.subplots(1, 3, figsize=(15, 4.8), sharex=True)
     for ax, (metric_name, _key, ylim) in zip(axes, METRICS, strict=True):
         for run in RUNS:
-            series = [
-                row
-                for row in rows
-                if row["run_short"] == run["short"] and row["metric"] == metric_name
-            ]
+            series = [row for row in rows if row["run_short"] == run["short"] and row["metric"] == metric_name]
             series.sort(key=lambda row: row["step"])
             ax.plot(
                 [row["step"] for row in series],

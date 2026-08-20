@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import importlib.util
 import json
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -15,11 +15,20 @@ MANIFEST = ROOT / "recipe/on_policy_wdl_sft/experiment_manifest/stage123.yaml"
 
 def module():
     spec = importlib.util.spec_from_file_location("operational_checker", CHECKER)
-    result = importlib.util.module_from_spec(spec); assert spec.loader; sys.modules[spec.name] = result; spec.loader.exec_module(result); return result
+    result = importlib.util.module_from_spec(spec)
+    assert spec.loader
+    sys.modules[spec.name] = result
+    spec.loader.exec_module(result)
+    return result
 
 
 def manifest():
-    return json.loads(subprocess.check_output(["python3", str(ROOT / "scripts/experiment_manifest.py"), "render", str(MANIFEST), "--format", "json"], text=True))
+    return json.loads(
+        subprocess.check_output(
+            ["python3", str(ROOT / "scripts/experiment_manifest.py"), "render", str(MANIFEST), "--format", "json"],
+            text=True,
+        )
+    )
 
 
 def repetition(status="passed", *, timed_out=False, cleanup=True):
@@ -42,7 +51,10 @@ def report(data):
         "decision": "candidate",
         "manifest_sha256": data["manifest_sha256"],
         "contract": {"validation_deadline_seconds": data["calibration_policy"]["validation_deadline_seconds"]},
-        "phases": [{"phase": phase, "profile_hash": data["resource_profile"]["sha256"], "repetitions": [repetition()]} for phase in phases],
+        "phases": [
+            {"phase": phase, "profile_hash": data["resource_profile"]["sha256"], "repetitions": [repetition()]}
+            for phase in phases
+        ],
     }
 
 
@@ -51,12 +63,16 @@ def failure_codes(result):
 
 
 def test_valid_candidate_passes_with_structured_empty_failures():
-    checker = module(); data = manifest(); result = checker.check(report(data), data)
+    checker = module()
+    data = manifest()
+    result = checker.check(report(data), data)
     assert result == {"ok": True, "decision": "passed", "failures": [], "diagnostics": {}}
 
 
 def test_treatment_only_candidate_requires_exact_stage2_then_stage3():
-    checker = module(); data = manifest(); candidate = report(data)
+    checker = module()
+    data = manifest()
+    candidate = report(data)
     candidate["authorization_scope"] = "treatment_only"
     candidate["phases"] = candidate["phases"][1:]
     assert checker.check(candidate, data, authorization_scope="treatment_only")["ok"]
@@ -77,7 +93,10 @@ def test_treatment_only_candidate_requires_exact_stage2_then_stage3():
     ],
 )
 def test_invalid_inputs_have_stable_failure_codes(mutation, code):
-    checker = module(); data = manifest(); candidate = report(data); mutation(candidate)
+    checker = module()
+    data = manifest()
+    candidate = report(data)
+    mutation(candidate)
     result = checker.check(candidate, data)
     assert not result["ok"] and result["decision"] == "blocked"
     assert code in failure_codes(result)
@@ -85,17 +104,31 @@ def test_invalid_inputs_have_stable_failure_codes(mutation, code):
 
 
 def test_repetition_failure_codes_cover_timeout_exit_metrics_and_cleanup():
-    checker = module(); data = manifest(); candidate = report(data)
+    checker = module()
+    data = manifest()
+    candidate = report(data)
     candidate["phases"][0]["repetitions"] = [
-        {"status": "failed", "timed_out": True, "metrics": {}, "resources": None, "cleanup": {"resources_released": False}}
+        {
+            "status": "failed",
+            "timed_out": True,
+            "metrics": {},
+            "resources": None,
+            "cleanup": {"resources_released": False},
+        }
     ]
     assert set(failure_codes(checker.check(candidate, data))) >= {
-        "repetition_timeout", "repetition_status", "metrics_incomplete", "resources_missing", "cleanup_failed"
+        "repetition_timeout",
+        "repetition_status",
+        "metrics_incomplete",
+        "resources_missing",
+        "cleanup_failed",
     }
 
 
 def test_repetition_failure_context_uses_one_based_evidence_identity():
-    checker = module(); data = manifest(); candidate = report(data)
+    checker = module()
+    data = manifest()
+    candidate = report(data)
     selected_phase = candidate["phases"][1]["phase"]
     candidate["phases"][1]["repetitions"] = [
         {**repetition("passed"), "repetition": 1},
@@ -110,23 +143,47 @@ def test_repetition_failure_context_uses_one_based_evidence_identity():
 
 def test_message_formatting_does_not_change_decision_semantics():
     checker = module()
-    first = checker.ValidationResult(); first.add("child_exit", "child failed", returncode=9)
-    second = checker.ValidationResult(); second.add("child_exit", "Child failed.", returncode=9)
+    first = checker.ValidationResult()
+    first.add("child_exit", "child failed", returncode=9)
+    second = checker.ValidationResult()
+    second.add("child_exit", "Child failed.", returncode=9)
     assert first.as_dict()["decision"] == second.as_dict()["decision"] == "blocked"
     assert first.failures[0].code == second.failures[0].code == "child_exit"
     assert first.failures[0].context == second.failures[0].context == {"returncode": 9}
 
 
 def test_cli_exit_semantics_and_receipt_compatibility_warning(tmp_path: Path):
-    data = manifest(); manifest_path = tmp_path / "manifest.json"; manifest_path.write_text(json.dumps(data))
-    report_path = tmp_path / "report.json"; report_path.write_text(json.dumps(report(data)))
+    data = manifest()
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(json.dumps(data))
+    report_path = tmp_path / "report.json"
+    report_path.write_text(json.dumps(report(data)))
     receipt = tmp_path / "legacy-receipt.json"
-    passed = subprocess.run(["python3", str(CHECKER), "--report", str(report_path), "--manifest", str(manifest_path), "--receipt", str(receipt)], text=True, capture_output=True)
+    passed = subprocess.run(
+        [
+            "python3",
+            str(CHECKER),
+            "--report",
+            str(report_path),
+            "--manifest",
+            str(manifest_path),
+            "--receipt",
+            str(receipt),
+        ],
+        text=True,
+        capture_output=True,
+    )
     assert passed.returncode == 0
     output = json.loads(passed.stdout)
     assert output["ok"] and "no longer issued" in output["compatibility_warning"]
     assert not receipt.exists()
-    candidate = report(data); candidate["decision"] = "blocked"; report_path.write_text(json.dumps(candidate))
-    failed = subprocess.run(["python3", str(CHECKER), "--report", str(report_path), "--manifest", str(manifest_path)], text=True, capture_output=True)
+    candidate = report(data)
+    candidate["decision"] = "blocked"
+    report_path.write_text(json.dumps(candidate))
+    failed = subprocess.run(
+        ["python3", str(CHECKER), "--report", str(report_path), "--manifest", str(manifest_path)],
+        text=True,
+        capture_output=True,
+    )
     assert failed.returncode == 1
     assert json.loads(failed.stdout)["failures"][0]["code"] == "candidate_decision"

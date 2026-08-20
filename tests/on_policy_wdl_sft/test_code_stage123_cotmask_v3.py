@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import importlib.util
 import json
-from pathlib import Path
 import subprocess
+from pathlib import Path
 
 import yaml
-
 
 ROOT = Path(__file__).resolve().parents[2]
 MANIFEST = ROOT / "recipe/on_policy_wdl_sft/experiment_manifest/code_qwen3_1p7b_stage123_cotmask_v3.yaml"
@@ -75,9 +74,7 @@ def test_code_model1_selection_exists_after_new_cold_start_finishes():
 
 def test_code_stage123_new_dataset_receipt_must_be_generated():
     manifest = yaml.safe_load(MANIFEST.read_text())
-    module = load_module(
-        ROOT / "recipe/on_policy_wdl_sft/code_task/prepare_qwen3_1p7b_code_stage123_data.py"
-    )
+    module = load_module(ROOT / "recipe/on_policy_wdl_sft/code_task/prepare_qwen3_1p7b_code_stage123_data.py")
     receipt_path = Path(manifest["paths"]["dataset_receipt"])
     if receipt_path.exists():
         receipt = module.verify_receipt(
@@ -98,9 +95,7 @@ def test_code_stage123_new_dataset_receipt_must_be_generated():
 
 
 def test_code_stage123_excludes_only_rows_consumed_by_step20_cold_start():
-    module = load_module(
-        ROOT / "recipe/on_policy_wdl_sft/code_task/prepare_qwen3_1p7b_code_stage123_data.py"
-    )
+    module = load_module(ROOT / "recipe/on_policy_wdl_sft/code_task/prepare_qwen3_1p7b_code_stage123_data.py")
     manifest = yaml.safe_load(MANIFEST.read_text())
     receipt = module.verify_receipt(
         Path(manifest["paths"]["dataset_receipt"]).parent,
@@ -117,10 +112,7 @@ def test_code_stage123_excludes_only_rows_consumed_by_step20_cold_start():
     for name in ("stage1", "stage2", "stage3"):
         import pandas as pd
 
-        indices = set(
-            int(value)
-            for value in pd.read_parquet(receipt["shards"][name]["path"])["stage123_source_index"]
-        )
+        indices = set(int(value) for value in pd.read_parquet(receipt["shards"][name]["path"])["stage123_source_index"])
         assert not consumed.intersection(indices)
         assert not stage_indices.intersection(indices)
         stage_indices.update(indices)
@@ -167,13 +159,17 @@ def test_code_stage123_launch_surface_uses_new_manifest_and_monitor():
 
 def test_code_stage123_dry_run_renders_full_step20_matrix_without_events(tmp_path):
     event_log = tmp_path / "events.jsonl"
-    container_root = Path("/workspace/verl") if Path("/workspace/verl/scripts/math_stage123_queue.py").is_file() else ROOT
+    container_root = (
+        Path("/workspace/verl") if Path("/workspace/verl/scripts/math_stage123_queue.py").is_file() else ROOT
+    )
     result = subprocess.run(
         [
             __import__("sys").executable,
             str(container_root / "scripts/math_stage123_queue.py"),
             "--manifest",
-            str(container_root / "recipe/on_policy_wdl_sft/experiment_manifest/code_qwen3_1p7b_stage123_cotmask_v3.yaml"),
+            str(
+                container_root / "recipe/on_policy_wdl_sft/experiment_manifest/code_qwen3_1p7b_stage123_cotmask_v3.yaml"
+            ),
             "--dry-run",
         ],
         cwd=container_root,
@@ -187,10 +183,7 @@ def test_code_stage123_dry_run_renders_full_step20_matrix_without_events(tmp_pat
     assert result.returncode == 0, result.stderr
     commands = [json.loads(line) for line in result.stdout.splitlines() if line.startswith("{")]
     assert len(commands) == 16
-    assert all(
-        item["environment"]["EXPECTED_MODEL1_PATH"].endswith("/candidates/step_20")
-        for item in commands
-    )
+    assert all(item["environment"]["EXPECTED_MODEL1_PATH"].endswith("/candidates/step_20") for item in commands)
     assert all(item["environment"]["LR"] == "1e-6" for item in commands)
     assert all(item["environment"]["LR_WARMUP_STEPS"] == "0" for item in commands)
     assert not event_log.exists()
@@ -201,7 +194,7 @@ def test_gpu_probe_has_separate_non_launchable_admission_path():
     probe_phase = (ROOT / "scripts/code_stage123_probe_phase.py").read_text()
     assert "CODE_STAGE123_GPU_PROBE_ADMITTED" in gate
     assert "blocked_pending_gpu_utilization_probe" in gate
-    assert "manifest.get(\"launch_allowed\") is not False" in gate
+    assert 'manifest.get("launch_allowed") is not False' in gate
     assert "/data-1/tmp/verl_agent_scratch/code_stage123_gpu_utilization_probe" in gate
     assert '"CODE_STAGE123_GPU_PROBE_ADMITTED": "1"' in probe_phase
 

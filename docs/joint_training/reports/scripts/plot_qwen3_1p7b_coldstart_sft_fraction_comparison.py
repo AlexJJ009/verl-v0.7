@@ -10,7 +10,6 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
-
 ROOT = Path(__file__).resolve().parents[4]
 EVAL_ROOT = Path("/data-1/eval_outputs/code_task/qwen3_1p7b_coldstart_sft_fraction")
 OUT_DATA = ROOT / "docs/joint_training/reports/data"

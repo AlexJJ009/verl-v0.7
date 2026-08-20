@@ -15,7 +15,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-
 REGISTRY_TOOLS = Path("/data-1/agent-tools/experiment_registry")
 if str(REGISTRY_TOOLS) not in sys.path:
     sys.path.insert(0, str(REGISTRY_TOOLS))
@@ -27,14 +26,12 @@ from registry_core import (  # noqa: E402
     add_tag,
     connect,
     init_db,
-    slug,
     upsert_dataset,
     upsert_eval_run,
     upsert_experiment,
     upsert_metric,
     upsert_model,
 )
-
 
 DB = "/data-1/experiment_registry/experiment_registry.sqlite"
 REPO = Path("/data-1/verl07/verl")
@@ -145,7 +142,7 @@ def metric_at(rows: list[dict[str, Any]], step: int, key: str) -> float | None:
     for row in rows:
         if int(row.get("step", -1)) == int(step):
             value = row.get("data", {}).get(key)
-            if isinstance(value, (int, float)):
+            if isinstance(value, int | float):
                 return float(value)
     return None
 
@@ -155,7 +152,7 @@ def best_metric(rows: list[dict[str, Any]], key: str) -> tuple[int | None, float
     best_value = None
     for row in rows:
         value = row.get("data", {}).get(key)
-        if isinstance(value, (int, float)) and (best_value is None or value > best_value):
+        if isinstance(value, int | float) and (best_value is None or value > best_value):
             best_step = int(row["step"])
             best_value = float(value)
     return best_step, best_value
@@ -296,8 +293,22 @@ def import_run(conn: sqlite3.Connection, project_id: int, run: dict[str, Any], c
 
     for tag in ("code_task", "deepcoder", "negative_result", "deepcoder_data_switch"):
         add_tag(conn, "experiment", exp_id, tag)
-    add_quality_flag(conn, "experiment", exp_id, "negative_transfer", "warning", "DeepCoder data switch was a negative result under the current 4K Stage1 setup.")
-    add_quality_flag(conn, "experiment", exp_id, "not_drop_in_replacement", "warning", "Do not treat DeepCoder-Preview as a drop-in replacement for KodCode in this setup.")
+    add_quality_flag(
+        conn,
+        "experiment",
+        exp_id,
+        "negative_transfer",
+        "warning",
+        "DeepCoder data switch was a negative result under the current 4K Stage1 setup.",
+    )
+    add_quality_flag(
+        conn,
+        "experiment",
+        exp_id,
+        "not_drop_in_replacement",
+        "warning",
+        "Do not treat DeepCoder-Preview as a drop-in replacement for KodCode in this setup.",
+    )
     if run["trust_level"] == "buggy":
         add_quality_flag(conn, "experiment", exp_id, "format_collapse", "high", run["trust_reason"])
     if run["status"] != "completed":
@@ -369,7 +380,9 @@ def import_run(conn: sqlite3.Connection, project_id: int, run: dict[str, Any], c
             project_id=project_id,
             git_branch=BRANCH,
             git_commit=commit,
-            extra_json=json.dumps({"checkpoint_root_checked": str(checkpoint_root), "checkpoint_steps": steps}, ensure_ascii=False),
+            extra_json=json.dumps(
+                {"checkpoint_root_checked": str(checkpoint_root), "checkpoint_steps": steps}, ensure_ascii=False
+            ),
             notes="No retained checkpoint directory found; model row anchors metrics to the trainer policy state reported by JSONL.",
         )
 
@@ -440,7 +453,9 @@ def import_run(conn: sqlite3.Connection, project_id: int, run: dict[str, Any], c
             run["notes"],
         ),
     )
-    tr_id = int(conn.execute("select id from training_runs where training_run_key=?", (train_run_key,)).fetchone()["id"])
+    tr_id = int(
+        conn.execute("select id from training_runs where training_run_key=?", (train_run_key,)).fetchone()["id"]
+    )
 
     eval_key = f"verl.code_task.deepcoder_4k.{run_name}.online_final_step{final_step}"
     eval_id = upsert_eval_run(
@@ -498,57 +513,228 @@ def import_run(conn: sqlite3.Connection, project_id: int, run: dict[str, Any], c
         (mbpp_ds, "best_pass@1", best_mbpp, "best", f"MBPP+ best pass@1 at step {best_mbpp_step}"),
         (he_ds, "extraction_fail", final_he_extract, "final", "HumanEval+ final extraction failure rate"),
         (mbpp_ds, "extraction_fail", final_mbpp_extract, "final", "MBPP+ final extraction failure rate"),
-        (dataset_id, "train_correct_ratio", final_correct, "final_train", f"Training correct_ratio at step {actual_last_step}"),
-        (dataset_id, "best_train_correct_ratio", best_correct, "best_train", f"Best training correct_ratio at step {best_correct_step}"),
-        (dataset_id, "response_clip_ratio", final_clip, "final_train", f"Training response clip_ratio at step {actual_last_step}"),
-        (dataset_id, "response_length_mean", final_response_mean, "final_train", f"Training response length mean at step {actual_last_step}"),
+        (
+            dataset_id,
+            "train_correct_ratio",
+            final_correct,
+            "final_train",
+            f"Training correct_ratio at step {actual_last_step}",
+        ),
+        (
+            dataset_id,
+            "best_train_correct_ratio",
+            best_correct,
+            "best_train",
+            f"Best training correct_ratio at step {best_correct_step}",
+        ),
+        (
+            dataset_id,
+            "response_clip_ratio",
+            final_clip,
+            "final_train",
+            f"Training response clip_ratio at step {actual_last_step}",
+        ),
+        (
+            dataset_id,
+            "response_length_mean",
+            final_response_mean,
+            "final_train",
+            f"Training response length mean at step {actual_last_step}",
+        ),
     ]
     for ds_id, name, value, scope, notes in metrics:
         if value is not None:
             upsert_metric(conn, eval_id, ds_id, name, value, metric_scope=scope, notes=notes)
 
     total, status_counts, dataset_status = count_validation(validation_path)
-    upsert_metric(conn, eval_id, he_ds, "num_examples", 164, metric_scope="final", notes="HumanEval+ online validation examples")
-    upsert_metric(conn, eval_id, mbpp_ds, "num_examples", 378, metric_scope="final", notes="MBPP+ online validation examples")
-    upsert_metric(conn, eval_id, None, "validation_dump_rows", total, metric_scope="final", notes="Final validation JSONL line count")
+    upsert_metric(
+        conn, eval_id, he_ds, "num_examples", 164, metric_scope="final", notes="HumanEval+ online validation examples"
+    )
+    upsert_metric(
+        conn, eval_id, mbpp_ds, "num_examples", 378, metric_scope="final", notes="MBPP+ online validation examples"
+    )
+    upsert_metric(
+        conn,
+        eval_id,
+        None,
+        "validation_dump_rows",
+        total,
+        metric_scope="final",
+        notes="Final validation JSONL line count",
+    )
     if total:
         upsert_metric(conn, eval_id, None, "validation_pass_count", status_counts.get("pass", 0), metric_scope="final")
-        upsert_metric(conn, eval_id, None, "validation_non_pass_count", status_counts.get("non_pass", 0), metric_scope="final")
+        upsert_metric(
+            conn, eval_id, None, "validation_non_pass_count", status_counts.get("non_pass", 0), metric_scope="final"
+        )
     for dataset, counts in dataset_status.items():
         ds_id = he_ds if dataset == "HumanEval+" else mbpp_ds if dataset == "MBPP+" else None
         if ds_id is not None:
             upsert_metric(conn, eval_id, ds_id, "pass_count", counts.get("pass", 0), metric_scope="final_jsonl")
             upsert_metric(conn, eval_id, ds_id, "non_pass_count", counts.get("non_pass", 0), metric_scope="final_jsonl")
 
-    add_artifact(conn, "training_metrics_jsonl", str(metrics_path), experiment_id=exp_id, training_run_id=tr_id, eval_run_id=eval_id, model_id=model_id)
-    add_artifact(conn, "validation_dump_jsonl", str(validation_path), experiment_id=exp_id, training_run_id=tr_id, eval_run_id=eval_id, model_id=model_id)
+    add_artifact(
+        conn,
+        "training_metrics_jsonl",
+        str(metrics_path),
+        experiment_id=exp_id,
+        training_run_id=tr_id,
+        eval_run_id=eval_id,
+        model_id=model_id,
+    )
+    add_artifact(
+        conn,
+        "validation_dump_jsonl",
+        str(validation_path),
+        experiment_id=exp_id,
+        training_run_id=tr_id,
+        eval_run_id=eval_id,
+        model_id=model_id,
+    )
     add_artifact(conn, "training_log", str(log_path), experiment_id=exp_id, training_run_id=tr_id)
-    add_artifact(conn, "checkpoint_root", str(checkpoint_root), experiment_id=exp_id, training_run_id=tr_id, model_id=model_id)
-    add_artifact(conn, "failure_analysis_report", str(REPORT_PATH), experiment_id=exp_id, training_run_id=tr_id, eval_run_id=eval_id)
+    add_artifact(
+        conn, "checkpoint_root", str(checkpoint_root), experiment_id=exp_id, training_run_id=tr_id, model_id=model_id
+    )
+    add_artifact(
+        conn,
+        "failure_analysis_report",
+        str(REPORT_PATH),
+        experiment_id=exp_id,
+        training_run_id=tr_id,
+        eval_run_id=eval_id,
+    )
     if best_ckpt_path.exists():
-        add_artifact(conn, "best_checkpoint_json", str(best_ckpt_path), experiment_id=exp_id, training_run_id=tr_id, model_id=model_id)
+        add_artifact(
+            conn,
+            "best_checkpoint_json",
+            str(best_ckpt_path),
+            experiment_id=exp_id,
+            training_run_id=tr_id,
+            model_id=model_id,
+        )
 
-    add_source_record(conn, str(metrics_path), "jsonl", "training_metrics_and_online_eval", IMPORTER, "eval_runs", eval_id, "Source for best/final HumanEval+/MBPP+, correct_ratio, and response clip ratio.")
-    add_source_record(conn, str(validation_path), "jsonl", "final_validation_dump", IMPORTER, "eval_runs", eval_id, "Final validation samples for HumanEval+/MBPP+ online validation.")
-    add_source_record(conn, str(log_path), "log", "training_log", IMPORTER, "training_runs", tr_id, "Runtime log for DeepCoder 4K negative-result run.")
-    add_source_record(conn, str(REPORT_PATH), "markdown", "negative_result_report", IMPORTER, "experiments", exp_id, "DeepCoder vs KodCode negative-result report.")
+    add_source_record(
+        conn,
+        str(metrics_path),
+        "jsonl",
+        "training_metrics_and_online_eval",
+        IMPORTER,
+        "eval_runs",
+        eval_id,
+        "Source for best/final HumanEval+/MBPP+, correct_ratio, and response clip ratio.",
+    )
+    add_source_record(
+        conn,
+        str(validation_path),
+        "jsonl",
+        "final_validation_dump",
+        IMPORTER,
+        "eval_runs",
+        eval_id,
+        "Final validation samples for HumanEval+/MBPP+ online validation.",
+    )
+    add_source_record(
+        conn,
+        str(log_path),
+        "log",
+        "training_log",
+        IMPORTER,
+        "training_runs",
+        tr_id,
+        "Runtime log for DeepCoder 4K negative-result run.",
+    )
+    add_source_record(
+        conn,
+        str(REPORT_PATH),
+        "markdown",
+        "negative_result_report",
+        IMPORTER,
+        "experiments",
+        exp_id,
+        "DeepCoder vs KodCode negative-result report.",
+    )
     if best_ckpt_path.exists():
-        add_source_record(conn, str(best_ckpt_path), "json", "best_checkpoint", IMPORTER, "models", model_id, "Best checkpoint marker.")
+        add_source_record(
+            conn,
+            str(best_ckpt_path),
+            "json",
+            "best_checkpoint",
+            IMPORTER,
+            "models",
+            model_id,
+            "Best checkpoint marker.",
+        )
 
-    add_quality_flag(conn, "eval_run", eval_id, run["trust_level"], "warning" if run["trust_level"] != "buggy" else "high", run["trust_reason"])
-    add_quality_flag(conn, "eval_run", eval_id, "negative_result", "warning", "DeepCoder data switch negative result; compare with KodCode before interpreting.")
+    add_quality_flag(
+        conn,
+        "eval_run",
+        eval_id,
+        run["trust_level"],
+        "warning" if run["trust_level"] != "buggy" else "high",
+        run["trust_reason"],
+    )
+    add_quality_flag(
+        conn,
+        "eval_run",
+        eval_id,
+        "negative_result",
+        "warning",
+        "DeepCoder data switch negative result; compare with KodCode before interpreting.",
+    )
     if final_clip is not None and final_clip > 0.25:
-        add_quality_flag(conn, "eval_run", eval_id, "high_response_clip_ratio", "warning", f"Final response clip ratio is {final_clip:.4f}.")
+        add_quality_flag(
+            conn,
+            "eval_run",
+            eval_id,
+            "high_response_clip_ratio",
+            "warning",
+            f"Final response clip ratio is {final_clip:.4f}.",
+        )
     if final_correct is not None and final_correct < 0.02:
-        add_quality_flag(conn, "eval_run", eval_id, "low_correct_ratio", "warning", f"Final training correct_ratio is {final_correct:.4f}.")
+        add_quality_flag(
+            conn,
+            "eval_run",
+            eval_id,
+            "low_correct_ratio",
+            "warning",
+            f"Final training correct_ratio is {final_correct:.4f}.",
+        )
     if run["trust_level"] == "buggy":
-        add_quality_flag(conn, "eval_run", eval_id, "format_collapse", "high", "Near-total extraction failure and response clipping.")
+        add_quality_flag(
+            conn, "eval_run", eval_id, "format_collapse", "high", "Near-total extraction failure and response clipping."
+        )
 
-    add_validation_check(conn, f"{run_name}.final_he_pass1_metric", metrics_path, final_he, final_he, final_he is not None)
-    add_validation_check(conn, f"{run_name}.final_mbpp_pass1_metric", metrics_path, final_mbpp, final_mbpp, final_mbpp is not None)
-    add_validation_check(conn, f"{run_name}.final_correct_ratio_metric", metrics_path, final_correct, final_correct, final_correct is not None)
-    add_validation_check(conn, f"{run_name}.final_response_clip_ratio_metric", metrics_path, final_clip, final_clip, final_clip is not None)
-    add_validation_check(conn, f"{run_name}.final_validation_line_count", validation_path, total, total, total == 542, "Expected 164 HumanEval+ + 378 MBPP+ rows.")
+    add_validation_check(
+        conn, f"{run_name}.final_he_pass1_metric", metrics_path, final_he, final_he, final_he is not None
+    )
+    add_validation_check(
+        conn, f"{run_name}.final_mbpp_pass1_metric", metrics_path, final_mbpp, final_mbpp, final_mbpp is not None
+    )
+    add_validation_check(
+        conn,
+        f"{run_name}.final_correct_ratio_metric",
+        metrics_path,
+        final_correct,
+        final_correct,
+        final_correct is not None,
+    )
+    add_validation_check(
+        conn,
+        f"{run_name}.final_response_clip_ratio_metric",
+        metrics_path,
+        final_clip,
+        final_clip,
+        final_clip is not None,
+    )
+    add_validation_check(
+        conn,
+        f"{run_name}.final_validation_line_count",
+        validation_path,
+        total,
+        total,
+        total == 542,
+        "Expected 164 HumanEval+ + 378 MBPP+ rows.",
+    )
 
     return exp_id
 

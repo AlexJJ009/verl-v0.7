@@ -11,9 +11,10 @@ Run:
     python -m pytest tests/joint_training/feat/test_p1_reward_aggregation_metrics.py -v
 """
 
-import pytest
-import numpy as np
 from types import SimpleNamespace
+
+import numpy as np
+import pytest
 
 
 def _make_trainer_for_val_metrics():
@@ -39,24 +40,17 @@ def _make_reward_extra_infos_dict(
         "reward": rewards or [1.0, -1.0, -1.0, -1.0][:n],
         "acc": accs or [1.0, 0.0, 0.0, 0.0][:n],
         "pred": preds or ["42", "[NO_BOXED]", "[NO_BOXED]", "7"],
-        "verification_method": verification_methods or [
-            "latex_semantic", "no_answer", "no_answer", "string_match"
-        ],
+        "verification_method": verification_methods or ["latex_semantic", "no_answer", "no_answer", "string_match"],
         "answer_correct": answer_corrects or [True, False, False, False],
     }
 
 
 class TestAnswerExtractionFailureRate:
-
     def test_metric_present(self):
-        from verl.trainer.ppo.ray_trainer import RayPPOTrainer
-
         trainer = _make_trainer_for_val_metrics()
         data_sources = np.array(["gsm8k"] * 4)
         uids = ["u1", "u2", "u3", "u4"]
-        extra = _make_reward_extra_infos_dict(
-            preds=["42", "[NO_BOXED]", "[NO_BOXED]", "7"]
-        )
+        extra = _make_reward_extra_infos_dict(preds=["42", "[NO_BOXED]", "[NO_BOXED]", "7"])
 
         result = trainer._val_metrics_update(data_sources, uids, extra, [])
         assert "jointTraining/answer_extraction_failure_rate" in result
@@ -66,9 +60,7 @@ class TestAnswerExtractionFailureRate:
         data_sources = np.array(["gsm8k"] * 4)
         uids = ["u1", "u2", "u3", "u4"]
         # 2 out of 4 are [NO_BOXED]
-        extra = _make_reward_extra_infos_dict(
-            preds=["42", "[NO_BOXED]", "[NO_BOXED]", "7"]
-        )
+        extra = _make_reward_extra_infos_dict(preds=["42", "[NO_BOXED]", "[NO_BOXED]", "7"])
 
         result = trainer._val_metrics_update(data_sources, uids, extra, [])
         rate = result["jointTraining/answer_extraction_failure_rate"]
@@ -91,7 +83,6 @@ class TestAnswerExtractionFailureRate:
 
 
 class TestVerificationMethodDistribution:
-
     def test_method_metrics_present(self):
         trainer = _make_trainer_for_val_metrics()
         data_sources = np.array(["gsm8k"] * 4)
@@ -122,7 +113,6 @@ class TestVerificationMethodDistribution:
 
 
 class TestVerifierPredGtDisagreement:
-
     def test_metric_present(self):
         trainer = _make_trainer_for_val_metrics()
         data_sources = np.array(["gsm8k"] * 4)
@@ -153,7 +143,6 @@ class TestVerifierPredGtDisagreement:
 
 
 class TestResponseUnprintableRatio:
-
     def test_metric_present_when_outputs_available(self):
         trainer = _make_trainer_for_val_metrics()
         data_sources = np.array(["gsm8k"] * 3)
@@ -180,7 +169,6 @@ class TestResponseUnprintableRatio:
 
 
 class TestNonJointTraining:
-
     def test_no_joint_metrics_when_not_joint(self):
         """Non-joint training should not include jointTraining/ metrics in validation."""
         from verl.trainer.ppo.ray_trainer import RayPPOTrainer
@@ -197,7 +185,6 @@ class TestNonJointTraining:
 
 
 class TestJointValidationViews:
-
     def test_metric_view_namespaces_core_aux_and_joint_metrics(self):
         trainer = _make_trainer_for_val_metrics()
         result = trainer._val_metrics_update(

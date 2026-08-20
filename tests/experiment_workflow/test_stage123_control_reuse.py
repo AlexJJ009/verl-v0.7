@@ -1,19 +1,18 @@
 from __future__ import annotations
 
-import importlib.util
 import hashlib
+import importlib.util
 import json
-from pathlib import Path
 import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 import yaml
 
 from scripts import stage123_control_reuse as control_reuse
-
 
 ROOT = Path(__file__).resolve().parents[2]
 TOOL = ROOT / "scripts/stage123_control_reuse.py"
@@ -105,13 +104,18 @@ calibration_workloads:
         batch,
         {
             "status": "completed_with_failures",
-            "phases": [{"run_id": "frac25-stage1-control", "status": "succeeded"}, {"run_id": "frac25-stage2", "status": "failed"}],
+            "phases": [
+                {"run_id": "frac25-stage1-control", "status": "succeeded"},
+                {"run_id": "frac25-stage2", "status": "failed"},
+            ],
         },
     )
     queue_log = tmp_path / "queue.log"
     queue_log.write_text("RuntimeError: existing checkpoint root forbids automatic retry/resume for frac25-stage2\n")
     adapter = tmp_path / "adapter.py"
-    adapter.write_text("if existing: raise RuntimeError('existing checkpoint root forbids automatic retry/resume')\nsubprocess.run(command)\n")
+    adapter.write_text(
+        "if existing: raise RuntimeError('existing checkpoint root forbids automatic retry/resume')\nsubprocess.run(command)\n"
+    )
     legacy = tmp_path / "legacy"
     legacy.mkdir()
     (legacy / "legacy.bin").write_bytes(b"legacy")
@@ -124,16 +128,26 @@ def certify(paths: dict[str, Path], output: Path) -> subprocess.CompletedProcess
             sys.executable,
             str(TOOL),
             "certify",
-            "--control-provenance", str(paths["provenance"]),
-            "--stage2-state", str(paths["stage2"]),
-            "--batch-state", str(paths["batch"]),
-            "--queue-log", str(paths["queue_log"]),
-            "--admission-bundle", str(paths["bundle"]),
-            "--manifest", str(paths["manifest"]),
-            "--adapter", str(paths["adapter"]),
-            "--stage2-artifact-dir", str(paths["tmp_path"] / "stage2-artifacts"),
-            "--legacy-checkpoint", str(paths["legacy"]),
-            "--output", str(output),
+            "--control-provenance",
+            str(paths["provenance"]),
+            "--stage2-state",
+            str(paths["stage2"]),
+            "--batch-state",
+            str(paths["batch"]),
+            "--queue-log",
+            str(paths["queue_log"]),
+            "--admission-bundle",
+            str(paths["bundle"]),
+            "--manifest",
+            str(paths["manifest"]),
+            "--adapter",
+            str(paths["adapter"]),
+            "--stage2-artifact-dir",
+            str(paths["tmp_path"] / "stage2-artifacts"),
+            "--legacy-checkpoint",
+            str(paths["legacy"]),
+            "--output",
+            str(output),
         ],
         text=True,
         capture_output=True,
@@ -201,15 +215,32 @@ def completed_stage2_handoff_fixture(tmp_path: Path) -> dict[str, Path]:
     batch_state = tmp_path / "completed-stage2-batch.json"
     write_json(
         stage2_state,
-        {"run_id": "frac25-stage2", "attempt": 1, "status": "succeeded", "transitions": [{"from": "pending", "to": "running"}, {"from": "running", "to": "succeeded"}]},
+        {
+            "run_id": "frac25-stage2",
+            "attempt": 1,
+            "status": "succeeded",
+            "transitions": [{"from": "pending", "to": "running"}, {"from": "running", "to": "succeeded"}],
+        },
     )
     write_json(
         stage3_state,
-        {"run_id": "frac25-stage3", "attempt": 1, "status": "failed", "failure": {"context": {"returncode": 1}}, "transitions": [{"from": "pending", "to": "running"}, {"from": "running", "to": "failed"}]},
+        {
+            "run_id": "frac25-stage3",
+            "attempt": 1,
+            "status": "failed",
+            "failure": {"context": {"returncode": 1}},
+            "transitions": [{"from": "pending", "to": "running"}, {"from": "running", "to": "failed"}],
+        },
     )
     write_json(
         batch_state,
-        {"status": "completed_with_failures", "phases": [{"run_id": "frac25-stage2", "status": "succeeded"}, {"run_id": "frac25-stage3", "status": "failed"}]},
+        {
+            "status": "completed_with_failures",
+            "phases": [
+                {"run_id": "frac25-stage2", "status": "succeeded"},
+                {"run_id": "frac25-stage3", "status": "failed"},
+            ],
+        },
     )
     queue_log = tmp_path / "stage3-admission-failure.log"
     queue_log.write_text('{"error":"authorized treatment host facts are stale or failed","ok":false}\n')
@@ -275,7 +306,20 @@ def test_certified_stage2_handoff_prepares_new_stage3_only_identity(tmp_path: Pa
     )
     assert prepared.returncode == 0, prepared.stdout + prepared.stderr
     admission = output_root / "stage3-handoff-admission.json"
-    result = subprocess.run([sys.executable, str(TOOL), "validate-treatment", "--admission", str(admission), "--allow-prepared", "--run-id", "frac25-stage3"], text=True, capture_output=True)
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(TOOL),
+            "validate-treatment",
+            "--admission",
+            str(admission),
+            "--allow-prepared",
+            "--run-id",
+            "frac25-stage3",
+        ],
+        text=True,
+        capture_output=True,
+    )
     assert result.returncode == 0, result.stdout + result.stderr
     manifest = yaml.safe_load((output_root / "stage3-handoff-manifest.yaml").read_text())
     assert [run["id"] for run in manifest["runs"]] == ["frac25-stage3"]
@@ -285,13 +329,18 @@ def test_certified_stage2_handoff_prepares_new_stage3_only_identity(tmp_path: Pa
     workload_source = manifest["calibration_workloads"]["stage3"]["model_sources"][0]
     assert workload_source["state"] == "materialized"
     assert workload_source["path"] == str(paths["extracted"])
-    descriptor_spec = importlib.util.spec_from_file_location("calibration_workload_descriptor", ROOT / "recipe/on_policy_wdl_sft/code_task/calibration_workload_descriptor.py")
+    descriptor_spec = importlib.util.spec_from_file_location(
+        "calibration_workload_descriptor",
+        ROOT / "recipe/on_policy_wdl_sft/code_task/calibration_workload_descriptor.py",
+    )
     assert descriptor_spec and descriptor_spec.loader
     descriptor_module = importlib.util.module_from_spec(descriptor_spec)
     descriptor_spec.loader.exec_module(descriptor_module)
     assert workload_source["artifact_sha256"] == descriptor_module.artifact_sha256(paths["extracted"])
     assert "calibration_proxy" not in manifest["calibration_workloads"]["stage3"]
-    manifest_spec = importlib.util.spec_from_file_location("experiment_manifest", ROOT / "scripts/experiment_manifest.py")
+    manifest_spec = importlib.util.spec_from_file_location(
+        "experiment_manifest", ROOT / "scripts/experiment_manifest.py"
+    )
     assert manifest_spec and manifest_spec.loader
     manifest_module = importlib.util.module_from_spec(manifest_spec)
     manifest_spec.loader.exec_module(manifest_module)
@@ -308,11 +357,37 @@ def test_certified_stage2_handoff_prepares_new_stage3_only_identity(tmp_path: Pa
         return subprocess.CompletedProcess(command, 0, sha(paths["profile"]), "")
 
     monkeypatch.setattr(control_reuse.subprocess, "run", fake_run)
-    monkeypatch.setattr(control_reuse, "current_control_plane_identity", lambda: {"plan_sha256": "a" * 64, "implementation_tree_sha256": "b" * 64, "evidence_commit": "c" * 40, "recipe_gitlink": "d" * 40})
-    args = SimpleNamespace(admission=admission, batch_manifest=output_root / "stage3-handoff-batch-manifest.json", host_facts=host_facts, decision_id="D-stage3")
+    monkeypatch.setattr(
+        control_reuse,
+        "current_control_plane_identity",
+        lambda: {
+            "plan_sha256": "a" * 64,
+            "implementation_tree_sha256": "b" * 64,
+            "evidence_commit": "c" * 40,
+            "recipe_gitlink": "d" * 40,
+        },
+    )
+    args = SimpleNamespace(
+        admission=admission,
+        batch_manifest=output_root / "stage3-handoff-batch-manifest.json",
+        host_facts=host_facts,
+        decision_id="D-stage3",
+    )
     assert control_reuse.authorize_treatment(args) == 0
     authorized = output_root / "authorized-treatment-batch-manifest.json"
-    batch_validate = subprocess.run([sys.executable, str(ROOT / "scripts/experiment_execution_core.py"), "batch-validate", "--manifest", str(authorized), "--repo-root", str(ROOT)], text=True, capture_output=True)
+    batch_validate = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts/experiment_execution_core.py"),
+            "batch-validate",
+            "--manifest",
+            str(authorized),
+            "--repo-root",
+            str(ROOT),
+        ],
+        text=True,
+        capture_output=True,
+    )
     assert batch_validate.returncode == 0, batch_validate.stdout + batch_validate.stderr
     assert json.loads(authorized.read_text())["items"][0]["expected_run_ids"] == ["frac25-stage3"]
 
@@ -367,15 +442,61 @@ def test_certified_control_reuse_preserves_old_evidence_and_prepares_distinct_tr
     pending_source = treatment_manifest["calibration_workloads"]["stage3"]["model_sources"][0]
     assert pending_source["path"] == f"{stage2['artifact_dir']}/stage2_final_model2"
     assert pending_source["producer"]["output_path"] == pending_source["path"]
-    assert pending_source["producer"]["provenance_path"] == "/data-2/model_weights/stage123-test/reuse-001/frac25-stage3.provenance.json"
-    assert subprocess.run([sys.executable, str(TOOL), "validate-treatment", "--admission", str(admission), "--allow-prepared"], text=True, capture_output=True).returncode == 0
-    assert subprocess.run([sys.executable, str(TOOL), "validate-treatment", "--admission", str(admission), "--allow-prepared", "--run-id", "frac25-stage1-control"], text=True, capture_output=True).returncode != 0
+    assert (
+        pending_source["producer"]["provenance_path"]
+        == "/data-2/model_weights/stage123-test/reuse-001/frac25-stage3.provenance.json"
+    )
+    assert (
+        subprocess.run(
+            [sys.executable, str(TOOL), "validate-treatment", "--admission", str(admission), "--allow-prepared"],
+            text=True,
+            capture_output=True,
+        ).returncode
+        == 0
+    )
+    assert (
+        subprocess.run(
+            [
+                sys.executable,
+                str(TOOL),
+                "validate-treatment",
+                "--admission",
+                str(admission),
+                "--allow-prepared",
+                "--run-id",
+                "frac25-stage1-control",
+            ],
+            text=True,
+            capture_output=True,
+        ).returncode
+        != 0
+    )
     payload = json.loads(admission.read_text())
     payload["treatment_manifest_sha256"] = "0" * 64
-    payload["admission_sha256"] = hashlib.sha256(json.dumps({key: value for key, value in payload.items() if key != "admission_sha256"}, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    payload["admission_sha256"] = hashlib.sha256(
+        json.dumps(
+            {key: value for key, value in payload.items() if key != "admission_sha256"},
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+    ).hexdigest()
     admission.write_text(json.dumps(payload, sort_keys=True))
-    assert subprocess.run([sys.executable, str(TOOL), "validate-treatment", "--admission", str(admission), "--allow-prepared"], text=True, capture_output=True).returncode != 0
-    assert subprocess.run([sys.executable, str(TOOL), "validate-treatment", "--admission", str(admission)], text=True, capture_output=True).returncode != 0
+    assert (
+        subprocess.run(
+            [sys.executable, str(TOOL), "validate-treatment", "--admission", str(admission), "--allow-prepared"],
+            text=True,
+            capture_output=True,
+        ).returncode
+        != 0
+    )
+    assert (
+        subprocess.run(
+            [sys.executable, str(TOOL), "validate-treatment", "--admission", str(admission)],
+            text=True,
+            capture_output=True,
+        ).returncode
+        != 0
+    )
 
 
 def test_prepare_rejects_non_data2_artifact_root(tmp_path: Path):
@@ -405,7 +526,9 @@ def test_prepare_rejects_non_data2_artifact_root(tmp_path: Path):
     assert "treatment artifact root must remain under /data-2" in result.stderr
 
 
-def test_authorize_treatment_accepts_old_host_facts_and_rejects_failed_facts_and_profile_mismatch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_authorize_treatment_accepts_old_host_facts_and_rejects_failed_facts_and_profile_mismatch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
     paths = fixture(tmp_path)
     certificate = tmp_path / "certificate.json"
     assert certify(paths, certificate).returncode == 0
@@ -435,11 +558,19 @@ def test_authorize_treatment_accepts_old_host_facts_and_rejects_failed_facts_and
     old_facts = {
         "artifact_type": "stage123_host_facts",
         "ok": True,
-        "completed_at": (datetime.now(timezone.utc) - timedelta(minutes=16)).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+        "completed_at": (datetime.now(timezone.utc) - timedelta(minutes=16))
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z"),
         "tmux": {"stage123_conflicts": []},
     }
     write_json(host_facts, {**old_facts, "ok": False})
-    args = SimpleNamespace(admission=admission, batch_manifest=output_root / "treatment-batch-manifest.json", host_facts=host_facts, decision_id="D-test")
+    args = SimpleNamespace(
+        admission=admission,
+        batch_manifest=output_root / "treatment-batch-manifest.json",
+        host_facts=host_facts,
+        decision_id="D-test",
+    )
     with pytest.raises(ValueError, match="host facts are missing, invalid, or failed"):
         control_reuse.authorize_treatment(args)
 
@@ -460,7 +591,16 @@ def test_authorize_treatment_accepts_old_host_facts_and_rejects_failed_facts_and
         return subprocess.CompletedProcess(command, 0, sha(paths["profile"]), "")
 
     monkeypatch.setattr(control_reuse.subprocess, "run", fake_matching_run)
-    monkeypatch.setattr(control_reuse, "current_control_plane_identity", lambda: {"plan_sha256": "a" * 64, "implementation_tree_sha256": "b" * 64, "evidence_commit": "c" * 40, "recipe_gitlink": "d" * 40})
+    monkeypatch.setattr(
+        control_reuse,
+        "current_control_plane_identity",
+        lambda: {
+            "plan_sha256": "a" * 64,
+            "implementation_tree_sha256": "b" * 64,
+            "evidence_commit": "c" * 40,
+            "recipe_gitlink": "d" * 40,
+        },
+    )
     assert control_reuse.authorize_treatment(args) == 0
     result = subprocess.run(
         [sys.executable, str(TOOL), "validate-treatment", "--admission", str(admission), "--run-id", "frac25-stage3"],
@@ -509,8 +649,19 @@ def test_authorized_batch_manifest_rebinds_authorized_admission_without_rewritin
     admission_payload = json.loads(admission.read_text())
     admission_payload["status"] = "authorized"
     admission_payload["authorization"] = {"host_facts_path": str(host_facts), "host_facts_sha256": sha(host_facts)}
-    admission_payload["control_plane_identity"] = {"plan_sha256": "a" * 64, "implementation_tree_sha256": "b" * 64, "evidence_commit": "c" * 40, "recipe_gitlink": "d" * 40}
-    admission_payload["admission_sha256"] = hashlib.sha256(json.dumps({key: value for key, value in admission_payload.items() if key != "admission_sha256"}, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    admission_payload["control_plane_identity"] = {
+        "plan_sha256": "a" * 64,
+        "implementation_tree_sha256": "b" * 64,
+        "evidence_commit": "c" * 40,
+        "recipe_gitlink": "d" * 40,
+    }
+    admission_payload["admission_sha256"] = hashlib.sha256(
+        json.dumps(
+            {key: value for key, value in admission_payload.items() if key != "admission_sha256"},
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+    ).hexdigest()
     admission.write_text(json.dumps(admission_payload, sort_keys=True))
     prepared = output_root / "treatment-batch-manifest.json"
     prepared_bytes = prepared.read_bytes()
@@ -521,7 +672,19 @@ def test_authorized_batch_manifest_rebinds_authorized_admission_without_rewritin
     assert payload["authorization_id"] == "D-test"
     assert payload["prepared_batch_manifest_sha256"] == json.loads(prepared.read_text())["batch_manifest_sha256"]
     assert payload["items"][0]["admission_bundle_sha256"] == sha(admission)
-    result = subprocess.run([sys.executable, str(ROOT / "scripts/experiment_execution_core.py"), "batch-validate", "--manifest", str(authorized), "--repo-root", str(ROOT)], text=True, capture_output=True)
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts/experiment_execution_core.py"),
+            "batch-validate",
+            "--manifest",
+            str(authorized),
+            "--repo-root",
+            str(ROOT),
+        ],
+        text=True,
+        capture_output=True,
+    )
     assert result.returncode == 0, result.stdout + result.stderr
 
 

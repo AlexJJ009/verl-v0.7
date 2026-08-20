@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import importlib.util
 import json
-from pathlib import Path
 import subprocess
 import sys
-
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 MONITOR = ROOT / "scripts/stage123_manifest_monitor.py"
@@ -35,8 +34,22 @@ def test_batch_events_are_read_from_core_schema_and_cursor_is_idempotent(tmp_pat
     }
     (state_root / "batch-a.json").write_text(json.dumps(batch_state))
     events = [
-        {"schema_version": 1, "batch_id": "batch-a", "item_id": "item-a", "event": "item_started", "state": "running", "batch_revision": 1},
-        {"schema_version": 1, "batch_id": "batch-a", "event": "batch_shared_failure", "state": "shared_failure", "batch_revision": 2, "failure": {"code": "corrupt", "message": "failed", "context": {}}},
+        {
+            "schema_version": 1,
+            "batch_id": "batch-a",
+            "item_id": "item-a",
+            "event": "item_started",
+            "state": "running",
+            "batch_revision": 1,
+        },
+        {
+            "schema_version": 1,
+            "batch_id": "batch-a",
+            "event": "batch_shared_failure",
+            "state": "shared_failure",
+            "batch_revision": 2,
+            "failure": {"code": "corrupt", "message": "failed", "context": {}},
+        },
     ]
     (state_root / "events.jsonl").write_text("".join(json.dumps(event) + "\n" for event in events))
     ledger = tmp_path / "ledger.jsonl"
@@ -92,7 +105,15 @@ def test_rendered_manifest_is_not_treated_as_execution_state(tmp_path: Path) -> 
 
 def test_monitor_source_has_no_transition_or_runtime_inference_authority() -> None:
     source = MONITOR.read_text()
-    for forbidden in ("tmux", "latest_checkpoint", "latest_checkpointed_iteration", "wandb", "registry", "transition(state", "terminate("):
+    for forbidden in (
+        "tmux",
+        "latest_checkpoint",
+        "latest_checkpointed_iteration",
+        "wandb",
+        "registry",
+        "transition(state",
+        "terminate(",
+    ):
         assert forbidden not in source.lower()
     assert "persisted_events" in source
     assert "event_digests" in source

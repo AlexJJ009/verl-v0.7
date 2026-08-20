@@ -11,7 +11,6 @@ import sys
 import tempfile
 from pathlib import Path
 
-
 FORBIDDEN = ("systemctl", "pm2 startup", ".service")
 
 

@@ -4,12 +4,11 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 import yaml
-
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -49,7 +48,9 @@ def load(path: Path) -> dict:
             else:
                 manifest[key] = overlay[key]
     validate(manifest)
-    manifest["manifest_sha256"] = canonical_sha256({key: value for key, value in manifest.items() if key != "manifest_sha256"})
+    manifest["manifest_sha256"] = canonical_sha256(
+        {key: value for key, value in manifest.items() if key != "manifest_sha256"}
+    )
     return manifest
 
 
@@ -60,7 +61,6 @@ def validate(manifest: dict) -> None:
         raise ValueError("non-launchable code Stage123 matrix must record a blocked or invalidated status")
     runs = sorted(manifest["runs"], key=lambda run: run["order"])
     manifest["runs"] = runs
-    ids = [run["id"] for run in runs]
     for field in ("id", "run_prefix", "tmux_name", "order"):
         values = [run[field] for run in runs]
         if len(values) != len(set(values)):
@@ -157,7 +157,12 @@ def main() -> int:
     args = parser.parse_args()
     manifest = load(args.manifest)
     if args.command == "validate":
-        print(json.dumps({"ok": True, "run_count": len(manifest["runs"]), "manifest_sha256": manifest["manifest_sha256"]}, sort_keys=True))
+        print(
+            json.dumps(
+                {"ok": True, "run_count": len(manifest["runs"]), "manifest_sha256": manifest["manifest_sha256"]},
+                sort_keys=True,
+            )
+        )
     else:
         print(json.dumps(manifest, indent=2, sort_keys=True))
     return 0

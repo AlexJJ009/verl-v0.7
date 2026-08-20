@@ -1,17 +1,16 @@
-from omegaconf import OmegaConf
+import numpy as np
 import pytest
 import torch
-import numpy as np
-from pathlib import Path
+from omegaconf import OmegaConf
 
+from verl.protocol import DataProto, pad_dataproto_to_divisor, unpad_dataproto
 from verl.trainer.ppo.ray_trainer import (
-    RecordingValidationObserver,
     RayPPOTrainer,
+    RecordingValidationObserver,
     build_response_telemetry,
     build_validation_generation_samples,
     validation_sample_identities,
 )
-from verl.protocol import DataProto, pad_dataproto_to_divisor, unpad_dataproto
 from verl.utils.tracking import ValidationGenerationsLogger
 
 
@@ -111,8 +110,14 @@ def test_dump_generations_writes_stable_uid(tmp_path):
     trainer = RayPPOTrainer.__new__(RayPPOTrainer)
     trainer.global_steps = 3
     trainer._dump_generations(
-        inputs=["prompt"], outputs=["response"], gts=["answer"], scores=[1.0],
-        reward_extra_infos_dict={}, dump_path=str(tmp_path), data_sources=["HumanEval+"], sample_uids=["he-1"],
+        inputs=["prompt"],
+        outputs=["response"],
+        gts=["answer"],
+        scores=[1.0],
+        reward_extra_infos_dict={},
+        dump_path=str(tmp_path),
+        data_sources=["HumanEval+"],
+        sample_uids=["he-1"],
     )
     import json
 
@@ -147,13 +152,30 @@ def test_dump_generations_serializes_numpy_reward_metadata(tmp_path):
 def test_source_uid_survives_repeat_pad_and_unpad_in_order():
     proto = DataProto.from_dict(
         tensors={"dummy": torch.tensor([[1], [2], [3]])},
-        non_tensors={"uid": np.array(["request-a", "request-b", "request-c"]), "source_uid": np.array(["source-a", "source-b", "source-c"])},
+        non_tensors={
+            "uid": np.array(["request-a", "request-b", "request-c"]),
+            "source_uid": np.array(["source-a", "source-b", "source-c"]),
+        },
     )
     repeated = proto.repeat(repeat_times=2, interleave=True)
     padded, pad_size = pad_dataproto_to_divisor(repeated, 4)
     restored = unpad_dataproto(padded, pad_size)
-    assert restored.non_tensor_batch["uid"].tolist() == ["request-a", "request-a", "request-b", "request-b", "request-c", "request-c"]
-    assert restored.non_tensor_batch["source_uid"].tolist() == ["source-a", "source-a", "source-b", "source-b", "source-c", "source-c"]
+    assert restored.non_tensor_batch["uid"].tolist() == [
+        "request-a",
+        "request-a",
+        "request-b",
+        "request-b",
+        "request-c",
+        "request-c",
+    ]
+    assert restored.non_tensor_batch["source_uid"].tolist() == [
+        "source-a",
+        "source-a",
+        "source-b",
+        "source-b",
+        "source-c",
+        "source-c",
+    ]
 
 
 def test_validation_identity_falls_back_to_legacy_uid():
@@ -173,9 +195,7 @@ def test_validation_identity_prefers_stable_source_uid_when_present():
 
 def test_recording_validation_observer_preserves_stable_identity_and_events():
     observer = RecordingValidationObserver()
-    identities = validation_sample_identities(
-        {"uid": np.array(["request-a"]), "source_uid": np.array(["source-a"])}
-    )
+    identities = validation_sample_identities({"uid": np.array(["request-a"]), "source_uid": np.array(["source-a"])})
     observer.record("batch_started", sample_identities=identities.tolist())
     observer.record("generation_complete", batch_index=1, total_batches=1)
     observer.record("metrics_complete", elapsed_seconds=1.25)

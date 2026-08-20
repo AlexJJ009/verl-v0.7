@@ -18,7 +18,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-
 DEFAULT_STATE = Path("/data-1/experiment_registry/training_release_gate.jsonl")
 TERMINAL_STATUSES = {"success_complete", "failed", "pending"}
 RELEASABLE_STATUS = "success_complete"
@@ -39,7 +38,7 @@ class GateEvent:
     host: str
 
     @classmethod
-    def from_json(cls, payload: dict[str, Any]) -> "GateEvent":
+    def from_json(cls, payload: dict[str, Any]) -> GateEvent:
         return cls(
             ts=str(payload["ts"]),
             run_name=str(payload["run_name"]),
@@ -185,10 +184,7 @@ def cmd_check(args: argparse.Namespace) -> int:
     blocker = _family_blocking_event(events, family)
     if blocker is not None and blocker.run_name != run_name:
         _print_event("family_blocker", blocker)
-        print(
-            "BLOCKED: experiment family has a later failed attempt; "
-            "wait for the next successful full-flow run"
-        )
+        print("BLOCKED: experiment family has a later failed attempt; wait for the next successful full-flow run")
         return 1
     print(f"ALLOWED: run {run_name} is releasable")
     return 0

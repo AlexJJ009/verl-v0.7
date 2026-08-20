@@ -19,7 +19,6 @@ from typing import Iterable, Sequence
 
 import matplotlib.pyplot as plt
 
-
 ROOT = Path(__file__).resolve().parents[4]
 DATA_DIR = ROOT / "docs/joint_training/reports/data"
 FIGURE_DIR = ROOT / "docs/joint_training/reports/figures"
@@ -28,8 +27,7 @@ DERIVED_CSV = DATA_DIR / "qwen3_1p7b_math_grpo_online_validation.csv"
 BUDGET_CSV = DATA_DIR / "qwen3_1p7b_math_grpo_wdl_budget_estimate.csv"
 WDL_CSV = ASSET_DIR / "qwen3_1p7b_math_wdl_p60_ablation_curves.csv"
 WDL_METRICS_ROOT = Path(
-    "/data-2/model_weights/math_task/qwen3_1p7b_wdl_causal_p60/logs/metrics/"
-    "OnPolicyWDLSFT-Math-1P7B-Causal-P60"
+    "/data-2/model_weights/math_task/qwen3_1p7b_wdl_causal_p60/logs/metrics/OnPolicyWDLSFT-Math-1P7B-Causal-P60"
 )
 WDL_VALIDATION_ROOT = Path("/data-2/model_weights/math_task/qwen3_1p7b_wdl_causal_p60/logs/validation")
 WDL_RUNS = (
@@ -176,8 +174,7 @@ def resolve_file(search_roots: Sequence[Path], filename: str) -> Path:
         return matches[0]
     if not matches:
         raise FileNotFoundError(
-            "missing metrics file "
-            f"{filename}; searched: {', '.join(str(root) for root in search_roots)}"
+            f"missing metrics file {filename}; searched: {', '.join(str(root) for root in search_roots)}"
         )
     rendered = "\n".join(str(match) for match in sorted(matches))
     raise RuntimeError(f"ambiguous metrics file {filename}:\n{rendered}")
@@ -274,9 +271,7 @@ def resolve_validation_roots(search_roots: Sequence[Path], run_name: str) -> lis
     for root in search_roots:
         if not root.is_dir():
             continue
-        direct_matches = [
-            path for path in root.rglob(run_name) if path.is_dir() and path.parent.name == "validation"
-        ]
+        direct_matches = [path for path in root.rglob(run_name) if path.is_dir() and path.parent.name == "validation"]
         roots.extend(direct_matches)
     return sorted(set(roots))
 
@@ -301,11 +296,7 @@ def summarize_metrics(
     old_logprob_pf = 2 * QWEN3_1P7B_PARAM_COUNT * old_logprob_models * train_sequence_tokens / 1e15
     reference_pf = 2 * QWEN3_1P7B_PARAM_COUNT * reference_models * train_sequence_tokens / 1e15
     train_pf = 6 * QWEN3_1P7B_PARAM_COUNT * training_models * train_sequence_tokens / 1e15
-    val_points = [
-        (int(row["step"]), validation_value(row))
-        for row in rows
-        if validation_value(row) is not None
-    ]
+    val_points = [(int(row["step"]), validation_value(row)) for row in rows if validation_value(row) is not None]
     best_step, best_value = max(val_points, key=lambda item: item[1] or -1)
     last_step, last_value = val_points[-1]
     return {

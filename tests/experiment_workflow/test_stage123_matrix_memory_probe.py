@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import importlib.util
-from pathlib import Path
 import json
-
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -46,8 +45,33 @@ def test_run_environment_distinguishes_no_kl_and_model2_kl():
         "ref_log_prob_micro_batch_size": 1,
         "ref_log_prob_max_token_len_per_gpu": 9216,
     }
-    no_kl = module.run_environment({**base, "submodel_kl": {"enabled": False, "model1_enabled": False, "model1_coef": 0.0, "model2_enabled": False, "model2_coef": 0.0}}, profile)
-    model2_kl = module.run_environment({**base, "submodel_kl": {"enabled": True, "model1_enabled": False, "model1_coef": 0.0, "model2_enabled": True, "model2_coef": 0.01, "model2_ref_path": "/models/ref"}}, profile)
+    no_kl = module.run_environment(
+        {
+            **base,
+            "submodel_kl": {
+                "enabled": False,
+                "model1_enabled": False,
+                "model1_coef": 0.0,
+                "model2_enabled": False,
+                "model2_coef": 0.0,
+            },
+        },
+        profile,
+    )
+    model2_kl = module.run_environment(
+        {
+            **base,
+            "submodel_kl": {
+                "enabled": True,
+                "model1_enabled": False,
+                "model1_coef": 0.0,
+                "model2_enabled": True,
+                "model2_coef": 0.01,
+                "model2_ref_path": "/models/ref",
+            },
+        },
+        profile,
+    )
     assert no_kl["SUBMODEL_KL_MODEL2_ENABLED"] == "false"
     assert model2_kl["SUBMODEL_KL_MODEL2_ENABLED"] == "true"
     assert model2_kl["SUBMODEL_KL_MODEL2_REF_PATH"] == "/models/ref"
@@ -62,13 +86,18 @@ def test_run_environment_distinguishes_no_kl_and_model2_kl():
 def test_summary_requires_auditable_gpu_headroom():
     module = load_module("stage123_matrix_memory_probe_summary", ROOT / "scripts/run_stage123_matrix_memory_probe.py")
     run = {"id": "arm", "submodel_kl": {"enabled": True}}
-    repetition = {"status": "passed", "resources": {"peak_gpu_memory_used_mib": 43000, "per_gpu_memory": [{"index": 0, "total_memory_mib": 46068}]}}
+    repetition = {
+        "status": "passed",
+        "resources": {"peak_gpu_memory_used_mib": 43000, "per_gpu_memory": [{"index": 0, "total_memory_mib": 46068}]},
+    }
     assert module.summarize(run, [repetition], 4096)["status"] == "failed"
     assert module.summarize(run, [repetition], 2048)["status"] == "passed"
 
 
 def test_matrix_qualification_accepts_namespaced_n3_evidence():
-    module = load_module("stage123_matrix_memory_probe_qualification", ROOT / "scripts/run_stage123_matrix_memory_probe.py")
+    module = load_module(
+        "stage123_matrix_memory_probe_qualification", ROOT / "scripts/run_stage123_matrix_memory_probe.py"
+    )
     result = {
         "returncode": 0,
         "timed_out": False,
@@ -89,7 +118,11 @@ def test_host_workload_split_uses_harness_without_host_pandas(tmp_path, monkeypa
     monkeypatch.setattr(module, "sha256", lambda path: "source-hash")
 
     def fake_run(command, cwd, env, check):
-        assert command[:3] == ["/data-1/verl07/run_train.sh", "python", "/workspace/verl/scripts/split_calibration_workload.py"]
+        assert command[:3] == [
+            "/data-1/verl07/run_train.sh",
+            "python",
+            "/workspace/verl/scripts/split_calibration_workload.py",
+        ]
         output_root = Path(command[command.index("--output-root") + 1])
         receipt = Path(command[command.index("--receipt") + 1])
         outputs = {}

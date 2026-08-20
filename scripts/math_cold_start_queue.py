@@ -6,13 +6,12 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from pathlib import Path
 import subprocess
 import sys
 from datetime import datetime, timezone
+from pathlib import Path
 
 import yaml
-
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -243,7 +242,10 @@ def main() -> int:
                     }
                 )
                 run(
-                    ["bash", str(ROOT / "recipe/on_policy_wdl_sft/format_cold_start/run_sft_math_qwen3_1p7b_format.sh")],
+                    [
+                        "bash",
+                        str(ROOT / "recipe/on_policy_wdl_sft/format_cold_start/run_sft_math_qwen3_1p7b_format.sh"),
+                    ],
                     env=env,
                     dry_run=args.dry_run,
                 )

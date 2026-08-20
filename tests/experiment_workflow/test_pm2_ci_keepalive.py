@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
-
 
 ROOT = Path(__file__).resolve().parents[2]
 CHECKER = ROOT / "scripts/check_pm2_ci_keepalive.py"
@@ -35,7 +33,15 @@ def fake_pm2(path: Path, fail_on: str = "") -> Path:
 
 
 def run(contract: Path, pm2: Path | None = None):
-    command = [sys.executable, str(CHECKER), "--contract", str(contract), "--repo-root", str(ROOT), "--require-no-systemd"]
+    command = [
+        sys.executable,
+        str(CHECKER),
+        "--contract",
+        str(contract),
+        "--repo-root",
+        str(ROOT),
+        "--require-no-systemd",
+    ]
     if pm2 is not None:
         command.extend(["--pm2-bin", str(pm2)])
     return subprocess.run(command, text=True, capture_output=True, check=False)

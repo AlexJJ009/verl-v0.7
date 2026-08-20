@@ -12,7 +12,6 @@ They verify:
 
 import pytest
 import torch
-import torch.nn as nn
 
 
 def _make_small_joint_config(fusion_lambda=0.5, freeze_model1=False):
@@ -112,7 +111,7 @@ class TestQwenJointModelInstantiation:
     def test_no_shared_parameters(self):
         """Model1 and model2 should NOT share parameters."""
         model = _make_joint_model()
-        for p0, p1 in zip(model.sub_models[0].parameters(), model.sub_models[1].parameters()):
+        for p0, p1 in zip(model.sub_models[0].parameters(), model.sub_models[1].parameters(), strict=False):
             assert p0.data_ptr() != p1.data_ptr(), "Sub-models should not share parameters"
 
 
@@ -174,7 +173,6 @@ class TestQwenJointForwardPass:
             torch.testing.assert_close(fused.logits, expected, rtol=1e-4, atol=1e-4)
 
     def test_strong_scaled_control_matches_lambda_times_model2(self):
-        from verl.models.joint_model.configuration_joint_qwen3 import QwenJointConfig
         from verl.models.joint_model.modeling_joint_qwen3 import QwenJointForCausalLM
 
         config = _make_small_joint_config(fusion_lambda=0.8)
@@ -240,16 +238,8 @@ class TestGradientFlow:
         output.loss.backward()
 
         # Collect gradient norms for each sub-model
-        grad_norm_0 = sum(
-            p.grad.norm().item()
-            for p in model.sub_models[0].parameters()
-            if p.grad is not None
-        )
-        grad_norm_1 = sum(
-            p.grad.norm().item()
-            for p in model.sub_models[1].parameters()
-            if p.grad is not None
-        )
+        grad_norm_0 = sum(p.grad.norm().item() for p in model.sub_models[0].parameters() if p.grad is not None)
+        grad_norm_1 = sum(p.grad.norm().item() for p in model.sub_models[1].parameters() if p.grad is not None)
 
         # model2 (lambda=0.8) should have larger gradient norm than model1 (1-lambda=0.2)
         assert grad_norm_1 > grad_norm_0, (
@@ -366,8 +356,7 @@ class TestModel2Extraction:
         extracted_keys = set(model2_params.keys())
 
         assert standalone_keys == extracted_keys, (
-            f"Key mismatch.\nMissing: {standalone_keys - extracted_keys}\n"
-            f"Extra: {extracted_keys - standalone_keys}"
+            f"Key mismatch.\nMissing: {standalone_keys - extracted_keys}\nExtra: {extracted_keys - standalone_keys}"
         )
 
     def test_model2_produces_same_output_as_extracted(self):

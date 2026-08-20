@@ -10,7 +10,6 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-
 REQUIRED_METRICS = {
     "training/global_step",
     "actor/pg_loss",
@@ -35,12 +34,15 @@ REQUIRED_METRICS = {
 
 
 def _tmux_alive(name: str) -> bool:
-    return subprocess.run(
-        ["tmux", "has-session", "-t", name],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        check=False,
-    ).returncode == 0
+    return (
+        subprocess.run(
+            ["tmux", "has-session", "-t", name],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        ).returncode
+        == 0
+    )
 
 
 def _find_step_one(metrics_root: Path, project: str, run_prefix: str) -> tuple[Path, dict] | None:

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
 RECIPE = ROOT / "recipe/on_policy_wdl_sft"
 MATH = RECIPE / "math_task"
@@ -15,7 +14,7 @@ def _read(path: Path) -> str:
 def test_joint_common_plumbs_and_fail_closes_freeze_model1() -> None:
     common = _read(RECIPE / "_common_wdl_sft_is_joint.sh")
     assert "FREEZE_MODEL1=${FREEZE_MODEL1:-false}" in common
-    assert 'prepare_joint_args+=(--freeze_model1)' in common
+    assert "prepare_joint_args+=(--freeze_model1)" in common
     assert 'expected_freeze_model1 = sys.argv[4].lower() == "true"' in common
     assert "joint model freeze_model1 mismatch" in common
     assert "FREEZE_MODEL1=${FREEZE_MODEL1}" in common
@@ -44,7 +43,7 @@ def test_cold_start_fixed_m1_changes_only_the_matched_source_identity() -> None:
     assert "export FREEZE_MODEL1=true" in fixed
     assert "export FUSION_LAMBDA=0.8" in fixed
     assert "export FUSION_MODE=mixture" in fixed
-    assert 'export MODEL2_PATH=${MODEL2_PATH:-$BASE_MODEL_PATH}' in fixed
+    assert "export MODEL2_PATH=${MODEL2_PATH:-$BASE_MODEL_PATH}" in fixed
     assert "format_cold_start_source.json" in fixed
     assert "TRAIN_FILE=" not in fixed
     assert "TOTAL_TRAINING_STEPS=" not in fixed
@@ -74,9 +73,9 @@ def test_dual_validation_writes_view_namespaced_metrics_and_generations() -> Non
 
     assert 'export JOINT_VALIDATION_VIEWS="[model1,model2]"' in common
     assert 'views = list(self.config.trainer.get("joint_validation_views", ["model2"]))' in trainer
-    assert 'weight_view=view' in trainer
-    assert 'metric_view=view if expose_view_namespace else None' in trainer
-    assert 'val_data_dir = os.path.join(val_data_dir, metric_view)' in trainer
+    assert "weight_view=view" in trainer
+    assert "metric_view=view if expose_view_namespace else None" in trainer
+    assert "val_data_dir = os.path.join(val_data_dir, metric_view)" in trainer
     assert 'view_path = f"/{metric_view}" if metric_view else ""' in trainer
 
 

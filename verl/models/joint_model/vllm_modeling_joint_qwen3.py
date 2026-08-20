@@ -1,5 +1,5 @@
 from collections.abc import Iterable, Mapping
-from typing import Optional, Union
+from typing import Optional
 
 import torch
 from torch import nn
@@ -36,10 +36,7 @@ class QwenJointForCausalLM(nn.Module):
         self._use_model2_only = False
 
         self.sub_models = nn.ModuleList(
-            [
-                Qwen3ForCausalLM(vllm_config=vllm_config, prefix=self._child_prefix(prefix, i))
-                for i in range(2)
-            ]
+            [Qwen3ForCausalLM(vllm_config=vllm_config, prefix=self._child_prefix(prefix, i)) for i in range(2)]
         )
 
         self.make_empty_intermediate_tensors = make_empty_intermediate_tensors_factory(
@@ -97,16 +94,8 @@ class QwenJointForCausalLM(nn.Module):
     @staticmethod
     def _pack_intermediate_tensors(output0, output1):
         tensor_cls = type(output0)
-        merged = {
-            f"sub_model_0_{name}": tensor
-            for name, tensor in output0.items()
-        }
-        merged.update(
-            {
-                f"sub_model_1_{name}": tensor
-                for name, tensor in output1.items()
-            }
-        )
+        merged = {f"sub_model_0_{name}": tensor for name, tensor in output0.items()}
+        merged.update({f"sub_model_1_{name}": tensor for name, tensor in output1.items()})
         return tensor_cls(merged)
 
     @staticmethod
@@ -129,7 +118,7 @@ class QwenJointForCausalLM(nn.Module):
         return torch.cat((hidden_states0, hidden_states1), dim=-1)
 
     def _unpack_hidden_states(
-        self, hidden_states: Union[torch.Tensor, tuple[torch.Tensor, torch.Tensor]]
+        self, hidden_states: torch.Tensor | tuple[torch.Tensor, torch.Tensor]
     ) -> tuple[torch.Tensor, torch.Tensor]:
         if isinstance(hidden_states, tuple):
             return hidden_states
@@ -148,7 +137,7 @@ class QwenJointForCausalLM(nn.Module):
         positions: torch.Tensor,
         intermediate_tensors: Optional[object] = None,
         inputs_embeds: Optional[torch.Tensor] = None,
-    ) -> Union[torch.Tensor, object]:
+    ) -> torch.Tensor | object:
         if self._use_model2_only:
             return self.sub_models[1](
                 input_ids=input_ids,
@@ -199,8 +188,7 @@ class QwenJointForCausalLM(nn.Module):
     def load_weights(self, weights: Iterable[tuple[str, torch.Tensor]]) -> set[str]:
         is_joint, model0_weights, model1_weights, model2_only_weights = self._split_joint_weights(weights)
         print(
-            f"[WDL-SFT VERIFY] vllm_joint.load_weights: is_joint={is_joint}, "
-            f"will set _use_model2_only={not is_joint}",
+            f"[WDL-SFT VERIFY] vllm_joint.load_weights: is_joint={is_joint}, will set _use_model2_only={not is_joint}",
             flush=True,
         )
 

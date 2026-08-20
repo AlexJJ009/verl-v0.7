@@ -44,8 +44,9 @@ def test_default_submodel_kl_config_is_disabled():
 
 
 def test_submodel_kl_yaml_defaults_do_not_require_reference_lifecycle():
-    from hydra import compose, initialize_config_dir
     import os
+
+    from hydra import compose, initialize_config_dir
 
     with initialize_config_dir(config_dir=os.path.abspath("verl/trainer/config/actor")):
         cfg = compose(config_name="actor", overrides=["strategy=fsdp", "ppo_micro_batch_size_per_gpu=128"])

@@ -1,7 +1,6 @@
-from pathlib import Path
 import importlib.util
 import sys
-
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 TRAINER = ROOT / "verl/trainer/ppo/ray_trainer.py"
@@ -18,7 +17,10 @@ def test_initial_validation_records_testing_wall_time() -> None:
 
 def test_recording_observer_preserves_validation_phase_order() -> None:
     spec = importlib.util.spec_from_file_location("ray_trainer_timing", TRAINER)
-    module = importlib.util.module_from_spec(spec); assert spec.loader; sys.modules[spec.name] = module; spec.loader.exec_module(module)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
     observer = module.RecordingValidationObserver()
     observer.record("batch_started", batch_index=1, total_batches=1)
     observer.record("generation_complete", batch_index=1, total_batches=1)

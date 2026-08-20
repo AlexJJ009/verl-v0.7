@@ -10,14 +10,18 @@ logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
 
 def normalize_chat_template_token_ids(tokenized_output: Any) -> list[int]:
     """Normalize tokenizer chat-template outputs to a flat list of token ids."""
-    input_ids = tokenized_output["input_ids"] if hasattr(tokenized_output, "keys") and "input_ids" in tokenized_output else tokenized_output
+    input_ids = (
+        tokenized_output["input_ids"]
+        if hasattr(tokenized_output, "keys") and "input_ids" in tokenized_output
+        else tokenized_output
+    )
 
     if hasattr(input_ids, "tolist"):
         input_ids = input_ids.tolist()
 
-    if isinstance(input_ids, Sequence) and not isinstance(input_ids, (str, bytes)):
+    if isinstance(input_ids, Sequence) and not isinstance(input_ids, str | bytes):
         input_ids = list(input_ids)
-        if input_ids and isinstance(input_ids[0], Sequence) and not isinstance(input_ids[0], (str, bytes)):
+        if input_ids and isinstance(input_ids[0], Sequence) and not isinstance(input_ids[0], str | bytes):
             if len(input_ids) != 1:
                 raise ValueError("Expected a single sequence of chat template token ids")
             input_ids = list(input_ids[0])
@@ -38,14 +42,10 @@ def initialize_system_prompt(tokenizer, **apply_chat_template_kwargs) -> list[in
         List of token IDs for the system prompt, or empty list if not supported
     """
     token1 = normalize_chat_template_token_ids(
-        tokenizer.apply_chat_template(
-            [{"role": "user", "content": ""}], add_generation_prompt=False, tokenize=True
-        )
+        tokenizer.apply_chat_template([{"role": "user", "content": ""}], add_generation_prompt=False, tokenize=True)
     )
     token2 = normalize_chat_template_token_ids(
-        tokenizer.apply_chat_template(
-            [{"role": "user", "content": ""}] * 2, add_generation_prompt=False, tokenize=True
-        )
+        tokenizer.apply_chat_template([{"role": "user", "content": ""}] * 2, add_generation_prompt=False, tokenize=True)
     )
     # get system prompt tokens
     system_prompt = token1[: -(len(token2) - len(token1))]
@@ -54,14 +54,10 @@ def initialize_system_prompt(tokenizer, **apply_chat_template_kwargs) -> list[in
 
 def extract_system_prompt_and_generation(tokenizer):
     token1 = normalize_chat_template_token_ids(
-        tokenizer.apply_chat_template(
-            [{"role": "user", "content": ""}], add_generation_prompt=False, tokenize=True
-        )
+        tokenizer.apply_chat_template([{"role": "user", "content": ""}], add_generation_prompt=False, tokenize=True)
     )
     token2 = normalize_chat_template_token_ids(
-        tokenizer.apply_chat_template(
-            [{"role": "user", "content": ""}] * 2, add_generation_prompt=False, tokenize=True
-        )
+        tokenizer.apply_chat_template([{"role": "user", "content": ""}] * 2, add_generation_prompt=False, tokenize=True)
     )
     # get system prompt tokens
     system_prompt = token1[: -(len(token2) - len(token1))]

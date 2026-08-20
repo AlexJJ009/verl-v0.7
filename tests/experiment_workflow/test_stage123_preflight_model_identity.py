@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import importlib.util
 import json
-from pathlib import Path
 import subprocess
 from datetime import datetime, timedelta, timezone
-
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -36,7 +35,19 @@ def fake_machine_commands(module, monkeypatch):
 
     def fake(*args: str, env=None):
         if len(args) > 1 and args[1].endswith("check_official_scorer_dependencies.py"):
-            return subprocess.CompletedProcess(args, 0, stdout=json.dumps({"ok": True, "imports": ["evalplus.evaluate"], "lcb_index": "/data-2/index.sqlite", "pythonpath": []}), stderr="")
+            return subprocess.CompletedProcess(
+                args,
+                0,
+                stdout=json.dumps(
+                    {
+                        "ok": True,
+                        "imports": ["evalplus.evaluate"],
+                        "lcb_index": "/data-2/index.sqlite",
+                        "pythonpath": [],
+                    }
+                ),
+                stderr="",
+            )
         if args[0] in {"python3", "bash"}:
             return real_command(*args, env=env)
         if args[0] == "nvidia-smi":
@@ -48,12 +59,25 @@ def fake_machine_commands(module, monkeypatch):
 
 def test_scorer_dependency_check_is_structured_and_fail_closed(monkeypatch):
     module = load_module()
-    complete = {"ok": True, "imports": ["evalplus.evaluate"], "lcb_index": "/data-2/index.sqlite", "pythonpath": ["/workspace/verl"]}
-    monkeypatch.setattr(module, "command", lambda *args, **kwargs: subprocess.CompletedProcess(args, 0, stdout=json.dumps(complete), stderr=""))
+    complete = {
+        "ok": True,
+        "imports": ["evalplus.evaluate"],
+        "lcb_index": "/data-2/index.sqlite",
+        "pythonpath": ["/workspace/verl"],
+    }
+    monkeypatch.setattr(
+        module,
+        "command",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args, 0, stdout=json.dumps(complete), stderr=""),
+    )
     ok, detail = module.scorer_dependency_check()
     assert ok and detail == complete
     failure = {"ok": False, "failure_class": "dependency_failure", "error": "missing scorer"}
-    monkeypatch.setattr(module, "command", lambda *args, **kwargs: subprocess.CompletedProcess(args, 2, stdout="", stderr=json.dumps(failure)))
+    monkeypatch.setattr(
+        module,
+        "command",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args, 2, stdout="", stderr=json.dumps(failure)),
+    )
     ok, detail = module.scorer_dependency_check()
     assert not ok and detail == failure
 
@@ -61,16 +85,20 @@ def test_scorer_dependency_check_is_structured_and_fail_closed(monkeypatch):
 def host_facts(tmp_path: Path) -> Path:
     path = tmp_path / "host_facts.json"
     now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-    path.write_text(json.dumps({
-        "schema_version": 1,
-        "artifact_type": "stage123_host_facts",
-        "generated_at": now,
-        "completed_at": now,
-        "ok": True,
-        "docker_image": {"reference": "verl-harness:latest", "immutable_id": "sha256:test"},
-        "tmux": {"sessions": [], "stage123_conflicts": []},
-        "mounts": {"checkpoint_mount": "/data-2/checkpoints"},
-    }))
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "artifact_type": "stage123_host_facts",
+                "generated_at": now,
+                "completed_at": now,
+                "ok": True,
+                "docker_image": {"reference": "verl-harness:latest", "immutable_id": "sha256:test"},
+                "tmux": {"sessions": [], "stage123_conflicts": []},
+                "mounts": {"checkpoint_mount": "/data-2/checkpoints"},
+            }
+        )
+    )
     return path
 
 
@@ -99,7 +127,18 @@ def test_preflight_binds_repo_model_identity_and_reports_pending_stage3(tmp_path
     module = load_module()
     normalized = normalized_manifest(tmp_path)
     fake_machine_commands(module, monkeypatch)
-    monkeypatch.setattr(module.sys, "argv", ["stage123_preflight.py", "--allow-active", "--normalized-manifest", str(normalized), "--host-facts", str(host_facts(tmp_path))])
+    monkeypatch.setattr(
+        module.sys,
+        "argv",
+        [
+            "stage123_preflight.py",
+            "--allow-active",
+            "--normalized-manifest",
+            str(normalized),
+            "--host-facts",
+            str(host_facts(tmp_path)),
+        ],
+    )
     # The container checkout is /workspace/verl, so unrelated topology checks may fail.
     # This fixture owns only the model-identity check.
     module.main()
@@ -118,7 +157,18 @@ def test_preflight_rejects_normalized_stage1_identity_drift(tmp_path, monkeypatc
     data = json.loads(normalized.read_text())
     data["calibration_workloads"]["stage1"]["model_sources"][0]["artifact_sha256"] = "0" * 64
     normalized.write_text(json.dumps(data, sort_keys=True))
-    monkeypatch.setattr(module.sys, "argv", ["stage123_preflight.py", "--allow-active", "--normalized-manifest", str(normalized), "--host-facts", str(host_facts(tmp_path))])
+    monkeypatch.setattr(
+        module.sys,
+        "argv",
+        [
+            "stage123_preflight.py",
+            "--allow-active",
+            "--normalized-manifest",
+            str(normalized),
+            "--host-facts",
+            str(host_facts(tmp_path)),
+        ],
+    )
     assert module.main() == 1
     report = json.loads(capsys.readouterr().out)
     check = next(item for item in report["checks"] if item["name"] == "model_identity")

@@ -10,7 +10,6 @@ from pathlib import Path
 
 import pytest
 
-
 ROOT = Path(__file__).resolve().parents[2]
 ARTIFACT_BASE = Path(tempfile.mkdtemp(prefix="calibration-history-fixtures-"))
 
@@ -167,9 +166,7 @@ def test_stage12_scope_rejects_history_containing_stage3() -> None:
     scoped_history = history(rows)
     scoped_history["phase_scope"] = ["stage1", "stage2"]
     with pytest.raises(module.ContractError, match="history run phase set mismatch"):
-        module.build_prediction_contract(
-            manifest(), scoped_history, authorization_scope="stage12_producer"
-        )
+        module.build_prediction_contract(manifest(), scoped_history, authorization_scope="stage12_producer")
 
 
 def test_full_scope_rejects_stage12_history() -> None:
@@ -182,9 +179,7 @@ def test_full_scope_rejects_stage12_history() -> None:
 def test_stage12_scope_has_exact_phase_key_set() -> None:
     module = load()
     rows = [row for row in six_phase_runs() if row["phase"] != "stage3"]
-    contract = module.build_prediction_contract(
-        manifest(), history(rows), authorization_scope="stage12_producer"
-    )
+    contract = module.build_prediction_contract(manifest(), history(rows), authorization_scope="stage12_producer")
     assert contract["authorization_scope"] == "stage12_producer"
     assert [phase["phase"] for phase in contract["phases"]] == ["stage1", "stage2"]
 

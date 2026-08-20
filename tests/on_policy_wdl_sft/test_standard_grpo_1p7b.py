@@ -11,11 +11,10 @@ import torch
 import yaml
 from omegaconf import OmegaConf
 
+from scripts.grpo_retrain_admission import resolve_ordered_data_schedule
 from verl.trainer.ppo.core_algos import compute_policy_loss_vanilla
 from verl.trainer.ppo.ray_trainer import compute_response_mask
 from verl.workers.config.rollout import RolloutConfig
-from scripts.grpo_retrain_admission import resolve_ordered_data_schedule
-
 
 ROOT = Path(__file__).resolve().parents[2]
 GRPO_DIR = ROOT / "recipe/on_policy_wdl_sft/standard_grpo"
@@ -164,21 +163,21 @@ def test_math_stage1_entry_fails_closed_on_provenance_hashes():
     assert "MATH_STAGE1_MODEL_PROVENANCE_PATH" in launcher
     assert "Math S1-P0 model hash mismatch in provenance receipt" in launcher
     assert "Math S1-P0 source joint hash mismatch" in launcher
-    assert 'GRPO_PREFLIGHT_ONLY:-0' in launcher
+    assert "GRPO_PREFLIGHT_ONLY:-0" in launcher
 
 
 def test_math_grpo_formal_launch_is_gated_by_strict_reward_contract():
     launcher = (ROOT / "recipe/on_policy_wdl_sft/standard_grpo/run_qwen3_1p7b_standard_grpo.sh").read_text()
-    assert 'joint_training/custom_reward_function_latex_verify.py' in launcher
-    assert 'scripts/check_math_reward_contract.py' in launcher
+    assert "joint_training/custom_reward_function_latex_verify.py" in launcher
+    assert "scripts/check_math_reward_contract.py" in launcher
     assert '--reward-path "${CUSTOM_REWARD_FN_PATH}"' in launcher
     assert 'PYTHONPATH="${REPO_PYTHONPATH_ROOT:-${SCRIPT_DIR}/../../..}:${PYTHONPATH:-}"' in launcher
-    assert 'grpo_retrain_admission.py' in launcher
+    assert "grpo_retrain_admission.py" in launcher
     assert '--runtime-image-digest "${GRPO_RUNTIME_IMAGE_DIGEST}"' in launcher
-    assert '--scheduler-managed' in launcher
-    assert 'GRPO_ROOT_COMMIT' in launcher
-    assert 'GRPO_RECIPE_COMMIT' in launcher
-    assert 'GRPO_SNAPSHOT_DIGEST' in launcher
+    assert "--scheduler-managed" in launcher
+    assert "GRPO_ROOT_COMMIT" in launcher
+    assert "GRPO_RECIPE_COMMIT" in launcher
+    assert "GRPO_SNAPSHOT_DIGEST" in launcher
     assert '--receipt "${GRPO_ADMISSION_RECEIPT}"' in launcher
 
 
@@ -344,9 +343,7 @@ def test_ordered_epoch_schedule_can_use_filtered_verl_dataloader_steps(tmp_path)
     ],
 )
 def test_grpo_randomness_matches_the_recorded_acd0_contract(manifest_name, data_seed):
-    manifest = yaml.safe_load(
-        (ROOT / "recipe/on_policy_wdl_sft/experiment_manifest" / manifest_name).read_text()
-    )
+    manifest = yaml.safe_load((ROOT / "recipe/on_policy_wdl_sft/experiment_manifest" / manifest_name).read_text())
     assert manifest["training_contract"]["randomness"] == {
         "actor_fsdp_seed": 42,
         "actor_data_loader_seed": 42,

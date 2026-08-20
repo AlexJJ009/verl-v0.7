@@ -4,10 +4,9 @@
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 import re
 import sys
-
+from pathlib import Path
 
 REQUIRED = ("Scope", "Enforcement tier", "Evidence source", "When", "Do", "Otherwise")
 TIERS = {"structural", "machine-check", "judgment-only"}
@@ -22,7 +21,8 @@ def check(path: Path) -> list[str]:
         failures.append("duplicate rule ID")
     for position, start in enumerate(starts):
         end = starts[position + 1] if position + 1 < len(starts) else len(lines)
-        block = lines[start:end]; fields = {}
+        block = lines[start:end]
+        fields = {}
         for offset, line in enumerate(block, start=start + 1):
             match = re.match(r"- ([^:]+):\s*(.*)", line)
             if match:
@@ -44,9 +44,12 @@ def check(path: Path) -> list[str]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(); parser.add_argument("catalog", type=Path); args = parser.parse_args()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("catalog", type=Path)
+    args = parser.parse_args()
     failures = check(args.catalog)
-    for failure in failures: print(failure, file=sys.stderr)
+    for failure in failures:
+        print(failure, file=sys.stderr)
     return 1 if failures else 0
 
 

@@ -9,7 +9,6 @@ Run:
     python -m pytest tests/joint_training/feat/test_p1_logit_disagreement.py -v
 """
 
-import pytest
 import torch
 
 
@@ -33,7 +32,6 @@ def _make_joint_model(fusion_lambda=0.5, freeze_model1=False):
 
 
 class TestLogitDisagreement:
-
     def test_attribute_exists_after_forward(self):
         """Model should expose last_logit_disagreement after forward."""
         model = _make_joint_model()

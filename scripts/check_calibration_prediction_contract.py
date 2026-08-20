@@ -16,14 +16,13 @@ import math
 import subprocess
 import sys
 from datetime import datetime, timezone
-from decimal import Decimal, ROUND_CEILING, ROUND_FLOOR
+from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal
 from pathlib import Path
 from statistics import median
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from calibration_outcomes import CONTINUOUS_OUTCOMES, RATE_OUTCOMES
-
 
 ALGORITHM_VERSION = "stage123_history_conformal_v1"
 PHASES = ("stage1", "stage2", "stage3")
@@ -121,7 +120,7 @@ def _utc_second(value: str) -> datetime:
 
 
 def _number(value: Any, name: str) -> float:
-    if not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value):
+    if not isinstance(value, int | float) or isinstance(value, bool) or not math.isfinite(value):
         raise ContractError(f"{name}: expected finite number")
     return float(value)
 
@@ -166,7 +165,9 @@ def _first_dict(*values: Any) -> dict[str, Any]:
 
 def _expected_match_values(manifest: dict[str, Any], phase: str) -> dict[str, Any]:
     phase_doc = _phase_manifest(manifest, phase)
-    semantic = _first_dict(manifest.get("semantics"), manifest.get("semantic_contract"), phase_doc.get("semantic_contract"))
+    semantic = _first_dict(
+        manifest.get("semantics"), manifest.get("semantic_contract"), phase_doc.get("semantic_contract")
+    )
     validation = manifest.get("validation_dataset_hashes") or semantic.get("validation_dataset_hashes")
     if validation is None and isinstance(manifest.get("validation_data"), dict):
         datasets = manifest["validation_data"].get("datasets")
@@ -185,7 +186,9 @@ def _expected_match_values(manifest: dict[str, Any], phase: str) -> dict[str, An
         or phase_doc.get("topology_hash")
         or manifest.get("phase_topology_hash"),
         "scorer_hash": manifest.get("scorer_hash") or semantic.get("scorer_hash"),
-        "timeout_policy_hash": manifest.get("timeout_policy_hash") or semantic.get("timeout_policy_hash") or timeout_policy.get("sha256"),
+        "timeout_policy_hash": manifest.get("timeout_policy_hash")
+        or semantic.get("timeout_policy_hash")
+        or timeout_policy.get("sha256"),
         "max_response_length": manifest.get("max_response_length")
         or phase_doc.get("max_response_length")
         or resource_profile.get("max_response_length")
@@ -203,7 +206,9 @@ def _run_match_values(run: dict[str, Any]) -> dict[str, Any]:
     semantic = _first_dict(run.get("semantic_contract"))
     values = {key: run.get(key) for key in EXACT_MATCH_FIELDS}
     if values.get("sampled_decoding_semantic_hash") is None:
-        values["sampled_decoding_semantic_hash"] = semantic.get("sampled_decoding_semantic_hash") or semantic.get("sha256")
+        values["sampled_decoding_semantic_hash"] = semantic.get("sampled_decoding_semantic_hash") or semantic.get(
+            "sha256"
+        )
     if values.get("scorer_hash") is None:
         values["scorer_hash"] = semantic.get("scorer_hash")
     return values
@@ -239,9 +244,7 @@ def validate_history_snapshot(
     if expected_phases is not None:
         phase_scope = history_index.get("phase_scope")
         if phase_scope != list(expected_phases):
-            raise ContractError(
-                f"history phase_scope mismatch: expected {list(expected_phases)}, got {phase_scope!r}"
-            )
+            raise ContractError(f"history phase_scope mismatch: expected {list(expected_phases)}, got {phase_scope!r}")
         run_phases = [run.get("phase") for run in runs if isinstance(run, dict)]
         if set(run_phases) != set(expected_phases):
             raise ContractError(
@@ -393,7 +396,12 @@ def rate_interval(values: list[float], submitted_count: int) -> dict[str, Any]:
         raise ContractError("rate values/count are invalid")
     margin = 1.0 / submitted_count
     lower, upper = _round_interval(min(values) - margin, min(1.0, max(values) + margin))
-    return {"interval": [lower, upper], "raw_min": _floor6(min(values)), "raw_max": _ceil6(max(values)), "margin": _ceil6(margin)}
+    return {
+        "interval": [lower, upper],
+        "raw_min": _floor6(min(values)),
+        "raw_max": _ceil6(max(values)),
+        "margin": _ceil6(margin),
+    }
 
 
 def _width_ratio(interval: list[float]) -> float:
@@ -433,7 +441,11 @@ def predict_for_cohort(cohort: list[dict[str, Any]]) -> dict[str, Any]:
         status = "runtime_risk"
         decision = "blocked"
     elif (
-        any(_width_ratio(continuous[metric]["interval"]) > (RSS_WIDTH_LIMIT if metric == "peak_rss_gib" else ELAPSED_WIDTH_LIMIT) for metric in CONTINUOUS_OUTCOMES)
+        any(
+            _width_ratio(continuous[metric]["interval"])
+            > (RSS_WIDTH_LIMIT if metric == "peak_rss_gib" else ELAPSED_WIDTH_LIMIT)
+            for metric in CONTINUOUS_OUTCOMES
+        )
         or any(doc["interval"][1] - doc["interval"][0] > 0.25 for doc in rates.values())
         or idle["interval"][1] - idle["interval"][0] > GPU_IDLE_WIDTH_LIMIT
     ):
@@ -537,7 +549,12 @@ def verify_prediction_contract(
     if contract.get("algorithm_version") != ALGORITHM_VERSION:
         failures.append("algorithm version mismatch")
         decision = "blocked"
-    return {"ok": decision == "deployable" and not failures, "decision": decision, "failures": failures, "expected": expected}
+    return {
+        "ok": decision == "deployable" and not failures,
+        "decision": decision,
+        "failures": failures,
+        "expected": expected,
+    }
 
 
 def write_contract(path: Path, contract: dict[str, Any]) -> str:
@@ -574,7 +591,13 @@ def main(argv: list[str] | None = None) -> int:
         )
         if args.write or not args.contract.exists():
             contract_hash = write_contract(args.contract, generated)
-            print(json.dumps({"ok": True, "decision": generated["decision"], "contract_sha256": contract_hash}, indent=2, sort_keys=True))
+            print(
+                json.dumps(
+                    {"ok": True, "decision": generated["decision"], "contract_sha256": contract_hash},
+                    indent=2,
+                    sort_keys=True,
+                )
+            )
             return 0 if generated["decision"] == "deployable" else 1
         contract = load_json(args.contract)
         result = verify_prediction_contract(

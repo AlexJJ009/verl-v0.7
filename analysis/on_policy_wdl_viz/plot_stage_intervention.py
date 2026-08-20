@@ -13,7 +13,6 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-
 METRIC_MATH_MEAN3 = "val-core/HuggingFaceH4/MATH-500/acc/mean@3"
 METRIC_MATH_BEST3 = "val-core/HuggingFaceH4/MATH-500/acc/best@3/mean"
 METRIC_AIME_MEAN3 = "val-core/aime25/acc/mean@3"
@@ -34,22 +33,22 @@ class RunSpec:
 
 PRESETS = {
     "historical": [
-    RunSpec(
-        beta_label="beta=0.0",
-        stage1_jsonl="ONPOLICY-SFT-Qwen3-4B-MATH-S1-BETA0-V1_1779962803.jsonl",
-        stage2_jsonl="WDL-SFT-STAGED-V1-S2-FROM-S1-BETA0-BETA0_1780073162.jsonl",
-        stage1_source_step=85,
-        stage2_best_step=35,
-        color="#1f77b4",
-    ),
-    RunSpec(
-        beta_label="beta=0.1",
-        stage1_jsonl="ONPOLICY-SFT-Qwen3-4B-MATH-S1-BETA01-V1_1779981295.jsonl",
-        stage2_jsonl="WDL-SFT-STAGED-V1-S2-FROM-S1-BETA01-BETA01_1780096269.jsonl",
-        stage1_source_step=150,
-        stage2_best_step=20,
-        color="#d62728",
-    ),
+        RunSpec(
+            beta_label="beta=0.0",
+            stage1_jsonl="ONPOLICY-SFT-Qwen3-4B-MATH-S1-BETA0-V1_1779962803.jsonl",
+            stage2_jsonl="WDL-SFT-STAGED-V1-S2-FROM-S1-BETA0-BETA0_1780073162.jsonl",
+            stage1_source_step=85,
+            stage2_best_step=35,
+            color="#1f77b4",
+        ),
+        RunSpec(
+            beta_label="beta=0.1",
+            stage1_jsonl="ONPOLICY-SFT-Qwen3-4B-MATH-S1-BETA01-V1_1779981295.jsonl",
+            stage2_jsonl="WDL-SFT-STAGED-V1-S2-FROM-S1-BETA01-BETA01_1780096269.jsonl",
+            stage1_source_step=150,
+            stage2_best_step=20,
+            color="#d62728",
+        ),
     ],
     "boxed": [
         RunSpec(
@@ -307,10 +306,7 @@ def plot_intervention(
 
 def parse_args() -> argparse.Namespace:
     repo_root = find_repo_root(Path(__file__))
-    default_metrics = (
-        repo_root
-        / "recipe/on_policy_wdl_sft/staged_v1/metrics/OnPolicySFT-Then-WDLSFT-StagedV1"
-    )
+    default_metrics = repo_root / "recipe/on_policy_wdl_sft/staged_v1/metrics/OnPolicySFT-Then-WDLSFT-StagedV1"
     default_output_stem = Path(__file__).resolve().parent / "outputs/stage_intervention_math500"
     default_overleaf_images = repo_root / "docs/joint_training/courses/on-policy-wdl-overleaf/images"
 
@@ -318,7 +314,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--preset", choices=sorted(PRESETS), default="historical")
     parser.add_argument("--metrics-root", type=Path, default=default_metrics)
     parser.add_argument("--output-stem", type=Path, default=default_output_stem)
-    parser.add_argument("--summary-csv", type=Path, default=default_output_stem.parent / "stage_intervention_summary.csv")
+    parser.add_argument(
+        "--summary-csv", type=Path, default=default_output_stem.parent / "stage_intervention_summary.csv"
+    )
     parser.add_argument("--overleaf-images", type=Path, default=default_overleaf_images)
     parser.add_argument("--no-overleaf-copy", action="store_true")
     return parser.parse_args()

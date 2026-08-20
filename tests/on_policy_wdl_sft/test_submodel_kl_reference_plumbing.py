@@ -1,9 +1,10 @@
-import torch
 from types import SimpleNamespace
 
+import torch
+
 from verl import DataProto
-from verl.workers.config.actor import SubmodelKLConfig, SubmodelKLPairConfig
 from verl.workers import fsdp_workers
+from verl.workers.config.actor import SubmodelKLConfig, SubmodelKLPairConfig
 from verl.workers.fsdp_workers import _ref_logprob_tensors_from_actor_outputs
 
 

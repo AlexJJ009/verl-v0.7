@@ -4,12 +4,12 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from pathlib import Path
 import shutil
 import subprocess
 import sys
 import threading
 import time
+from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -126,9 +126,7 @@ def qualify_result(result: dict[str, Any], run: dict[str, Any], minimum_headroom
     }
     joint_sources = result.get("joint_model_sources", {})
     observed_sources = {
-        key: str(Path(joint_sources.get(key, "")).resolve())
-        for key in expected_sources
-        if joint_sources.get(key)
+        key: str(Path(joint_sources.get(key, "")).resolve()) for key in expected_sources if joint_sources.get(key)
     }
     log_path = Path(result["log"])
     passed = (
@@ -151,7 +149,9 @@ def qualify_result(result: dict[str, Any], run: dict[str, Any], minimum_headroom
     return result
 
 
-def run_environment(run: dict[str, Any], output_root: Path, profile: dict[str, Any], container_name: str) -> dict[str, str]:
+def run_environment(
+    run: dict[str, Any], output_root: Path, profile: dict[str, Any], container_name: str
+) -> dict[str, str]:
     source = run["source"]
     kl = run["submodel_kl"]
     return {
@@ -214,7 +214,9 @@ def run_arm(run: dict[str, Any], run_root: Path, profile: dict[str, Any], timeou
             returncode = process.wait(timeout=timeout_seconds)
         except subprocess.TimeoutExpired:
             timed_out = True
-            subprocess.run(["docker", "kill", container_name], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(
+                ["docker", "kill", container_name], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
             returncode = process.wait(timeout=60)
         finally:
             stop.set()
@@ -324,17 +326,22 @@ def main() -> int:
         "model1_identity": identities[0],
         "run_root": str(run_root),
         "runs": results,
-        "status": "passed" if len(results) == len(runs) and all(result["status"] == "passed" for result in results) else "failed",
+        "status": "passed"
+        if len(results) == len(runs) and all(result["status"] == "passed" for result in results)
+        else "failed",
     }
     report_path = run_root / "matrix-throughput-probe-report.json"
     write_json(report_path, report)
-    write_json(args.scratch_root / "latest-matrix-throughput-probe.json", {
-        "schema_version": 1,
-        "report": str(report_path),
-        "report_sha256": sha256(report_path),
-        "status": report["status"],
-        "run_root": str(run_root),
-    })
+    write_json(
+        args.scratch_root / "latest-matrix-throughput-probe.json",
+        {
+            "schema_version": 1,
+            "report": str(report_path),
+            "report_sha256": sha256(report_path),
+            "status": report["status"],
+            "run_root": str(run_root),
+        },
+    )
     print(json.dumps({"ok": report["status"] == "passed", "report": str(report_path)}, sort_keys=True))
     return 0 if report["status"] == "passed" else 1
 

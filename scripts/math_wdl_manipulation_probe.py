@@ -42,7 +42,14 @@ def _parameter_hash(model: torch.nn.Module) -> str:
 
 
 def _grad_norm(model: torch.nn.Module) -> float:
-    return sum(float(parameter.grad.detach().float().square().sum()) for parameter in model.parameters() if parameter.grad is not None) ** 0.5
+    return (
+        sum(
+            float(parameter.grad.detach().float().square().sum())
+            for parameter in model.parameters()
+            if parameter.grad is not None
+        )
+        ** 0.5
+    )
 
 
 def run_probe() -> dict:
@@ -63,7 +70,9 @@ def run_probe() -> dict:
         optimizer.zero_grad()
         output = model(input_ids=input_ids, attention_mask=attention_mask, return_submodel_logits=True)
         direct_model2_logits = output.submodel_logits[1]
-        fused_nll = F.cross_entropy(output.logits[:, :-1].reshape(-1, output.logits.shape[-1]), labels[:, 1:].reshape(-1))
+        fused_nll = F.cross_entropy(
+            output.logits[:, :-1].reshape(-1, output.logits.shape[-1]), labels[:, 1:].reshape(-1)
+        )
         direct_model2_nll = F.cross_entropy(
             direct_model2_logits[:, :-1].reshape(-1, direct_model2_logits.shape[-1]),
             labels[:, 1:].reshape(-1),
@@ -105,9 +114,11 @@ def run_probe() -> dict:
         "C_depends_on_model1": diagnostics["C"]["model1_replacement_max_abs_logit_change"] > tolerance,
         "C_updates_both_models": diagnostics["C"]["model1_grad_norm"] > 0 and diagnostics["C"]["model2_grad_norm"] > 0,
         "D_is_direct_model2": diagnostics["D"]["formula_max_abs_error"] <= tolerance,
-        "D_ignores_and_does_not_update_model1": diagnostics["D"]["model1_grad_norm"] == 0 and diagnostics["D"]["model1_hash_unchanged_after_step"],
+        "D_ignores_and_does_not_update_model1": diagnostics["D"]["model1_grad_norm"] == 0
+        and diagnostics["D"]["model1_hash_unchanged_after_step"],
         "D0_is_matched_scale_model2": diagnostics["D0"]["formula_max_abs_error"] <= tolerance,
-        "D0_ignores_and_does_not_update_model1": diagnostics["D0"]["model1_grad_norm"] == 0 and diagnostics["D0"]["model1_hash_unchanged_after_step"],
+        "D0_ignores_and_does_not_update_model1": diagnostics["D0"]["model1_grad_norm"] == 0
+        and diagnostics["D0"]["model1_hash_unchanged_after_step"],
         "D_and_D0_are_model1_invariant": diagnostics["D"]["model1_replacement_max_abs_logit_change"] <= tolerance
         and diagnostics["D0"]["model1_replacement_max_abs_logit_change"] <= tolerance,
     }

@@ -13,7 +13,6 @@ from pathlib import Path
 
 import pyarrow.parquet as pq
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -59,9 +58,7 @@ def resolve_source_identity(
     has_git_metadata = (ROOT / ".git").exists() and (ROOT / "recipe/.git").exists()
     if scheduler_managed:
         if not supplied_root_commit or not supplied_recipe_commit or not supplied_snapshot_digest:
-            raise RuntimeError(
-                "scheduler-managed admission requires root commit, recipe commit, and snapshot digest"
-            )
+            raise RuntimeError("scheduler-managed admission requires root commit, recipe commit, and snapshot digest")
         root_commit = require_hex_digest(supplied_root_commit, 40, "root commit")
         recipe_commit = require_hex_digest(supplied_recipe_commit, 40, "recipe commit")
         snapshot_digest = require_hex_digest(supplied_snapshot_digest, 64, "snapshot digest")
@@ -111,10 +108,7 @@ def resolve_ordered_data_schedule(
     if train_rows <= 0:
         raise RuntimeError("train parquet must contain at least one row")
     if train_rows % train_prompt_bsz:
-        raise RuntimeError(
-            f"train rows ({train_rows}) are not divisible by prompt batch size "
-            f"({train_prompt_bsz})"
-        )
+        raise RuntimeError(f"train rows ({train_rows}) are not divisible by prompt batch size ({train_prompt_bsz})")
     raw_steps_per_epoch = train_rows // train_prompt_bsz
     if expected_filtered_train_rows is None and expected_dataloader_steps_per_epoch is None:
         effective_train_rows = train_rows
@@ -228,9 +222,7 @@ def main() -> int:
 
     model_file = args.model_path / "model.safetensors"
     identities = {
-        "model_safetensors_sha256": require_sha(
-            model_file, args.expected_model_sha256, "init model.safetensors"
-        ),
+        "model_safetensors_sha256": require_sha(model_file, args.expected_model_sha256, "init model.safetensors"),
         "train_file_sha256": require_sha(args.train_file, args.expected_train_sha256, "train file"),
         "reward_sha256": require_sha(args.reward_path, args.expected_reward_sha256, "reward scorer"),
     }

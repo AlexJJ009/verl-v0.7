@@ -5,14 +5,15 @@ import pandas as pd
 import pytest
 import yaml
 
-
 ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_code_training_queues_use_cot_v3_namespaces_and_invalidate_legacy_stage123():
     code_root = ROOT / "recipe/on_policy_wdl_sft/code_task"
     stage1_queue = (code_root / "run_code_task_kodcode_qwen3_1p7b_coldstart_fraction_stage1_queue.sh").read_text()
-    stage2_queue = (code_root / "run_code_task_kodcode_qwen3_1p7b_coldstart_fraction_stage2_p40_m2kl_vs_nokl_queue.sh").read_text()
+    stage2_queue = (
+        code_root / "run_code_task_kodcode_qwen3_1p7b_coldstart_fraction_stage2_p40_m2kl_vs_nokl_queue.sh"
+    ).read_text()
     stage123_queue = (code_root / "run_code_task_qwen3_1p7b_stage123_queue_impl.sh").read_text()
     split_queue = (code_root / "run_code_task_qwen3_1p7b_stage123_model2_kl_split_stage3_queue.sh").read_text()
     cold_monitor = (code_root / "monitor_code_task_qwen3_1p7b_coldstart_sft_fraction_notify.sh").read_text()
@@ -66,9 +67,7 @@ def test_kodcode_rl_prompt_restores_author_provided_function_declaration():
     prompt = module.build_prompt(row["question"], contract["function_declaration"])
     user_content = prompt[-1]["content"]
 
-    assert module.AUTHOR_FUNCTION_DECLARATION_TEMPLATE.format(
-        function_declaration="def add_one(x):"
-    ) in user_content
+    assert module.AUTHOR_FUNCTION_DECLARATION_TEMPLATE.format(function_declaration="def add_one(x):") in user_content
     assert module.AUTHOR_PREPROCESSING_COMMIT == "c348f894a803d0eff3c4d529dbf82af6e1262ae1"
     assert "<think>your concise reasoning</think>" in user_content
     assert "<answer>\n```python" in user_content
@@ -141,9 +140,7 @@ def test_livecodebench_local_adapter_requires_python_stdio_without_changing_ques
 
 
 def test_real_kodcode_author_signature_dataset_has_full_model_visible_contract():
-    dataset_path = Path(
-        "/data-1/dataset/code/verl_rl/kodcode_light_rl_10k_train_rl_format_author_signature_v2.parquet"
-    )
+    dataset_path = Path("/data-1/dataset/code/verl_rl/kodcode_light_rl_10k_train_rl_format_author_signature_v2.parquet")
     if not dataset_path.is_file():
         return
 
@@ -221,9 +218,7 @@ def test_code_cold_start_preserves_raw_source_index_after_seeded_selection():
         [
             {
                 "question": f"Task {raw_index}.",
-                "conversations": [
-                    {"from": "gpt", "value": f"<think>Reasoning for raw row {raw_index}.</think>"}
-                ],
+                "conversations": [{"from": "gpt", "value": f"<think>Reasoning for raw row {raw_index}.</think>"}],
             }
             for raw_index in range(21)
         ]
@@ -264,16 +259,18 @@ def test_code_cold_start_rejects_raw_index_uid_mismatch():
         [{"question": "Return x.", "conversations": [{"from": "gpt", "value": "<think>Reasoning.</think>"}]}]
     )
     source = pd.DataFrame(
-        [{
-            "prompt": [{"role": "user", "content": "Return x. Required function `def solve(x):`."}],
-            "extra_info": {
-                "raw_index": 0,
-                "uid": "0" * 24,
-                "entry_point": "solve",
-                "function_declaration": "def solve(x):",
-                "original_solution": "def solve(x):\n    return x",
-            },
-        }]
+        [
+            {
+                "prompt": [{"role": "user", "content": "Return x. Required function `def solve(x):`."}],
+                "extra_info": {
+                    "raw_index": 0,
+                    "uid": "0" * 24,
+                    "entry_point": "solve",
+                    "function_declaration": "def solve(x):",
+                    "original_solution": "def solve(x):\n    return x",
+                },
+            }
+        ]
     )
     with pytest.raises(ValueError, match="raw_index does not match extra_info.uid"):
         module.convert(source, raw, seed=1, max_samples=-1)
@@ -327,9 +324,7 @@ def test_code_cold_start_step_queue_matches_math_selection_contract():
         (ROOT / "recipe/on_policy_wdl_sft/experiment_manifest/code_qwen3_1p7b_cold_start_cotmask_v3.yaml").read_text()
     )
     queue = (ROOT / "scripts/code_cold_start_queue.py").read_text()
-    monitor = (
-        ROOT / "recipe/on_policy_wdl_sft/code_task/monitor_code_qwen3_1p7b_cold_start_cotmask_v3.sh"
-    ).read_text()
+    monitor = (ROOT / "recipe/on_policy_wdl_sft/code_task/monitor_code_qwen3_1p7b_cold_start_cotmask_v3.sh").read_text()
 
     assert manifest["training"]["max_steps"] == 30
     assert manifest["training"]["step_interval"] == 5
@@ -355,11 +350,9 @@ def test_code_cold_start_step_queue_matches_math_selection_contract():
     assert "candidate_evaluated" in monitor
     assert "author_signature_v2_steps/events.jsonl" in monitor
     assert "author_signature_v2_steps/model1_selection.json" in monitor
-    wrapper = (
-        ROOT / "recipe/on_policy_wdl_sft/code_task/run_code_qwen3_1p7b_cold_start_cotmask_v3.sh"
-    ).read_text()
+    wrapper = (ROOT / "recipe/on_policy_wdl_sft/code_task/run_code_qwen3_1p7b_cold_start_cotmask_v3.sh").read_text()
     assert 'elif [ -z "${TMUX:-}" ]; then' in wrapper
-    assert 'must be launched from a real host tmux session' in wrapper
+    assert "must be launched from a real host tmux session" in wrapper
     assert '-e TMUX="${TMUX:-}"' in wrapper
 
 

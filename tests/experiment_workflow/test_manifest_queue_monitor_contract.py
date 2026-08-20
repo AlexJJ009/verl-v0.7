@@ -2,23 +2,29 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
 import subprocess
-
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 MANIFEST = ROOT / "recipe/on_policy_wdl_sft/experiment_manifest/stage123.yaml"
 
 
 def rendered():
-    output = subprocess.check_output(["python3", str(ROOT / "scripts/experiment_manifest.py"), "render", str(MANIFEST), "--format", "json"], text=True)
+    output = subprocess.check_output(
+        ["python3", str(ROOT / "scripts/experiment_manifest.py"), "render", str(MANIFEST), "--format", "json"],
+        text=True,
+    )
     return json.loads(output)
 
 
 def test_manifest_is_the_expected_shared_contract():
     report = rendered()
-    queue_records = [(item["run_prefix"], item["final_step"], item["train_file"], item["tmux_name"]) for item in report["runs"]]
-    monitor_records = [(item["run_prefix"], item["final_step"], item["train_file"], item["tmux_name"]) for item in report["runs"]]
+    queue_records = [
+        (item["run_prefix"], item["final_step"], item["train_file"], item["tmux_name"]) for item in report["runs"]
+    ]
+    monitor_records = [
+        (item["run_prefix"], item["final_step"], item["train_file"], item["tmux_name"]) for item in report["runs"]
+    ]
     assert queue_records == monitor_records
 
 
@@ -40,7 +46,15 @@ def test_stage123_queue_reads_manifest():
 
 def test_stage123_queue_has_no_validation_or_lifecycle_authority():
     queue = (ROOT / "recipe/on_policy_wdl_sft/code_task/run_code_task_qwen3_1p7b_stage123_queue_impl.sh").read_text()
-    for forbidden in ("validation batch", "deadline_seconds", "validation_deadline_controller.py", "docker inspect", "status.tsv", "launch_and_wait", "latest_checkpoint"):
+    for forbidden in (
+        "validation batch",
+        "deadline_seconds",
+        "validation_deadline_controller.py",
+        "docker inspect",
+        "status.tsv",
+        "launch_and_wait",
+        "latest_checkpoint",
+    ):
         assert forbidden not in queue
     assert "batch-run" in queue
 
@@ -56,7 +70,12 @@ def test_stage123_phase_gate_does_not_treat_batch_environment_as_authorization()
 def test_direct_stage123_phase_still_requires_full_admission():
     bundle = ROOT / "docs/joint_training/goals/stage123-execution-readiness/admission_bundle.json"
     gate = ROOT / "recipe/on_policy_wdl_sft/code_task/stage123_manifest_gate.sh"
-    result = subprocess.run(["bash", "-lc", f"source {gate}; stage123_require_formal_admission frac25-stage2"], env={**os.environ, "STAGE123_ADMISSION_BUNDLE": str(bundle)}, text=True, capture_output=True)
+    result = subprocess.run(
+        ["bash", "-lc", f"source {gate}; stage123_require_formal_admission frac25-stage2"],
+        env={**os.environ, "STAGE123_ADMISSION_BUNDLE": str(bundle)},
+        text=True,
+        capture_output=True,
+    )
     assert result.returncode != 0
 
 
@@ -91,9 +110,20 @@ def test_stage123_monitor_uses_event_policy_not_legacy_tmux_started_notification
     assert "stage123_manifest_monitor.py" in monitor
     assert "training_queue_monitor.sh" not in monitor
     assert "jq " not in monitor
-    assert "jq " not in (ROOT / "recipe/on_policy_wdl_sft/code_task/run_code_task_qwen3_1p7b_stage123_queue_impl.sh").read_text()
+    assert (
+        "jq "
+        not in (ROOT / "recipe/on_policy_wdl_sft/code_task/run_code_task_qwen3_1p7b_stage123_queue_impl.sh").read_text()
+    )
     python_monitor = (ROOT / "scripts/stage123_manifest_monitor.py").read_text()
-    for forbidden in ("tmux", "checkpoint-root", "queue-tmux", "latest_checkpoint", "latest_checkpointed_iteration", "/data-1/checkpoints", "validation_deadlines"):
+    for forbidden in (
+        "tmux",
+        "checkpoint-root",
+        "queue-tmux",
+        "latest_checkpoint",
+        "latest_checkpointed_iteration",
+        "/data-1/checkpoints",
+        "validation_deadlines",
+    ):
         assert forbidden not in python_monitor
     assert "--checkpoint-root" not in monitor and "--queue-tmux" not in monitor
 

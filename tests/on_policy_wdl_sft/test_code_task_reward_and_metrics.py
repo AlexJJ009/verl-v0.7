@@ -8,14 +8,14 @@ import time
 import unittest
 import uuid
 import zlib
-from types import SimpleNamespace
-from unittest.mock import Mock
 from unittest.mock import patch
 
-from recipe.on_policy_wdl_sft.code_task.official_aligned_reward import _restore_jsonable
 from recipe.on_policy_wdl_sft.code_task.code_extraction import extract_code
-from recipe.on_policy_wdl_sft.code_task.official_aligned_reward import compute_score_code_official_aligned
-from recipe.on_policy_wdl_sft.code_task.official_aligned_reward import score_livecodebench_official
+from recipe.on_policy_wdl_sft.code_task.official_aligned_reward import (
+    _restore_jsonable,
+    compute_score_code_official_aligned,
+    score_livecodebench_official,
+)
 from recipe.on_policy_wdl_sft.code_task.prepare_deepcoder_preview_dataset import convert_row
 from verl.experimental.agent_loop.agent_loop import _default_reward_extra_value
 from verl.experimental.reward_loop.reward_manager.dapo import DAPORewardManager
@@ -47,9 +47,7 @@ class TestCodeTaskRewardAndMetrics(unittest.TestCase):
                 )
 
                 self.assertEqual(
-                    _resolve_livecodebench_input_output(
-                        {"question_id": "q1", "release_version": "release_v5"}
-                    ),
+                    _resolve_livecodebench_input_output({"question_id": "q1", "release_version": "release_v5"}),
                     payload,
                 )
 
@@ -65,9 +63,10 @@ class TestCodeTaskRewardAndMetrics(unittest.TestCase):
                 return "", ""
 
         proc = HangingProcess()
-        with patch("recipe.on_policy_wdl_sft.code_task.official_aligned_reward.subprocess.Popen", return_value=proc), patch(
-            "recipe.on_policy_wdl_sft.code_task.official_aligned_reward.os.killpg"
-        ) as killpg:
+        with (
+            patch("recipe.on_policy_wdl_sft.code_task.official_aligned_reward.subprocess.Popen", return_value=proc),
+            patch("recipe.on_policy_wdl_sft.code_task.official_aligned_reward.os.killpg") as killpg,
+        ):
             result = score_livecodebench_official("print(1)", {"input_output": {"inputs": [], "outputs": []}})
 
         self.assertEqual(result["code_reward_status"], "timeout")
@@ -132,9 +131,7 @@ class TestCodeTaskRewardAndMetrics(unittest.TestCase):
 
         gt = {
             "verification_method": "kodcode_exec",
-            "test": "from solution import *\n\n"
-            "def test_add():\n"
-            "    assert add(2, 3) == 5\n",
+            "test": "from solution import *\n\ndef test_add():\n    assert add(2, 3) == 5\n",
         }
 
         ok = compute_score_code_official_aligned(
@@ -147,11 +144,7 @@ class TestCodeTaskRewardAndMetrics(unittest.TestCase):
 
         leak = compute_score_code_official_aligned(
             "kodcode_light_rl_10k",
-            wrap_code(
-                "def add(a, b):\n"
-                "    import os\n"
-                "    return 5 if os.path.exists('test_solution.py') else 0"
-            ),
+            wrap_code("def add(a, b):\n    import os\n    return 5 if os.path.exists('test_solution.py') else 0"),
             gt,
         )
         self.assertEqual(leak["code_reward_status"], "wrong_answer")
@@ -164,9 +157,7 @@ class TestCodeTaskRewardAndMetrics(unittest.TestCase):
 
         gt = {
             "verification_method": "kodcode_exec",
-            "test": "from solution import *\n\n"
-            "def test_add():\n"
-            "    assert add(2, 3) == 5\n",
+            "test": "from solution import *\n\ndef test_add():\n    assert add(2, 3) == 5\n",
         }
         injected_keys = [f"KODCODE_TEST_ENV_{index}" for index in range(300)]
         previous = {key: os.environ.get(key) for key in injected_keys}
@@ -228,11 +219,7 @@ class TestCodeTaskRewardAndMetrics(unittest.TestCase):
 
         marker = f"codex_deepcoder_orphan_{uuid.uuid4().hex}"
         child = f"import os, time; os.setsid(); open('/tmp/{marker}', 'w').write('alive'); time.sleep(120)"
-        code = (
-            "import subprocess, sys\n"
-            f"subprocess.Popen([sys.executable, '-c', {child!r}])\n"
-            "print('OK')\n"
-        )
+        code = f"import subprocess, sys\nsubprocess.Popen([sys.executable, '-c', {child!r}])\nprint('OK')\n"
         result = compute_score_code_official_aligned("deepcoder_preview_train", wrap_code(code), gt)
         self.assertEqual(result["score"], -1.0)
         time.sleep(0.2)

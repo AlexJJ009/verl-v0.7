@@ -1,19 +1,20 @@
-import importlib.util
 import hashlib
+import importlib.util
 import json
 import os
-from pathlib import Path
 import subprocess
+from pathlib import Path
 
 import pandas as pd
 import pytest
 import yaml
 
-from recipe.joint_training.custom_reward_function_latex_verify import compute_format_telemetry
+from recipe.joint_training.custom_reward_function_latex_verify import (
+    compute_format_telemetry,
+    compute_score_latex_verify,
+)
 from recipe.joint_training.offline_eval import compute_shared_metrics
-from recipe.joint_training.custom_reward_function_latex_verify import compute_score_latex_verify
 from verl.trainer.ppo.ray_trainer import _add_validation_macro_average
-
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -82,9 +83,36 @@ def test_offline_format_metrics_are_response_rates():
         [
             {
                 "results": [
-                    {"acc": True, "think_complete": True, "answer_complete": True, "boxed_extraction_success": True, "reward_grader_success": True, "format_contract_success": True, "has_eos": True, "truncated": False},
-                    {"acc": False, "think_complete": True, "answer_complete": False, "boxed_extraction_success": False, "reward_grader_success": True, "format_contract_success": False, "has_eos": False, "truncated": True},
-                    {"acc": False, "think_complete": False, "answer_complete": False, "boxed_extraction_success": False, "reward_grader_success": False, "format_contract_success": False, "has_eos": True, "truncated": False},
+                    {
+                        "acc": True,
+                        "think_complete": True,
+                        "answer_complete": True,
+                        "boxed_extraction_success": True,
+                        "reward_grader_success": True,
+                        "format_contract_success": True,
+                        "has_eos": True,
+                        "truncated": False,
+                    },
+                    {
+                        "acc": False,
+                        "think_complete": True,
+                        "answer_complete": False,
+                        "boxed_extraction_success": False,
+                        "reward_grader_success": True,
+                        "format_contract_success": False,
+                        "has_eos": False,
+                        "truncated": True,
+                    },
+                    {
+                        "acc": False,
+                        "think_complete": False,
+                        "answer_complete": False,
+                        "boxed_extraction_success": False,
+                        "reward_grader_success": False,
+                        "format_contract_success": False,
+                        "has_eos": True,
+                        "truncated": False,
+                    },
                 ]
             }
         ],
@@ -99,7 +127,7 @@ def test_offline_format_metrics_are_response_rates():
 
 def test_math7_macro_average_uses_equal_dataset_weighting():
     sources = ["a", "b", "c"]
-    metrics = {f"val-core/{source}/acc/mean@3": value for source, value in zip(sources, [0.3, 0.6, 0.9])}
+    metrics = {f"val-core/{source}/acc/mean@3": value for source, value in zip(sources, [0.3, 0.6, 0.9], strict=False)}
     config = {
         "validation_macro_average_sources": sources,
         "validation_macro_average_name": "math7_macro",
@@ -115,13 +143,20 @@ def test_disjoint_split_receipt_and_control_order(tmp_path):
     output = tmp_path / "output"
     pd.DataFrame({"row": list(range(7500))}).to_parquet(source, index=False)
     old_argv = module.parse_args
-    module.parse_args = lambda: type("Args", (), {"source": source, "output_root": output, "seed": 20260719, "verify_only": False})()
+    module.parse_args = lambda: type(
+        "Args", (), {"source": source, "output_root": output, "seed": 20260719, "verify_only": False}
+    )()
     try:
         module.main()
     finally:
         module.parse_args = old_argv
     receipt = module.verify_receipt(output)
-    assert [receipt["shards"][name]["rows"] for name in ("cold_start", "stage1", "stage2", "stage3")] == [1100, 2560, 1280, 2560]
+    assert [receipt["shards"][name]["rows"] for name in ("cold_start", "stage1", "stage2", "stage3")] == [
+        1100,
+        2560,
+        1280,
+        2560,
+    ]
     stage2 = pd.read_parquet(output / "stage2.parquet")["stage123_source_index"].tolist()
     stage3 = pd.read_parquet(output / "stage3.parquet")["stage123_source_index"].tolist()
     control = pd.read_parquet(output / "stage1_control_stage2_then_stage3.parquet")["stage123_source_index"].tolist()
@@ -251,7 +286,9 @@ def test_math_queue_defaults_only_to_cotmask_v3_manifests():
     assert "math_qwen3_1p7b_cold_start_cotmask_v3.yaml" in cold_python
     assert "math_qwen3_1p7b_stage123_cotmask_v3.yaml" in stage_python
     assert "prepare_math7_validation_data.py" in stage_queue
-    resource_profile = (ROOT / "recipe/on_policy_wdl_sft/math_task/qwen3_1p7b_math_stage123_resource_profile.sh").read_text()
+    resource_profile = (
+        ROOT / "recipe/on_policy_wdl_sft/math_task/qwen3_1p7b_math_stage123_resource_profile.sh"
+    ).read_text()
     assert "qwen3_1p7b_math7_validation_v1" in resource_profile
     assert "_schema_aligned.parquet" in resource_profile
 
@@ -396,7 +433,9 @@ def test_math_stage123_queue_passes_explicit_start_run():
 
 
 def test_math_and_code_stage123_disable_entropy_and_use_admitted_rollout_memory():
-    math_profile = (ROOT / "recipe/on_policy_wdl_sft/math_task/qwen3_1p7b_math_stage123_resource_profile.sh").read_text()
+    math_profile = (
+        ROOT / "recipe/on_policy_wdl_sft/math_task/qwen3_1p7b_math_stage123_resource_profile.sh"
+    ).read_text()
     code_profile = (ROOT / "recipe/on_policy_wdl_sft/code_task/qwen3_1p7b_stage123_resource_profile.sh").read_text()
     assert "ROLLOUT_GPU_MEMORY_UTILIZATION=${ROLLOUT_GPU_MEMORY_UTILIZATION:-0.55}" in math_profile
     assert "ROLLOUT_GPU_MEMORY_UTILIZATION=${ROLLOUT_GPU_MEMORY_UTILIZATION:-0.35}" in code_profile
@@ -406,8 +445,12 @@ def test_math_and_code_stage123_disable_entropy_and_use_admitted_rollout_memory(
     assert '"$ACTOR_CALCULATE_ENTROPY" = False' in code_profile
     assert '"$CALCULATE_ENTROPY" = False' in code_profile
 
-    code_stage1 = (ROOT / "recipe/on_policy_wdl_sft/code_task/run_s1_code_kodcode_qwen3_1p7b_instruct_ctx8k_beta_0.sh").read_text()
-    code_stage2 = (ROOT / "recipe/on_policy_wdl_sft/code_task/run_s2_code_kodcode_qwen3_1p7b_instruct_ctx8k_p40_common.sh").read_text()
+    code_stage1 = (
+        ROOT / "recipe/on_policy_wdl_sft/code_task/run_s1_code_kodcode_qwen3_1p7b_instruct_ctx8k_beta_0.sh"
+    ).read_text()
+    code_stage2 = (
+        ROOT / "recipe/on_policy_wdl_sft/code_task/run_s2_code_kodcode_qwen3_1p7b_instruct_ctx8k_p40_common.sh"
+    ).read_text()
     assert "ACTOR_CALCULATE_ENTROPY=${ACTOR_CALCULATE_ENTROPY:-False}" in code_stage1
     assert "ROLLOUT_GPU_MEMORY_UTILIZATION=${ROLLOUT_GPU_MEMORY_UTILIZATION:-0.55}" in code_stage1
     assert "CALCULATE_ENTROPY=${CALCULATE_ENTROPY:-False}" in code_stage2

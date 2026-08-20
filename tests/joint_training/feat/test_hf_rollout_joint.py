@@ -6,7 +6,6 @@ Tests verify:
 3. _eval_only_mode attribute works with generate()
 """
 
-import pytest
 import torch
 
 

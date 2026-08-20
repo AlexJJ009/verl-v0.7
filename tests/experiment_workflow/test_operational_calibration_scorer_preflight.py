@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import importlib.util
 import os
-from pathlib import Path
 import subprocess
+from pathlib import Path
 
 import pytest
-
 
 ROOT = Path(__file__).resolve().parents[2]
 RECIPE = ROOT / "recipe/on_policy_wdl_sft/code_task"
@@ -27,7 +26,9 @@ def test_probe_accepts_complete_official_environment(monkeypatch: pytest.MonkeyP
         "LCB_INPUT_OUTPUT_INDEX",
         "/data-2/evaluator_assets/livecodebench_cache/index/release_v5_input_output.sqlite",
     )
-    result = module.validate("/workspace/verl:/data-1/code_eval_envs/official_site:/data-1/code_eval_envs/LiveCodeBench")
+    result = module.validate(
+        "/workspace/verl:/data-1/code_eval_envs/official_site:/data-1/code_eval_envs/LiveCodeBench"
+    )
     assert result["ok"] is True
     assert "evalplus.evaluate" in result["imports"]
     assert "lcb_runner.evaluation.compute_code_generation_metrics" in result["imports"]
@@ -51,7 +52,7 @@ def test_phase_probes_dependencies_before_starting_ray() -> None:
 def test_stage_wrappers_propagate_scorer_pythonpath() -> None:
     for name in ("run_s1_code_base.sh", "run_s2_code_model2_rollout_common.sh"):
         text = (RECIPE / name).read_text()
-        override = '+ray_kwargs.ray_init.runtime_env.env_vars.PYTHONPATH="\'${PYTHONPATH}\'"'
+        override = "+ray_kwargs.ray_init.runtime_env.env_vars.PYTHONPATH=\"'${PYTHONPATH}'\""
         assert text.count(override) == 1
 
 

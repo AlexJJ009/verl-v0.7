@@ -25,7 +25,6 @@ def model_identity(path: Path) -> dict:
         if not (path / filename).is_file():
             raise FileNotFoundError(path / filename)
     config = json.loads((path / "config.json").read_text())
-    tokenizer_config = json.loads((path / "tokenizer_config.json").read_text())
     transformers_version = config.get("transformers_version")
     if (
         config.get("model_type") == "qwen3"

@@ -9,17 +9,40 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
-
 ROOT = Path(__file__).resolve().parents[4]
 METRICS_DIR = ROOT / "recipe/on_policy_wdl_sft/code_task/metrics/OnPolicyWDLSFT-CodeTask"
 DATA_DIR = ROOT / "docs/joint_training/reports/data"
 FIG_DIR = ROOT / "docs/joint_training/reports/figures"
 
 RUNS = [
-    ("25%", 25, "beta0", "beta=0.0", "ONPOLICY-SFT-Qwen3-1P7B-COLDSTART-FRAC25-CODE-KODCODE-CTX8K-S1-BETA0-V1_1783416222"),
-    ("25%", 25, "beta01", "beta=0.1", "ONPOLICY-SFT-Qwen3-1P7B-COLDSTART-FRAC25-CODE-KODCODE-CTX8K-S1-BETA01-V1_1783425947"),
-    ("50%", 50, "beta0", "beta=0.0", "ONPOLICY-SFT-Qwen3-1P7B-COLDSTART-FRAC50-CODE-KODCODE-CTX8K-S1-BETA0-V1_1783435522"),
-    ("50%", 50, "beta01", "beta=0.1", "ONPOLICY-SFT-Qwen3-1P7B-COLDSTART-FRAC50-CODE-KODCODE-CTX8K-S1-BETA01-V1_1783444888"),
+    (
+        "25%",
+        25,
+        "beta0",
+        "beta=0.0",
+        "ONPOLICY-SFT-Qwen3-1P7B-COLDSTART-FRAC25-CODE-KODCODE-CTX8K-S1-BETA0-V1_1783416222",
+    ),
+    (
+        "25%",
+        25,
+        "beta01",
+        "beta=0.1",
+        "ONPOLICY-SFT-Qwen3-1P7B-COLDSTART-FRAC25-CODE-KODCODE-CTX8K-S1-BETA01-V1_1783425947",
+    ),
+    (
+        "50%",
+        50,
+        "beta0",
+        "beta=0.0",
+        "ONPOLICY-SFT-Qwen3-1P7B-COLDSTART-FRAC50-CODE-KODCODE-CTX8K-S1-BETA0-V1_1783435522",
+    ),
+    (
+        "50%",
+        50,
+        "beta01",
+        "beta=0.1",
+        "ONPOLICY-SFT-Qwen3-1P7B-COLDSTART-FRAC50-CODE-KODCODE-CTX8K-S1-BETA01-V1_1783444888",
+    ),
     ("100%", 100, "beta0", "beta=0.0", "ONPOLICY-SFT-Qwen3-1P7B-COLDSTART-CODE-KODCODE-CTX8K-S1-BETA0-V1_1783319854"),
     ("100%", 100, "beta01", "beta=0.1", "ONPOLICY-SFT-Qwen3-1P7B-COLDSTART-CODE-KODCODE-CTX8K-S1-BETA01-V1_1783329189"),
 ]
@@ -168,7 +191,17 @@ def summarize(rows: list[dict]) -> list[dict]:
 
 def write_summary(summary: list[dict]) -> Path:
     path = DATA_DIR / "qwen3_1p7b_coldstart_fraction_stage1_summary.csv"
-    fields = ["run_name", "fraction", "fraction_pct", "beta", "metric", "best_step", "best_value", "final_value", "delta_final_minus_best"]
+    fields = [
+        "run_name",
+        "fraction",
+        "fraction_pct",
+        "beta",
+        "metric",
+        "best_step",
+        "best_value",
+        "final_value",
+        "delta_final_minus_best",
+    ]
     with path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fields)
         writer.writeheader()
@@ -180,8 +213,8 @@ def print_summary(summary: list[dict]) -> None:
     for row in summary:
         print(
             f"{row['fraction']} {row['beta']} {row['metric']}: "
-            f"best step {row['best_step']}={100*row['best_value']:.2f}%, "
-            f"final={100*row['final_value']:.2f}%"
+            f"best step {row['best_step']}={100 * row['best_value']:.2f}%, "
+            f"final={100 * row['final_value']:.2f}%"
         )
 
 

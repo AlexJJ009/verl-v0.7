@@ -2080,12 +2080,11 @@ def compute_policy_loss_wdl_group_adv_is(
     if not isinstance(config, ActorConfig):
         raise TypeError("wdl_group_adv_is requires ActorConfig")
     if loss_agg_mode != "seq-mean-token-sum":
-        raise ValueError(
-            "wdl_group_adv_is requires loss_agg_mode='seq-mean-token-sum'; "
-            f"got {loss_agg_mode!r}"
-        )
+        raise ValueError(f"wdl_group_adv_is requires loss_agg_mode='seq-mean-token-sum'; got {loss_agg_mode!r}")
     if rollout_is_weights is not None:
-        raise ValueError("wdl_group_adv_is forbids rollout_is_weights; set algorithm.rollout_correction.rollout_is=null")
+        raise ValueError(
+            "wdl_group_adv_is forbids rollout_is_weights; set algorithm.rollout_correction.rollout_is=null"
+        )
 
     clip_ratio_low = config.clip_ratio_low if config.clip_ratio_low is not None else config.clip_ratio
     clip_ratio_high = config.clip_ratio_high if config.clip_ratio_high is not None else config.clip_ratio

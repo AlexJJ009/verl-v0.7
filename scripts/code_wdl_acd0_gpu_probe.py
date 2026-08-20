@@ -9,14 +9,13 @@ import importlib.util
 import json
 import math
 import os
-from pathlib import Path
 import subprocess
 import threading
 import time
+from pathlib import Path
 from typing import Any
 
 import yaml
-
 
 ROOT = Path(__file__).resolve().parents[1]
 ARM_ORDER = (
@@ -104,7 +103,9 @@ def assert_tmux_and_idle() -> dict[str, Any]:
     if compute:
         raise RuntimeError(f"GPU compute processes are active: {compute}")
     samples = gpu_sample()
-    if len(samples) != 8 or any(item["memory_used_mib"] > 256 or item["utilization_gpu_percent"] > 5 for item in samples):
+    if len(samples) != 8 or any(
+        item["memory_used_mib"] > 256 or item["utilization_gpu_percent"] > 5 for item in samples
+    ):
         raise RuntimeError("eight idle GPUs are required")
     return {"compute_processes": [], "gpus": samples}
 
@@ -231,7 +232,9 @@ def main() -> int:
     receipt["scratch_root"] = str(run_root)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    print(json.dumps({"status": receipt["status"], "output": str(args.output), "scratch": str(run_root)}, sort_keys=True))
+    print(
+        json.dumps({"status": receipt["status"], "output": str(args.output), "scratch": str(run_root)}, sort_keys=True)
+    )
     return 0 if receipt["status"] == "pass" else 1
 
 

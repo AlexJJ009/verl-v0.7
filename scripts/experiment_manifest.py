@@ -8,8 +8,8 @@ import hashlib
 import importlib.util
 import json
 import math
-from pathlib import Path
 import sys
+from pathlib import Path
 
 import jsonschema
 import yaml
@@ -99,43 +99,94 @@ def validate_policy_v1(result: dict) -> None:
         runs_by_phase.setdefault(item["phase"], []).append(item)
         source = item.get("source", {})
         source_run_id = source.get("run_id")
-        if source_run_id is not None and source_run_id not in runs_by_id and not is_certified_stage2_handoff_source(source):
-            _policy_error("missing_source_run", f"missing source run for {item['id']}", run_id=item["id"], source_run_id=source_run_id)
+        if (
+            source_run_id is not None
+            and source_run_id not in runs_by_id
+            and not is_certified_stage2_handoff_source(source)
+        ):
+            _policy_error(
+                "missing_source_run",
+                f"missing source run for {item['id']}",
+                run_id=item["id"],
+                source_run_id=source_run_id,
+            )
         if not item["artifact_dir"].startswith("/data-2/"):
-            _policy_error("artifact_mount", f"artifact_dir must use /data-2: {item['id']}", run_id=item["id"], artifact_dir=item["artifact_dir"])
+            _policy_error(
+                "artifact_mount",
+                f"artifact_dir must use /data-2: {item['id']}",
+                run_id=item["id"],
+                artifact_dir=item["artifact_dir"],
+            )
 
     workloads = result["calibration_workloads"]
     artifact_sha256, file_sha256 = _load_workload_hashing()
     shared_eligibility = None
     for phase, workload in workloads.items():
         if workload["phase"] != phase:
-            _policy_error("workload_phase", f"{phase}: calibration workload identity mismatch", phase=phase, declared_phase=workload["phase"])
+            _policy_error(
+                "workload_phase",
+                f"{phase}: calibration workload identity mismatch",
+                phase=phase,
+                declared_phase=workload["phase"],
+            )
         sources = workload["model_sources"]
         for source in sources:
             if source["state"] == "pending":
                 producer = source.get("producer")
                 if not producer:
-                    _policy_error("pending_producer_missing", f"{phase}: pending model source requires producer", phase=phase, role=source["role"])
+                    _policy_error(
+                        "pending_producer_missing",
+                        f"{phase}: pending model source requires producer",
+                        phase=phase,
+                        role=source["role"],
+                    )
                 run = runs_by_id.get(producer["run_id"])
                 if run is None or run["final_step"] != producer["final_step"]:
-                    _policy_error("pending_producer_identity", f"{phase}: pending producer identity mismatch", phase=phase, producer=producer)
-                consumers = [item for item in runs_by_phase.get(phase, []) if item.get("source", {}).get("run_id") == run["id"]]
+                    _policy_error(
+                        "pending_producer_identity",
+                        f"{phase}: pending producer identity mismatch",
+                        phase=phase,
+                        producer=producer,
+                    )
+                consumers = [
+                    item for item in runs_by_phase.get(phase, []) if item.get("source", {}).get("run_id") == run["id"]
+                ]
                 if not consumers or all(producer["provenance_path"] != item["provenance_file"] for item in consumers):
-                    _policy_error("pending_provenance_path", f"{phase}: pending provenance path mismatch", phase=phase, producer=producer)
+                    _policy_error(
+                        "pending_provenance_path",
+                        f"{phase}: pending provenance path mismatch",
+                        phase=phase,
+                        producer=producer,
+                    )
                 if source["path"] != producer["output_path"]:
-                    _policy_error("pending_output_path", f"{phase}: pending output path mismatch", phase=phase, source_path=source["path"], output_path=producer["output_path"])
+                    _policy_error(
+                        "pending_output_path",
+                        f"{phase}: pending output path mismatch",
+                        phase=phase,
+                        source_path=source["path"],
+                        output_path=producer["output_path"],
+                    )
             elif any(
-                item.get("source", {}).get("run_id")
-                and not is_certified_stage2_handoff_source(item.get("source", {}))
+                item.get("source", {}).get("run_id") and not is_certified_stage2_handoff_source(item.get("source", {}))
                 for item in runs_by_phase.get(phase, [])
             ):
                 producer = source.get("producer")
                 run = runs_by_id.get(producer["run_id"]) if producer else None
                 provenance = source.get("provenance")
                 if not producer or run is None or not provenance or producer["final_step"] != run["final_step"]:
-                    _policy_error("materialized_producer_binding", f"{phase} materialized source requires current producer binding", phase=phase, producer=producer)
+                    _policy_error(
+                        "materialized_producer_binding",
+                        f"{phase} materialized source requires current producer binding",
+                        phase=phase,
+                        producer=producer,
+                    )
             if phase == "stage1" and source["path"] != result["paths"]["stage1_init_model"]:
-                _policy_error("stage1_init_path", "stage1: init model path mismatch", source_path=source["path"], manifest_path=result["paths"]["stage1_init_model"])
+                _policy_error(
+                    "stage1_init_path",
+                    "stage1: init model path mismatch",
+                    source_path=source["path"],
+                    manifest_path=result["paths"]["stage1_init_model"],
+                )
             if phase == "stage1":
                 provenance = source.get("provenance")
                 if not provenance or provenance["path"] != result["paths"]["stage1_init_provenance"]:
@@ -143,10 +194,20 @@ def validate_policy_v1(result: dict) -> None:
             if source["state"] == "materialized":
                 path = Path(source["path"])
                 if artifact_sha256(path) != source["artifact_sha256"]:
-                    _policy_error("artifact_hash", f"{phase}: model artifact hash mismatch: {source['role']}", phase=phase, role=source["role"])
+                    _policy_error(
+                        "artifact_hash",
+                        f"{phase}: model artifact hash mismatch: {source['role']}",
+                        phase=phase,
+                        role=source["role"],
+                    )
                 provenance = source.get("provenance")
                 if provenance is not None and file_sha256(Path(provenance["path"])) != provenance["sha256"]:
-                    _policy_error("provenance_hash", f"{phase}: model provenance hash mismatch: {source['role']}", phase=phase, role=source["role"])
+                    _policy_error(
+                        "provenance_hash",
+                        f"{phase}: model provenance hash mismatch: {source['role']}",
+                        phase=phase,
+                        role=source["role"],
+                    )
         counts = workload["rollout_model_parameter_counts"]
         if len(counts) != len(sources) or sum(counts) != workload["rollout_model_parameter_count_sum"]:
             _policy_error("parameter_counts", f"{phase}: calibration parameter counts mismatch", phase=phase)
@@ -157,7 +218,9 @@ def validate_policy_v1(result: dict) -> None:
             if phase != "stage3":
                 _policy_error("calibration_proxy_scope", "calibration proxy is allowed only for Stage3", phase=phase)
             if proxy["rollout_model_parameter_count"] != workload["rollout_model_parameter_count_sum"]:
-                _policy_error("calibration_proxy_parameter_count", "calibration proxy parameter count mismatch", phase=phase)
+                _policy_error(
+                    "calibration_proxy_parameter_count", "calibration proxy parameter count mismatch", phase=phase
+                )
             if artifact_sha256(Path(proxy["path"])) != proxy["artifact_sha256"]:
                 _policy_error("calibration_proxy_hash", "calibration proxy artifact hash mismatch", phase=phase)
         names = [item["name"] for item in workload["datasets"]]
@@ -166,9 +229,19 @@ def validate_policy_v1(result: dict) -> None:
         for dataset in workload["datasets"]:
             expected_hash = result["semantics"]["validation_dataset_hashes"].get(dataset["name"])
             if dataset["sha256"] != expected_hash:
-                _policy_error("dataset_hash", f"{phase}: calibration dataset hash mismatch: {dataset['name']}", phase=phase, dataset=dataset["name"])
+                _policy_error(
+                    "dataset_hash",
+                    f"{phase}: calibration dataset hash mismatch: {dataset['name']}",
+                    phase=phase,
+                    dataset=dataset["name"],
+                )
             if sum(dataset["difficulty_stratum_counts"].values()) != dataset["row_count"]:
-                _policy_error("dataset_strata", f"{phase}: difficulty stratum count mismatch: {dataset['name']}", phase=phase, dataset=dataset["name"])
+                _policy_error(
+                    "dataset_strata",
+                    f"{phase}: difficulty stratum count mismatch: {dataset['name']}",
+                    phase=phase,
+                    dataset=dataset["name"],
+                )
         eligibility = workload["validation_eligibility"]
         eligible_counts = eligibility["per_dataset_eligible_counts"]
         if set(eligible_counts) != set(names):
@@ -181,14 +254,20 @@ def validate_policy_v1(result: dict) -> None:
         if shared_eligibility is None:
             shared_eligibility = eligibility
         elif eligibility != shared_eligibility:
-            _policy_error("eligibility_phase_drift", f"{phase}: validation eligibility differs across phases", phase=phase)
+            _policy_error(
+                "eligibility_phase_drift", f"{phase}: validation eligibility differs across phases", phase=phase
+            )
 
 
 def normalize(data: dict) -> dict:
     result = canonicalize(data)
     policy_version = result.get("schema_version")
     if policy_version != 1:
-        _policy_error("unsupported_policy_version", f"unsupported manifest policy version: {policy_version}", policy_version=policy_version)
+        _policy_error(
+            "unsupported_policy_version",
+            f"unsupported manifest policy version: {policy_version}",
+            policy_version=policy_version,
+        )
     validate_policy_v1(result)
     canonical = json.dumps(result, sort_keys=True, separators=(",", ":")).encode()
     result["manifest_sha256"] = hashlib.sha256(canonical).hexdigest()
@@ -197,7 +276,17 @@ def normalize(data: dict) -> dict:
 
 def cmd_validate(args) -> int:
     report = normalize(load(args.manifest))
-    print(json.dumps({"ok": True, "experiment_id": report["experiment_id"], "manifest_sha256": report["manifest_sha256"], "run_count": len(report["runs"])}, sort_keys=True))
+    print(
+        json.dumps(
+            {
+                "ok": True,
+                "experiment_id": report["experiment_id"],
+                "manifest_sha256": report["manifest_sha256"],
+                "run_count": len(report["runs"]),
+            },
+            sort_keys=True,
+        )
+    )
     return 0
 
 
@@ -206,9 +295,29 @@ def cmd_render(args) -> int:
     if args.format == "json":
         print(json.dumps(report, indent=2, sort_keys=True))
     elif args.format == "tsv":
-        print("id\tchain\tfraction\tphase\torder\trun_prefix\tfinal_step\ttmux_name\ttrain_file\ttrain_file_sha256\tartifact_dir\tprovenance_file")
+        print(
+            "id\tchain\tfraction\tphase\torder\trun_prefix\tfinal_step\ttmux_name\ttrain_file\ttrain_file_sha256\tartifact_dir\tprovenance_file"
+        )
         for item in report["runs"]:
-            print("\t".join(str(item[key]) for key in ("id", "chain", "fraction", "phase", "order", "run_prefix", "final_step", "tmux_name", "train_file", "train_file_sha256", "artifact_dir", "provenance_file")))
+            print(
+                "\t".join(
+                    str(item[key])
+                    for key in (
+                        "id",
+                        "chain",
+                        "fraction",
+                        "phase",
+                        "order",
+                        "run_prefix",
+                        "final_step",
+                        "tmux_name",
+                        "train_file",
+                        "train_file_sha256",
+                        "artifact_dir",
+                        "provenance_file",
+                    )
+                )
+            )
     return 0
 
 
@@ -217,7 +326,14 @@ def cmd_run(args) -> int:
     item = next((run for run in report["runs"] if run["id"] == args.run_id), None)
     if item is None:
         raise SystemExit(f"unknown run id: {args.run_id}")
-    rendered = {**item, "manifest_sha256": report["manifest_sha256"], "resource_profile": report["resource_profile"], "paths": report["paths"], "preflight": report["preflight"], "semantics": report["semantics"]}
+    rendered = {
+        **item,
+        "manifest_sha256": report["manifest_sha256"],
+        "resource_profile": report["resource_profile"],
+        "paths": report["paths"],
+        "preflight": report["preflight"],
+        "semantics": report["semantics"],
+    }
     if args.field:
         if args.field not in rendered:
             raise SystemExit(f"unknown run field: {args.field}")
@@ -229,11 +345,7 @@ def cmd_run(args) -> int:
 
 
 def runnable_paths(root: Path) -> list[Path]:
-    return sorted(
-        path
-        for path in root.rglob("*.sh")
-        if path.name.startswith("monitor") or "queue" in path.name
-    )
+    return sorted(path for path in root.rglob("*.sh") if path.name.startswith("monitor") or "queue" in path.name)
 
 
 def cmd_inventory(args) -> int:
@@ -265,7 +377,10 @@ def cmd_inventory(args) -> int:
         "schema_version": 1,
         "root": str(root),
         "entries": entries,
-        "counts": {name: sum(item["classification"] == name for item in entries) for name in ("manifest-native", "legacy-traceable", "legacy-unresolved")},
+        "counts": {
+            name: sum(item["classification"] == name for item in entries)
+            for name in ("manifest-native", "legacy-traceable", "legacy-unresolved")
+        },
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -277,10 +392,20 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="command", required=True)
     for name, fn in (("validate", cmd_validate), ("render", cmd_render)):
-        p = sub.add_parser(name); p.add_argument("manifest", type=Path); p.set_defaults(func=fn)
-        if name == "render": p.add_argument("--format", choices=("json", "tsv"), default="json")
-    p = sub.add_parser("run"); p.add_argument("manifest", type=Path); p.add_argument("--run-id", required=True); p.add_argument("--field"); p.set_defaults(func=cmd_run)
-    p = sub.add_parser("inventory"); p.add_argument("--root", type=Path, required=True); p.add_argument("--output", type=Path, required=True); p.set_defaults(func=cmd_inventory)
+        p = sub.add_parser(name)
+        p.add_argument("manifest", type=Path)
+        p.set_defaults(func=fn)
+        if name == "render":
+            p.add_argument("--format", choices=("json", "tsv"), default="json")
+    p = sub.add_parser("run")
+    p.add_argument("manifest", type=Path)
+    p.add_argument("--run-id", required=True)
+    p.add_argument("--field")
+    p.set_defaults(func=cmd_run)
+    p = sub.add_parser("inventory")
+    p.add_argument("--root", type=Path, required=True)
+    p.add_argument("--output", type=Path, required=True)
+    p.set_defaults(func=cmd_inventory)
     args = parser.parse_args()
     try:
         return args.func(args)

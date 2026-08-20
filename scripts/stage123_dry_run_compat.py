@@ -5,8 +5,8 @@ from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
 import subprocess
+from pathlib import Path
 
 
 def main() -> int:
@@ -41,7 +41,9 @@ def main() -> int:
     for run in stage3_runs:
         rows.append(f"dry-run\t{run['id']}\tstage3\tpending_producer\tcompatibility projection")
     status.write_text("\n".join(rows) + "\n")
-    print(f"[STAGE123 QUEUE] DRY_RUN PASS; Stage3 blocked: pending current manifest_hash={normalized['manifest_sha256']}")
+    print(
+        f"[STAGE123 QUEUE] DRY_RUN PASS; Stage3 blocked: pending current manifest_hash={normalized['manifest_sha256']}"
+    )
     return 0
 
 

@@ -23,10 +23,16 @@ class TestAutoModelLoading:
     def model_dir(self, tmp_path):
         """Create a temporary directory with model files for AutoModel loading."""
         config = QwenJointConfig(
-            vocab_size=1000, hidden_size=64, intermediate_size=128,
-            num_hidden_layers=2, num_attention_heads=4, num_key_value_heads=2,
-            head_dim=16, max_position_embeddings=128,
-            fusion_lambda=0.5, freeze_model1=False,
+            vocab_size=1000,
+            hidden_size=64,
+            intermediate_size=128,
+            num_hidden_layers=2,
+            num_attention_heads=4,
+            num_key_value_heads=2,
+            head_dim=16,
+            max_position_embeddings=128,
+            fusion_lambda=0.5,
+            freeze_model1=False,
         )
 
         # Create model and save weights
@@ -51,10 +57,7 @@ class TestAutoModelLoading:
 
         # Copy model source files
         src_dir = os.path.dirname(os.path.abspath(__file__))
-        joint_model_dir = os.path.join(
-            os.path.dirname(src_dir), os.pardir, os.pardir,
-            "verl", "models", "joint_model"
-        )
+        joint_model_dir = os.path.join(os.path.dirname(src_dir), os.pardir, os.pardir, "verl", "models", "joint_model")
         joint_model_dir = os.path.normpath(joint_model_dir)
 
         for fname in ["modeling_joint_qwen3.py", "configuration_joint_qwen3.py"]:
@@ -112,9 +115,7 @@ class TestAutoModelLoading:
         from transformers import AutoModelForCausalLM
 
         # Load model
-        model1 = AutoModelForCausalLM.from_pretrained(
-            model_dir, trust_remote_code=True
-        )
+        model1 = AutoModelForCausalLM.from_pretrained(model_dir, trust_remote_code=True)
         model1.eval()
 
         # Save to new dir and reload
@@ -123,16 +124,13 @@ class TestAutoModelLoading:
 
             # Copy source files for trust_remote_code
             src_dir = os.path.dirname(os.path.abspath(__file__))
-            joint_model_dir = os.path.normpath(os.path.join(
-                os.path.dirname(src_dir), os.pardir, os.pardir,
-                "verl", "models", "joint_model"
-            ))
+            joint_model_dir = os.path.normpath(
+                os.path.join(os.path.dirname(src_dir), os.pardir, os.pardir, "verl", "models", "joint_model")
+            )
             for fname in ["modeling_joint_qwen3.py", "configuration_joint_qwen3.py"]:
                 shutil.copy2(os.path.join(joint_model_dir, fname), os.path.join(tmp_dir, fname))
 
-            model2 = AutoModelForCausalLM.from_pretrained(
-                tmp_dir, trust_remote_code=True
-            )
+            model2 = AutoModelForCausalLM.from_pretrained(tmp_dir, trust_remote_code=True)
             model2.eval()
 
         # Compare outputs

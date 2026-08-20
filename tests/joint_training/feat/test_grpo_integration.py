@@ -8,7 +8,6 @@ Tests the complete data flow:
 5. Backward pass through fusion
 """
 
-import pytest
 import torch
 import torch.nn.functional as F
 
@@ -19,9 +18,14 @@ def _make_joint_model():
     from verl.models.joint_model.modeling_joint_qwen3 import QwenJointForCausalLM
 
     config = QwenJointConfig(
-        vocab_size=1000, hidden_size=64, intermediate_size=128,
-        num_hidden_layers=2, num_attention_heads=4, num_key_value_heads=2,
-        head_dim=16, max_position_embeddings=128,
+        vocab_size=1000,
+        hidden_size=64,
+        intermediate_size=128,
+        num_hidden_layers=2,
+        num_attention_heads=4,
+        num_key_value_heads=2,
+        head_dim=16,
+        max_position_embeddings=128,
         fusion_lambda=0.5,
     )
     return QwenJointForCausalLM(config)
@@ -46,9 +50,7 @@ class TestGRPOTrainingFlow:
             # logprobs_from_logits: log_softmax → gather
             log_probs_all = F.log_softmax(logits[:, :-1, :], dim=-1)
             response_ids = input_ids[:, 1:]
-            old_log_probs = log_probs_all.gather(
-                dim=-1, index=response_ids.unsqueeze(-1)
-            ).squeeze(-1)
+            old_log_probs = log_probs_all.gather(dim=-1, index=response_ids.unsqueeze(-1)).squeeze(-1)
 
         assert old_log_probs.shape == (batch_size, seq_len - 1)
         assert (old_log_probs <= 0).all()
@@ -67,9 +69,7 @@ class TestGRPOTrainingFlow:
 
         log_probs_all = F.log_softmax(logits[:, :-1, :], dim=-1)
         response_ids = input_ids[:, 1:]
-        new_log_probs = log_probs_all.gather(
-            dim=-1, index=response_ids.unsqueeze(-1)
-        ).squeeze(-1)
+        new_log_probs = log_probs_all.gather(dim=-1, index=response_ids.unsqueeze(-1)).squeeze(-1)
 
         # Verify gradient can flow
         loss = -new_log_probs.mean()
@@ -93,9 +93,11 @@ class TestGRPOTrainingFlow:
         model.eval()
         with torch.no_grad():
             old_output = model(input_ids=input_ids, attention_mask=attention_mask)
-            old_log_probs = F.log_softmax(old_output.logits[:, :-1, :], dim=-1).gather(
-                dim=-1, index=input_ids[:, 1:].unsqueeze(-1)
-            ).squeeze(-1)
+            old_log_probs = (
+                F.log_softmax(old_output.logits[:, :-1, :], dim=-1)
+                .gather(dim=-1, index=input_ids[:, 1:].unsqueeze(-1))
+                .squeeze(-1)
+            )
 
         # Step 4: compute advantages (simulate GRPO group-based)
         # Assume 2 prompts × 4 responses each
@@ -119,9 +121,11 @@ class TestGRPOTrainingFlow:
         model.zero_grad()
 
         new_output = model(input_ids=input_ids, attention_mask=attention_mask)
-        new_log_probs = F.log_softmax(new_output.logits[:, :-1, :], dim=-1).gather(
-            dim=-1, index=input_ids[:, 1:].unsqueeze(-1)
-        ).squeeze(-1)
+        new_log_probs = (
+            F.log_softmax(new_output.logits[:, :-1, :], dim=-1)
+            .gather(dim=-1, index=input_ids[:, 1:].unsqueeze(-1))
+            .squeeze(-1)
+        )
 
         # PPO-clip loss
         ratio = torch.exp(new_log_probs - old_log_probs)
@@ -169,28 +173,32 @@ class TestGRPOTrainingFlow:
         from verl.models.joint_model.modeling_joint_qwen3 import QwenJointForCausalLM
 
         config = QwenJointConfig(
-            vocab_size=1000, hidden_size=64, intermediate_size=128,
-            num_hidden_layers=2, num_attention_heads=4, num_key_value_heads=2,
-            head_dim=16, max_position_embeddings=128,
-            fusion_lambda=0.5, freeze_model1=True,
+            vocab_size=1000,
+            hidden_size=64,
+            intermediate_size=128,
+            num_hidden_layers=2,
+            num_attention_heads=4,
+            num_key_value_heads=2,
+            head_dim=16,
+            max_position_embeddings=128,
+            fusion_lambda=0.5,
+            freeze_model1=True,
         )
         model = QwenJointForCausalLM(config)
         model.train()
 
         # Save initial model2 weights
-        model2_initial = {
-            k: v.clone()
-            for k, v in model.sub_models[1].named_parameters()
-            if v.requires_grad
-        }
+        model2_initial = {k: v.clone() for k, v in model.sub_models[1].named_parameters() if v.requires_grad}
 
         input_ids = torch.randint(0, 1000, (4, 8))
         attention_mask = torch.ones(4, 8, dtype=torch.long)
 
         output = model(input_ids=input_ids, attention_mask=attention_mask)
-        log_probs = F.log_softmax(output.logits[:, :-1, :], dim=-1).gather(
-            dim=-1, index=input_ids[:, 1:].unsqueeze(-1)
-        ).squeeze(-1)
+        log_probs = (
+            F.log_softmax(output.logits[:, :-1, :], dim=-1)
+            .gather(dim=-1, index=input_ids[:, 1:].unsqueeze(-1))
+            .squeeze(-1)
+        )
 
         loss = -log_probs.mean()
         loss.backward()

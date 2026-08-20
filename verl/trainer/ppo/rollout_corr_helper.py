@@ -994,7 +994,10 @@ def compute_rollout_correction_and_add_to_batch(
             response_mask=batch.batch["response_mask"],
         )
         rollout_corr_metrics.update(
-            {f"rollout_impl_corr/model2_vllm_vs_model2_fsdp/{key}": value for key, value in implementation_metrics.items()}
+            {
+                f"rollout_impl_corr/model2_vllm_vs_model2_fsdp/{key}": value
+                for key, value in implementation_metrics.items()
+            }
         )
         fused_behavior_metrics = compute_offpolicy_metrics(
             old_log_prob=batch.batch["old_log_probs"],

@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import importlib.util
 import hashlib
+import importlib.util
 import json
 from pathlib import Path
 
 import pytest
-
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -21,7 +20,10 @@ def load():
 
 
 def workload(count=3):
-    uid_doc = {"schema_version": 1, "datasets": [{"name": "test", "source_index": 0, "ordered_uids": [chr(97 + i) for i in range(count)]}]}
+    uid_doc = {
+        "schema_version": 1,
+        "datasets": [{"name": "test", "source_index": 0, "ordered_uids": [chr(97 + i) for i in range(count)]}],
+    }
     uid_hash = hashlib.sha256((json.dumps(uid_doc, sort_keys=True, separators=(",", ":")) + "\n").encode()).hexdigest()
     return {
         "datasets": [{"name": "test", "row_count": count}],
@@ -74,8 +76,14 @@ def test_outcomes_use_nearest_rank_and_submitted_denominator(tmp_path):
     [
         ([row("a", 10, False, "unknown", 1)], "submitted_row_count"),
         ([row("a", 10, False, "unknown", 1)] * 3, "stable_uid"),
-        ([row("a", 10, False, "unknown", 1), row("b", 20, True, "stop", 1), row("c", 30, True, "stop", 1)], "finish_reason"),
-        ([row("a", 10, False, "stop", 1), row("b", 20, True, "stop", 1), row("c", 30, True, "stop", 1)], "stop_without_eos"),
+        (
+            [row("a", 10, False, "unknown", 1), row("b", 20, True, "stop", 1), row("c", 30, True, "stop", 1)],
+            "finish_reason",
+        ),
+        (
+            [row("a", 10, False, "stop", 1), row("b", 20, True, "stop", 1), row("c", 30, True, "stop", 1)],
+            "stop_without_eos",
+        ),
     ],
 )
 def test_outcomes_fail_closed_on_incomplete_evidence(tmp_path, rows, code):
@@ -89,7 +97,8 @@ def test_outcomes_fail_closed_on_incomplete_evidence(tmp_path, rows, code):
 
 
 def test_outcomes_reject_wrong_uid_order_and_dataset_identity(tmp_path):
-    module = load(); path = tmp_path / "generation.jsonl"
+    module = load()
+    path = tmp_path / "generation.jsonl"
     rows = [row("b", 10, True, "stop", 1), row("a", 20, True, "stop", 1), row("c", 30, True, "stop", 1)]
     write(path, rows)
     with pytest.raises(module.OutcomeValidationError) as raised:
@@ -98,7 +107,8 @@ def test_outcomes_reject_wrong_uid_order_and_dataset_identity(tmp_path):
 
 
 def test_outcomes_record_exact_truncation_counts_by_dataset(tmp_path):
-    module = load(); path = tmp_path / "generation.jsonl"
+    module = load()
+    path = tmp_path / "generation.jsonl"
     rows = [row("a", 8192, False, "length", 1), row("b", 20, True, "stop", 1), row("c", 30, True, "stop", 1)]
     write(path, rows)
     result = module.load_generation_outcomes(path, workload())

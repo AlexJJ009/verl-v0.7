@@ -12,7 +12,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-
 REGISTRY_TOOLS = Path("/data-1/agent-tools/experiment_registry")
 if str(REGISTRY_TOOLS) not in sys.path:
     sys.path.insert(0, str(REGISTRY_TOOLS))
@@ -29,7 +28,6 @@ from registry_core import (  # noqa: E402
     upsert_experiment,
     upsert_model,
 )
-
 
 REPO = Path(os.environ.get("VERL_REPO_ROOT", "/data-1/code/verl")).resolve()
 DB = os.environ.get("EXPERIMENT_REGISTRY_DB", "/data-1/experiment_registry/experiment_registry.sqlite")
@@ -72,11 +70,7 @@ def final_training_step(rows: list[dict[str, Any]]) -> int:
 
 
 def validation_steps(rows: list[dict[str, Any]]) -> list[int]:
-    return sorted(
-        int(r["step"])
-        for r in rows
-        if any(k.startswith("val-core/") for k in r.get("data", {}))
-    )
+    return sorted(int(r["step"]) for r in rows if any(k.startswith("val-core/") for k in r.get("data", {})))
 
 
 def git_commit() -> str | None:
@@ -155,12 +149,24 @@ def infer_run(run_name: str) -> dict[str, Any]:
     m = re.search(r"(?:-|_)P(\d+)(?:-|_)", run_name)
     if m:
         handoff = int(m.group(1))
-    dataset = "kodcode" if "KODCODE" in run_name or "STAGE123" in run_name else "deepcoder" if "DEEPCODER" in run_name else "code"
+    dataset = (
+        "kodcode"
+        if "KODCODE" in run_name or "STAGE123" in run_name
+        else "deepcoder"
+        if "DEEPCODER" in run_name
+        else "code"
+    )
     if "1P7B" in run_name:
         init = "qwen3-1.7b"
     else:
         init = "qwen3-4b-instruct-2507" if "INSTRUCT2507" in run_name else "qwen3-4b-base"
-    ctx = "response8k-model9216" if "STAGE123" in run_name else "ctx8k" if "CTX8K" in run_name or "R8K" in run_name else "ctx4k"
+    ctx = (
+        "response8k-model9216"
+        if "STAGE123" in run_name
+        else "ctx8k"
+        if "CTX8K" in run_name or "R8K" in run_name
+        else "ctx4k"
+    )
     fraction = "frac25" if "FRAC25" in run_name else "frac50" if "FRAC50" in run_name else None
     suffix = slug(run_name)
     return {
@@ -198,7 +204,13 @@ def upsert_project_local(conn) -> int:
           default_branch=excluded.default_branch,
           notes=coalesce(excluded.notes, projects.notes)
         """,
-        ("verl_feature_on_policy_wdl_sft", PROJECT_NAME, str(REPO), BRANCH, "Branch-scoped registry for On-Policy WDL-SFT runs."),
+        (
+            "verl_feature_on_policy_wdl_sft",
+            PROJECT_NAME,
+            str(REPO),
+            BRANCH,
+            "Branch-scoped registry for On-Policy WDL-SFT runs.",
+        ),
     )
     return int(conn.execute("select id from projects where name=?", (PROJECT_NAME,)).fetchone()["id"])
 
@@ -427,7 +439,9 @@ def import_run(args: argparse.Namespace) -> int:
                 "Auto-imported after training release gate success. Treat as online-training evidence, not offline official eval.",
             ),
         )
-        tr_id = int(conn.execute("select id from training_runs where training_run_key=?", (train_run_key,)).fetchone()["id"])
+        tr_id = int(
+            conn.execute("select id from training_runs where training_run_key=?", (train_run_key,)).fetchone()["id"]
+        )
         conn.execute(
             """
             insert into training_run_datasets(training_run_id, dataset_id, role, notes)
@@ -440,8 +454,10 @@ def import_run(args: argparse.Namespace) -> int:
         for row in rows:
             step = int(row["step"])
             for key, value in row.get("data", {}).items():
-                if isinstance(value, (int, float)):
-                    metric_rows.append((tr_id, key, float(value), step, "training_metrics_jsonl", "auto-imported from metrics jsonl"))
+                if isinstance(value, int | float):
+                    metric_rows.append(
+                        (tr_id, key, float(value), step, "training_metrics_jsonl", "auto-imported from metrics jsonl")
+                    )
         conn.executemany(
             """
             insert into training_metrics(training_run_id, metric_name, metric_value, step, metric_scope, notes)
@@ -454,14 +470,43 @@ def import_run(args: argparse.Namespace) -> int:
         )
         add_source_record(conn, str(metrics_path), "jsonl", "full", IMPORTER, "training_runs", tr_id, "metrics JSONL")
         if validation_path:
-            add_artifact(conn, "online_validation_samples", str(validation_path), experiment_id=exp_id, training_run_id=tr_id, model_id=model_id)
-            add_source_record(conn, str(validation_path), "jsonl", f"step_{final_eval_step}", IMPORTER, "training_runs", tr_id, "online validation samples")
-        add_artifact(conn, "checkpoint_dir", str(checkpoint_dir), experiment_id=exp_id, training_run_id=tr_id, model_id=model_id)
+            add_artifact(
+                conn,
+                "online_validation_samples",
+                str(validation_path),
+                experiment_id=exp_id,
+                training_run_id=tr_id,
+                model_id=model_id,
+            )
+            add_source_record(
+                conn,
+                str(validation_path),
+                "jsonl",
+                f"step_{final_eval_step}",
+                IMPORTER,
+                "training_runs",
+                tr_id,
+                "online validation samples",
+            )
+        add_artifact(
+            conn, "checkpoint_dir", str(checkpoint_dir), experiment_id=exp_id, training_run_id=tr_id, model_id=model_id
+        )
         if info["stage"] == "stage2":
-            add_quality_flag(conn, "experiment", exp_id, "stage2_online_only", "info", "Stage2 result is online validation evidence until offline official eval is run.")
+            add_quality_flag(
+                conn,
+                "experiment",
+                exp_id,
+                "stage2_online_only",
+                "info",
+                "Stage2 result is online validation evidence until offline official eval is run.",
+            )
         conn.commit()
 
-    print(json.dumps({"training_run_id": tr_id, "training_run_key": train_run_key, "run_name": run_name}, ensure_ascii=False))
+    print(
+        json.dumps(
+            {"training_run_id": tr_id, "training_run_key": train_run_key, "run_name": run_name}, ensure_ascii=False
+        )
+    )
     return tr_id
 
 
@@ -469,9 +514,17 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--run-name", default=os.environ.get("RUN_NAME"), required=not os.environ.get("RUN_NAME"))
     parser.add_argument("--run-prefix", default=os.environ.get("RUN_PREFIX"))
-    parser.add_argument("--checkpoint-dir", default=os.environ.get("CHECKPOINT_DIR"), required=not os.environ.get("CHECKPOINT_DIR"))
-    parser.add_argument("--metrics-path", default=os.environ.get("METRICS_PATH"), required=not os.environ.get("METRICS_PATH"))
-    parser.add_argument("--final-step", type=int, default=int(os.environ["FINAL_STEP"]) if os.environ.get("FINAL_STEP", "").isdigit() else None)
+    parser.add_argument(
+        "--checkpoint-dir", default=os.environ.get("CHECKPOINT_DIR"), required=not os.environ.get("CHECKPOINT_DIR")
+    )
+    parser.add_argument(
+        "--metrics-path", default=os.environ.get("METRICS_PATH"), required=not os.environ.get("METRICS_PATH")
+    )
+    parser.add_argument(
+        "--final-step",
+        type=int,
+        default=int(os.environ["FINAL_STEP"]) if os.environ.get("FINAL_STEP", "").isdigit() else None,
+    )
     parser.add_argument("--train-file", default=os.environ.get("TRAIN_FILE"))
     parser.add_argument("--wandb-run", default=os.environ.get("WANDB_RUN_DIR"))
     parser.add_argument("--db", default=DB)

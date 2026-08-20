@@ -7,10 +7,10 @@ import argparse
 import hashlib
 import json
 import os
-from pathlib import Path
 import stat
 import subprocess
 import sys
+from pathlib import Path
 
 
 def content(path: Path) -> bytes:
@@ -20,7 +20,12 @@ def content(path: Path) -> bytes:
 def describe(path: Path) -> dict:
     info = path.lstat()
     kind = "symlink" if stat.S_ISLNK(info.st_mode) else "file" if stat.S_ISREG(info.st_mode) else "other"
-    return {"type": kind, "mode": stat.S_IMODE(info.st_mode), "size": len(content(path)), "sha256": hashlib.sha256(content(path)).hexdigest()}
+    return {
+        "type": kind,
+        "mode": stat.S_IMODE(info.st_mode),
+        "size": len(content(path)),
+        "sha256": hashlib.sha256(content(path)).hexdigest(),
+    }
 
 
 def verify_baseline(repo: Path, baseline: dict, allowed: set[str]) -> list[str]:
@@ -93,7 +98,9 @@ def main() -> int:
     failures += verify_baseline(args.submodule, recipe_baseline, set())
     failures += verify_no_unregistered_dirty(args.superproject, super_baseline, {"recipe"})
     failures += verify_no_unregistered_dirty(args.submodule, recipe_baseline)
-    pointer = subprocess.check_output(["git", "-C", str(args.superproject), "ls-files", "-s", "recipe"], text=True).strip()
+    pointer = subprocess.check_output(
+        ["git", "-C", str(args.superproject), "ls-files", "-s", "recipe"], text=True
+    ).strip()
     if pointer and not pointer.startswith("160000 "):
         failures.append("superproject recipe path is not a gitlink")
     print(json.dumps({"ok": not failures, "failures": failures}, indent=2))

@@ -10,7 +10,6 @@ from typing import Any
 
 import matplotlib.pyplot as plt
 
-
 ROOT = Path(__file__).resolve().parents[4]
 DATA_DIR = ROOT / "docs/joint_training/reports/data"
 FIGURE_DIR = ROOT / "docs/joint_training/reports/figures"
@@ -115,15 +114,11 @@ def read_rows() -> list[dict[str, Any]]:
                 }
                 for source in SOURCES:
                     row[f"{source}_mean_at_3"] = get(data, "val-core", view, f"{source}/acc/mean@3")
-                    row[f"{source}_truncated_mean_at_3"] = get(
-                        data, "val-aux", view, f"{source}/truncated/mean@3"
-                    )
+                    row[f"{source}_truncated_mean_at_3"] = get(data, "val-aux", view, f"{source}/truncated/mean@3")
                     row[f"{source}_format_contract_success_mean_at_3"] = get(
                         data, "val-aux", view, f"{source}/format_contract_success/mean@3"
                     )
-                    row[f"{source}_has_eos_mean_at_3"] = get(
-                        data, "val-aux", view, f"{source}/has_eos/mean@3"
-                    )
+                    row[f"{source}_has_eos_mean_at_3"] = get(data, "val-aux", view, f"{source}/has_eos/mean@3")
                 rows.append(row)
     rows.sort(key=lambda row: (row["arm"], row["step"]))
     return rows
@@ -201,9 +196,7 @@ def write_csv(rows: list[dict[str, Any]]) -> None:
                     "latest_HumanEval+_mean_at_3": latest["HumanEval+_mean_at_3"],
                     "latest_MBPP+_mean_at_3": latest["MBPP+_mean_at_3"],
                     "latest_LiveCodeBench_mean_at_3": latest["LiveCodeBench_mean_at_3"],
-                    "latest_LiveCodeBench_truncated_mean_at_3": latest[
-                        "LiveCodeBench_truncated_mean_at_3"
-                    ],
+                    "latest_LiveCodeBench_truncated_mean_at_3": latest["LiveCodeBench_truncated_mean_at_3"],
                     "latest_response_length_clip_ratio": latest["response_length_clip_ratio"],
                 }
             )

@@ -25,10 +25,7 @@ class QwenJointConfig(Qwen3Config):
         if not 0.0 <= fusion_lambda <= 1.0:
             raise ValueError(f"fusion_lambda must be in [0, 1], got {fusion_lambda}")
         if fusion_mode not in {"mixture", "strong_scaled"}:
-            raise ValueError(
-                "fusion_mode must be 'mixture' or 'strong_scaled', "
-                f"got {fusion_mode!r}"
-            )
+            raise ValueError(f"fusion_mode must be 'mixture' or 'strong_scaled', got {fusion_mode!r}")
         self.fusion_lambda = fusion_lambda
         self.fusion_mode = fusion_mode
         self.freeze_model1 = freeze_model1

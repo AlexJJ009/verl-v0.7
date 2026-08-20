@@ -8,15 +8,13 @@ import hashlib
 import json
 import math
 import os
-from pathlib import Path
 import re
 import subprocess
-import sys
 import time
+from pathlib import Path
 from typing import Any
 
 import yaml
-
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CANDIDATES = (0.35, 0.40, 0.45, 0.50, 0.55)
@@ -24,7 +22,9 @@ PROFILE_SCRIPT = ROOT / "recipe/on_policy_wdl_sft/code_task/qwen3_1p7b_stage123_
 VALIDATION_FILES = {
     "HumanEval+": Path("/data-1/dataset/code/verl_rl/online_full_humaneval_plus/official_humaneval_plus_val.parquet"),
     "MBPP+": Path("/data-1/dataset/code/verl_rl/online_full_mbpp_plus/official_mbpp_plus_val.parquet"),
-    "LiveCodeBench": Path("/data-1/dataset/code/verl_rl/online_full_livecodebench_v5/official_livecodebench_val.parquet"),
+    "LiveCodeBench": Path(
+        "/data-1/dataset/code/verl_rl/online_full_livecodebench_v5/official_livecodebench_val.parquet"
+    ),
 }
 
 
@@ -61,10 +61,14 @@ def assert_tmux_and_idle_gpus(max_utilization: int, max_memory_used_mib: int) ->
     ).strip()
     if compute:
         raise SystemExit(f"GPU compute processes are active: {compute}")
-    rows = subprocess.check_output(
-        ["nvidia-smi", "--query-gpu=index,utilization.gpu,memory.used", "--format=csv,noheader,nounits"],
-        text=True,
-    ).strip().splitlines()
+    rows = (
+        subprocess.check_output(
+            ["nvidia-smi", "--query-gpu=index,utilization.gpu,memory.used", "--format=csv,noheader,nounits"],
+            text=True,
+        )
+        .strip()
+        .splitlines()
+    )
     samples = []
     for row in rows:
         index, utilization, memory_used = (int(value.strip()) for value in row.split(","))
@@ -111,9 +115,10 @@ def assert_cot_v3_probe_inputs(manifest: dict[str, Any]) -> tuple[Path, dict[str
     model = Path(selection["identity"]["model_path"])
     if selection.get("selected_step") != 20 or "cold_start_cotmask_v3" not in str(model) or not model.is_dir():
         raise SystemExit("GPU probe refuses legacy answer-only Model1")
-    if receipt.get("schema_version") != 2 or receipt.get("overlap_policy", {}).get(
-        "cold_start_vs_stage1_stage2_stage3"
-    ) != "pairwise_disjoint":
+    if (
+        receipt.get("schema_version") != 2
+        or receipt.get("overlap_policy", {}).get("cold_start_vs_stage1_stage2_stage3") != "pairwise_disjoint"
+    ):
         raise SystemExit("GPU probe requires a Cold Start-disjoint Stage123 dataset receipt")
     if any(not path.is_file() for path in VALIDATION_FILES.values()):
         raise SystemExit("full Code-3 validation files are incomplete")
@@ -295,14 +300,16 @@ def main() -> int:
         if args.reuse_validation_result:
             phase_results = [reused_validation_result(args.reuse_validation_result, utilization, args.manifest)]
         else:
-            phase_results = [run_phase(
-                args.manifest,
-                run_id,
-                utilization,
-                candidate_root / "zero-step" / phase,
-                "validation",
-                args.validation_timeout_seconds,
-            )]
+            phase_results = [
+                run_phase(
+                    args.manifest,
+                    run_id,
+                    utilization,
+                    candidate_root / "zero-step" / phase,
+                    "validation",
+                    args.validation_timeout_seconds,
+                )
+            ]
         throughput_results = []
         if phase_results[0]["status"] == "passed":
             for phase, run_id in throughput_runs.items():
@@ -358,7 +365,12 @@ def main() -> int:
     latest = args.scratch_root / "latest-gpu-utilization-probe.json"
     latest.write_text(
         json.dumps(
-            {"schema_version": 2, "report": str(report_path), "report_sha256": sha256(report_path), "status": report["status"]},
+            {
+                "schema_version": 2,
+                "report": str(report_path),
+                "report_sha256": sha256(report_path),
+                "status": report["status"],
+            },
             indent=2,
             sort_keys=True,
         )

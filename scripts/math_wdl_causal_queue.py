@@ -17,12 +17,12 @@ from pathlib import Path
 
 import yaml
 
-
 ROOT = Path(__file__).resolve().parents[1]
 WRAPPERS = {
     "arm-c-mixture": ROOT / "recipe/on_policy_wdl_sft/math_task/run_math_qwen3_1p7b_wdl_causal_arm_c.sh",
     "arm-d-strong-only": ROOT / "recipe/on_policy_wdl_sft/math_task/run_math_qwen3_1p7b_wdl_causal_arm_d.sh",
-    "arm-d0-matched-scale-no-weak": ROOT / "recipe/on_policy_wdl_sft/math_task/run_math_qwen3_1p7b_wdl_causal_arm_d0.sh",
+    "arm-d0-matched-scale-no-weak": ROOT
+    / "recipe/on_policy_wdl_sft/math_task/run_math_qwen3_1p7b_wdl_causal_arm_d0.sh",
 }
 
 
@@ -87,8 +87,7 @@ def validate_manifest(manifest: dict, *, require_launch: bool) -> None:
         raise RuntimeError("training_contract differs from the frozen causal-P60 contract")
 
     run_projection = {
-        run["id"]: (float(run["fusion_lambda"]), run["fusion_mode"], run["execution"])
-        for run in manifest["runs"]
+        run["id"]: (float(run["fusion_lambda"]), run["fusion_mode"], run["execution"]) for run in manifest["runs"]
     }
     expected = {
         "arm-c-mixture": (0.8, "mixture", "required"),
@@ -180,9 +179,9 @@ def main() -> int:
             "status": "pass",
             "checks": {
                 name: True
-                for name in next(
-                    run for run in manifest["runs"] if run["id"] == "arm-d-strong-only"
-                )["omit_if_manipulation_checks"]
+                for name in next(run for run in manifest["runs"] if run["id"] == "arm-d-strong-only")[
+                    "omit_if_manipulation_checks"
+                ]
             },
         }
     else:

@@ -2,14 +2,13 @@
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
 import hashlib
 import json
 import math
-from pathlib import Path
 import subprocess
 import sys
-
+from datetime import datetime, timezone
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PREDICTION_METRICS = {"validation_elapsed_seconds", "phase_elapsed_seconds", "peak_rss_gib", "gpu_wait_fraction"}
@@ -77,14 +76,18 @@ def validate_prediction_comparison(value: dict) -> None:
         decision = item.get("decision", {})
         if item.get("history_count") != len(item.get("history", [])) or item.get("history_count", 0) < 3:
             raise ValueError("prediction comparison history is insufficient")
-        if not isinstance(item.get("predicted_bound"), (int, float)) or not isinstance(item.get("observed_maximum"), (int, float)):
+        if not isinstance(item.get("predicted_bound"), int | float) or not isinstance(
+            item.get("observed_maximum"), int | float
+        ):
             raise ValueError("prediction comparison values are missing")
         predicted = float(item["predicted_bound"])
         observed = float(item["observed_maximum"])
         ratio = observed / predicted if predicted > 0 else float("inf")
         if predicted != max(float(value) for value in item["history"]):
             raise ValueError("prediction bound does not match history")
-        if ratio > policy["prediction"]["maximum_observed_to_predicted_ratio"] or not math.isclose(decision.get("context", {}).get("ratio", -1), ratio, rel_tol=1e-12):
+        if ratio > policy["prediction"]["maximum_observed_to_predicted_ratio"] or not math.isclose(
+            decision.get("context", {}).get("ratio", -1), ratio, rel_tol=1e-12
+        ):
             raise ValueError("prediction comparison ratio mismatch")
         if decision.get("qualified") is not True or decision.get("code") != "qualified":
             raise ValueError("prediction comparison is not qualified")
@@ -92,7 +95,18 @@ def validate_prediction_comparison(value: dict) -> None:
 
 def validate_pointer(pointer_path: Path, *, run_id: str, decision_id: str, scratch_root: Path) -> tuple[dict, dict]:
     pointer = load(pointer_path)
-    required = ("schema_version", "run_id", "authorization_decision_id", "report_sha256", "generated_at_utc", "report_started_at_utc", "report_completed_at_utc", "run_root", "report", "status")
+    required = (
+        "schema_version",
+        "run_id",
+        "authorization_decision_id",
+        "report_sha256",
+        "generated_at_utc",
+        "report_started_at_utc",
+        "report_completed_at_utc",
+        "run_root",
+        "report",
+        "status",
+    )
     missing = [key for key in required if key not in pointer]
     if missing or pointer.get("schema_version") != 2:
         raise ValueError(f"invalid producer pointer: missing={missing}")
@@ -107,13 +121,22 @@ def validate_pointer(pointer_path: Path, *, run_id: str, decision_id: str, scrat
     if sha256(report_path) != pointer["report_sha256"]:
         raise ValueError("producer report hash mismatch")
     report = load(report_path)
-    if report.get("status") != "passed" or report.get("run_id") != run_id or report.get("authorization_decision_id") != decision_id:
+    if (
+        report.get("status") != "passed"
+        or report.get("run_id") != run_id
+        or report.get("authorization_decision_id") != decision_id
+    ):
         raise ValueError("producer report identity or status mismatch")
     phases = report.get("phases")
     phase_names = [item.get("phase") for item in phases] if isinstance(phases, list) else []
     if phase_names not in ALLOWED_PHASE_SETS:
         raise ValueError("producer report must contain stage1,stage2,stage3 or treatment-only stage2,stage3")
-    if any(not isinstance(item.get("repetitions"), list) or len(item["repetitions"]) != 3 or any(rep.get("status") != "passed" for rep in item["repetitions"]) for item in phases):
+    if any(
+        not isinstance(item.get("repetitions"), list)
+        or len(item["repetitions"]) != 3
+        or any(rep.get("status") != "passed" for rep in item["repetitions"])
+        for item in phases
+    ):
         raise ValueError("producer report repetition evidence is incomplete")
     if report.get("optimizer_steps") != 0 or report.get("formal_checkpoints") != []:
         raise ValueError("producer report is not zero-step and checkpoint-free")
@@ -129,13 +152,25 @@ def render(args: argparse.Namespace) -> int:
     decision_time = datetime.fromisoformat(decision["time"].replace("Z", "+00:00")).timestamp()
     if Path(args.state_root).stat().st_mtime <= decision_time:
         raise ValueError("decision-specific state root predates authorization decision")
-    pointer, report = validate_pointer(Path(args.latest_probe), run_id=args.run_id, decision_id=args.decision_id, scratch_root=Path(args.state_root).parent)
+    pointer, report = validate_pointer(
+        Path(args.latest_probe),
+        run_id=args.run_id,
+        decision_id=args.decision_id,
+        scratch_root=Path(args.state_root).parent,
+    )
     state_path = Path(args.state_root) / f"{args.run_id}.json"
     state = load(state_path)
     if state.get("status") != "succeeded" or state.get("run_id") != args.run_id:
         raise ValueError("execution core run is not succeeded")
-    manifest = json.loads(subprocess.check_output([sys.executable, str(ROOT / "scripts/experiment_manifest.py"), "render", args.manifest, "--format", "json"], text=True))
-    profile_hash = subprocess.check_output(["bash", "-lc", f"source {args.resource_profile}; stage123_profile_hash"], text=True).strip()
+    manifest = json.loads(
+        subprocess.check_output(
+            [sys.executable, str(ROOT / "scripts/experiment_manifest.py"), "render", args.manifest, "--format", "json"],
+            text=True,
+        )
+    )
+    profile_hash = subprocess.check_output(
+        ["bash", "-lc", f"source {args.resource_profile}; stage123_profile_hash"], text=True
+    ).strip()
     if profile_hash != manifest.get("resource_profile", {}).get("sha256"):
         raise ValueError("resource profile does not match manifest")
     tree_hash = implementation_hash(Path(args.implementation_tree))
@@ -164,9 +199,15 @@ def render(args: argparse.Namespace) -> int:
         },
         "started_at": started,
         "completed_at": completed,
-        "phase_evidence": [{"phase": phase, "status": "passed", "repetitions": data.get("repetitions", [])} for phase, data in ((item["phase"], item) for item in report.get("phases", []))],
+        "phase_evidence": [
+            {"phase": phase, "status": "passed", "repetitions": data.get("repetitions", [])}
+            for phase, data in ((item["phase"], item) for item in report.get("phases", []))
+        ],
         "prediction_comparison": report["prediction_comparison"],
-        "cleanup": {"resources_released": report["cleanup"]["resources_released"], "execution_state": state.get("cleanup")},
+        "cleanup": {
+            "resources_released": report["cleanup"]["resources_released"],
+            "execution_state": state.get("cleanup"),
+        },
         "failures": [],
         "probe_pointer": pointer,
     }

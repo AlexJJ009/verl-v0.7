@@ -6,9 +6,9 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 
 def digest(data: bytes) -> str:
@@ -26,8 +26,12 @@ def git_bytes(repo: Path, commit: str, path: str) -> bytes | None:
 
 
 def snapshot(repo: Path, commit: str, dirty_baseline: dict) -> dict[str, str]:
-    names = subprocess.check_output(["git", "-C", str(repo), "ls-tree", "-r", "--name-only", commit], text=True).splitlines()
-    result = {path: digest(data) for path in names if runnable(path) and (data := git_bytes(repo, commit, path)) is not None}
+    names = subprocess.check_output(
+        ["git", "-C", str(repo), "ls-tree", "-r", "--name-only", commit], text=True
+    ).splitlines()
+    result = {
+        path: digest(data) for path in names if runnable(path) and (data := git_bytes(repo, commit, path)) is not None
+    }
     for entry in dirty_baseline.get("entries", []):
         path = entry["path"]
         if runnable(path):
@@ -36,7 +40,9 @@ def snapshot(repo: Path, commit: str, dirty_baseline: dict) -> dict[str, str]:
 
 
 def current(repo: Path) -> dict[str, str]:
-    paths = subprocess.check_output(["git", "-C", str(repo), "ls-files", "--cached", "--others", "--exclude-standard"], text=True).splitlines()
+    paths = subprocess.check_output(
+        ["git", "-C", str(repo), "ls-files", "--cached", "--others", "--exclude-standard"], text=True
+    ).splitlines()
     return {path: digest((repo / path).read_bytes()) for path in paths if runnable(path) and (repo / path).is_file()}
 
 

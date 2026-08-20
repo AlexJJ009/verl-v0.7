@@ -6,10 +6,9 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-from pathlib import Path
 import subprocess
 import time
-
+from pathlib import Path
 
 ATOMIC_TERMINAL_STATES = {"succeeded", "failed", "deadline_exceeded", "cleanup_failed"}
 ATOMIC_STATES = ATOMIC_TERMINAL_STATES | {"pending", "running"}
@@ -92,7 +91,15 @@ def notification_state_from_event(event: dict, run_ids: list[str], state_root: P
         "failure": event.get("failure"),
         "cleanup": event.get("cleanup") or ({"resources_released": True} if status == "shared_failure" else None),
         "background": (event.get("failure") or {}).get("message", "Experiment execution lifecycle event"),
-        "evidence": json.dumps({"status": status, "event": event.get("event"), "failure": event.get("failure"), "cleanup": event.get("cleanup")}, sort_keys=True),
+        "evidence": json.dumps(
+            {
+                "status": status,
+                "event": event.get("event"),
+                "failure": event.get("failure"),
+                "cleanup": event.get("cleanup"),
+            },
+            sort_keys=True,
+        ),
         "cost": "Execution stopped" if failed else "",
         "recommendation": "Inspect persisted execution state and events" if failed else "",
         "local_paths": f"execution_events={state_root / 'events.jsonl'}",
@@ -112,7 +119,9 @@ def event_digest(event: dict) -> str:
     return hashlib.sha256(json.dumps(event, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
-def monitor_once(manifest: dict, state_root: Path, ledger: Path, policy: Path, sender: list[str] | None, cursor_path: Path) -> tuple[dict[str, dict], list[dict]]:
+def monitor_once(
+    manifest: dict, state_root: Path, ledger: Path, policy: Path, sender: list[str] | None, cursor_path: Path
+) -> tuple[dict[str, dict], list[dict]]:
     states = persisted_states(state_root)
     events = persisted_events(state_root)
     cursor = json.loads(cursor_path.read_text()) if cursor_path.exists() else {"schema_version": 1, "event_digests": []}
@@ -126,12 +135,16 @@ def monitor_once(manifest: dict, state_root: Path, ledger: Path, policy: Path, s
         emit(policy, ledger, sender, notification_state_from_event(event, run_ids, state_root), scratch)
         seen.add(digest)
     cursor_path.parent.mkdir(parents=True, exist_ok=True)
-    cursor_path.write_text(json.dumps({"schema_version": 1, "event_digests": sorted(seen)}, indent=2, sort_keys=True) + "\n")
+    cursor_path.write_text(
+        json.dumps({"schema_version": 1, "event_digests": sorted(seen)}, indent=2, sort_keys=True) + "\n"
+    )
     return states, events
 
 
 def all_terminal(states: dict[str, dict]) -> bool:
-    return bool(states) and all(state.get("status") in ATOMIC_TERMINAL_STATES | BATCH_TERMINAL_STATES for state in states.values())
+    return bool(states) and all(
+        state.get("status") in ATOMIC_TERMINAL_STATES | BATCH_TERMINAL_STATES for state in states.values()
+    )
 
 
 def main() -> int:

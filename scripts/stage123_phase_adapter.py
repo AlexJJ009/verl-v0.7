@@ -5,13 +5,12 @@ import argparse
 import hashlib
 import json
 import os
-from pathlib import Path
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 import yaml
-
 
 ROOT = Path(__file__).resolve().parents[1]
 WRAPPERS = {
@@ -132,7 +131,9 @@ def stage_environment(manifest: dict, run: dict, environment: dict[str, str]) ->
     if phase == "stage1":
         environment["INIT_MODEL_PATH"] = source["model_path"]
     elif phase == "stage2":
-        model1_path = source.get("model1_path", manifest["paths"].get("stage1_init_model", manifest["paths"]["base_model"]))
+        model1_path = source.get(
+            "model1_path", manifest["paths"].get("stage1_init_model", manifest["paths"]["base_model"])
+        )
         model1_provenance_path = source.get(
             "model1_provenance_path", manifest["paths"].get("stage1_init_provenance", "")
         )
@@ -163,7 +164,8 @@ def stage_environment(manifest: dict, run: dict, environment: dict[str, str]) ->
                 ),
                 "EXPECTED_MODEL1_PROVENANCE_PATH": model1_provenance_path,
                 "EXPECTED_MODEL1_PROVENANCE_SHA256": source.get(
-                    "model1_provenance_sha256", file_sha256(Path(model1_provenance_path)) if model1_provenance_path else ""
+                    "model1_provenance_sha256",
+                    file_sha256(Path(model1_provenance_path)) if model1_provenance_path else "",
                 ),
             }
         )
@@ -203,11 +205,59 @@ def stage_environment(manifest: dict, run: dict, environment: dict[str, str]) ->
     return environment
 
 
-def execute_wrapper(manifest_path: Path, manifest: dict, run: dict, *, dry_run: bool) -> tuple[Path | None, Path | None]:
+def execute_wrapper(
+    manifest_path: Path, manifest: dict, run: dict, *, dry_run: bool
+) -> tuple[Path | None, Path | None]:
     environment = stage_environment(manifest, run, common_environment(manifest_path, manifest, run))
     command = ["bash", str(WRAPPERS[run["phase"]])]
     if dry_run:
-        print(json.dumps({"command": command, "environment": {key: environment[key] for key in sorted(environment) if key.startswith("STAGE123_") or key.startswith("SUBMODEL_KL_") or key.startswith("EXPECTED_MODEL1_") or key in {"RUN_PREFIX", "INIT_MODEL_PATH", "BASE_MODEL_PATH", "STAGE1_CKPT_DIR", "STAGE2_HANDOFF_STEP", "MERGED_MODEL2_DIR", "STAGE2_SUBMODEL", "STAGE2_MODEL_PATH", "STAGE2_MODEL2_PATH", "STAGE2_PROVENANCE_FILE", "JOINT_VALIDATION_VIEWS", "VAL_N", "VAL_TEMPERATURE", "VAL_TOP_P", "TOP_K", "VAL_DO_SAMPLE", "BEST_CKPT_METRIC_KEY", "CODE_TRAIN_FILE", "TOTAL_TRAINING_STEPS", "LR", "LR_WARMUP_STEPS", "TRACK_JOINT_SUBMODEL_LOSSES", "BASE_CKPT_DIR", "LOG_DIR", "VERL_FILE_LOGGER_ROOT", "VALIDATION_DATA_DIR", "WANDB_DIR", "WANDB_MODE", "RAY_TMPDIR"}}}, sort_keys=True))
+        print(
+            json.dumps(
+                {
+                    "command": command,
+                    "environment": {
+                        key: environment[key]
+                        for key in sorted(environment)
+                        if key.startswith("STAGE123_")
+                        or key.startswith("SUBMODEL_KL_")
+                        or key.startswith("EXPECTED_MODEL1_")
+                        or key
+                        in {
+                            "RUN_PREFIX",
+                            "INIT_MODEL_PATH",
+                            "BASE_MODEL_PATH",
+                            "STAGE1_CKPT_DIR",
+                            "STAGE2_HANDOFF_STEP",
+                            "MERGED_MODEL2_DIR",
+                            "STAGE2_SUBMODEL",
+                            "STAGE2_MODEL_PATH",
+                            "STAGE2_MODEL2_PATH",
+                            "STAGE2_PROVENANCE_FILE",
+                            "JOINT_VALIDATION_VIEWS",
+                            "VAL_N",
+                            "VAL_TEMPERATURE",
+                            "VAL_TOP_P",
+                            "TOP_K",
+                            "VAL_DO_SAMPLE",
+                            "BEST_CKPT_METRIC_KEY",
+                            "CODE_TRAIN_FILE",
+                            "TOTAL_TRAINING_STEPS",
+                            "LR",
+                            "LR_WARMUP_STEPS",
+                            "TRACK_JOINT_SUBMODEL_LOSSES",
+                            "BASE_CKPT_DIR",
+                            "LOG_DIR",
+                            "VERL_FILE_LOGGER_ROOT",
+                            "VALIDATION_DATA_DIR",
+                            "WANDB_DIR",
+                            "WANDB_MODE",
+                            "RAY_TMPDIR",
+                        }
+                    },
+                },
+                sort_keys=True,
+            )
+        )
         return None, None
     existing = list(Path(manifest["paths"]["checkpoint_root"]).glob(f"{run['run_prefix']}_*"))
     if existing:
@@ -239,17 +289,47 @@ def finalize(manifest: dict, run: dict, checkpoint: Path, metrics: Path) -> None
         if joint.exists() or model1.exists() or model2.exists():
             raise RuntimeError("Stage2 extraction target already exists; retry/resume is forbidden")
         subprocess.run(
-            [sys.executable, "-m", "verl.model_merger", "merge", "--backend", "fsdp", "--local_dir", str(checkpoint / f"global_step_{run['final_step']}" / "actor"), "--target_dir", str(joint), "--trust-remote-code"],
+            [
+                sys.executable,
+                "-m",
+                "verl.model_merger",
+                "merge",
+                "--backend",
+                "fsdp",
+                "--local_dir",
+                str(checkpoint / f"global_step_{run['final_step']}" / "actor"),
+                "--target_dir",
+                str(joint),
+                "--trust-remote-code",
+            ],
             cwd=ROOT,
             check=True,
         )
         subprocess.run(
-            [sys.executable, str(ROOT / "recipe/joint_training/extract_sub_model.py"), "--joint_model_path", str(joint), "--output_path", str(model1), "--sub_model_index", "0"],
+            [
+                sys.executable,
+                str(ROOT / "recipe/joint_training/extract_sub_model.py"),
+                "--joint_model_path",
+                str(joint),
+                "--output_path",
+                str(model1),
+                "--sub_model_index",
+                "0",
+            ],
             cwd=ROOT,
             check=True,
         )
         subprocess.run(
-            [sys.executable, str(ROOT / "recipe/joint_training/extract_sub_model.py"), "--joint_model_path", str(joint), "--output_path", str(model2), "--sub_model_index", "1"],
+            [
+                sys.executable,
+                str(ROOT / "recipe/joint_training/extract_sub_model.py"),
+                "--joint_model_path",
+                str(joint),
+                "--output_path",
+                str(model2),
+                "--sub_model_index",
+                "1",
+            ],
             cwd=ROOT,
             check=True,
         )
