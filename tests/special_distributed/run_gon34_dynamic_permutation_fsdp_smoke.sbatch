@@ -151,12 +151,15 @@ docker run --rm --name "${CONTAINER_NAME}" \
   -e PYTHONPATH=/workspace -e PYTHONDONTWRITEBYTECODE=1 \
   -e WANDB_MODE=offline -e HF_HUB_OFFLINE=1 -e TRANSFORMERS_OFFLINE=1 \
   -e HF_HOME=/scratch/hf -e XDG_CACHE_HOME=/scratch/xdg -e TMPDIR=/scratch/tmp \
+  -e NCCL_SOCKET_IFNAME=lo -e GLOO_SOCKET_IFNAME=lo \
   -e FLASH_ATTENTION_DETERMINISTIC=1 -e CUBLAS_WORKSPACE_CONFIG=:4096:8 \
   -e GON34_CANDIDATE_SHA="${GON34_CANDIDATE_SHA}" \
   "${IMAGE_ID}" bash -c '
     set -euo pipefail
     mkdir -p /scratch/hf /scratch/xdg /scratch/tmp /output
-    exec torchrun --standalone --nproc-per-node=8 \
+    exec torchrun --nnodes=1 --node-rank=0 \
+      --master-addr=127.0.0.1 --master-port=29500 \
+      --nproc-per-node=8 \
       tests/special_distributed/test_dynamic_permutation_fsdp_smoke.py \
       --candidate-sha "$GON34_CANDIDATE_SHA" \
       --workspace /workspace \

@@ -46,7 +46,12 @@ def test_gpu_smoke_is_candidate_bound_read_only_and_offline():
 
 def test_gpu_smoke_uses_fsdp_runner_and_unique_job_paths():
     text = SBATCH.read_text()
-    assert "torchrun --standalone --nproc-per-node=8" in text
+    assert "--standalone" not in text
+    assert "torchrun --nnodes=1 --node-rank=0" in text
+    assert "--master-addr=127.0.0.1 --master-port=29500" in text
+    assert "--nproc-per-node=8" in text
+    assert "NCCL_SOCKET_IFNAME=lo" in text
+    assert "GLOO_SOCKET_IFNAME=lo" in text
     assert "test_dynamic_permutation_fsdp_smoke.py" in text
     assert "${SLURM_JOB_ID}" in text
 
