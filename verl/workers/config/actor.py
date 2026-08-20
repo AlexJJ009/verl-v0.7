@@ -390,6 +390,14 @@ class FSDPActorConfig(ActorConfig):
     def __post_init__(self):
         """Validate FSDP actor configuration parameters."""
         super().__post_init__()
+        if self.weak_logit_permutation.enabled:
+            loss_mode = self.policy_loss.get("loss_mode", "vanilla")
+            if loss_mode != "wdl_sft":
+                raise ValueError(
+                    "weak-logit Dynamic Permutation MVP supports only policy_loss.loss_mode='wdl_sft'; "
+                    f"got {loss_mode!r}. Ratio-based PPO/GRPO/IS losses compare against unpermuted "
+                    "old_log_prob and require a separately approved algorithm contract."
+                )
         self.engine = self.fsdp_config
 
         # backward compatibility

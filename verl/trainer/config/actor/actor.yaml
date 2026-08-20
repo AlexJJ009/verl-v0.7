@@ -143,7 +143,9 @@ submodel_kl:
     # Optional model2 reference path; null means resolve from Stage2 handoff model
     ref_path: null
 
-# Training-only target-preserving Dynamic Permutation of weak-model logits
+# Training-only target-preserving Dynamic Permutation of weak-model logits.
+# The MVP fails closed unless policy_loss.loss_mode=wdl_sft; ratio-based losses
+# require old_log_prob computed under the same intervention identity.
 weak_logit_permutation:
 
   # Target class for this configuration

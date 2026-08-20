@@ -56,6 +56,8 @@ The mapping is stable across micro-batches, gradient accumulation, and gradient-
 
 `compute_log_prob`, reference-policy log-prob, rollout, validation, generation, eval-only, and diagnostic forwards do not enable the transform. Enabling the transform with fused kernels or PrefixGrouper is fail-closed; remove-padding depends on the repository attention backend gate.
 
+The MVP is fail-closed to `policy_loss.loss_mode=wdl_sft`. PPO/GRPO/IS losses, including `wdl_sft_is` and `wdl_group_adv_is`, form ratios against `old_log_prob`; because those old-log-prob forwards are intentionally unpermuted, enabling Dynamic Permutation would mix the intervention delta into the policy-staleness ratio. Supporting a ratio-based loss therefore requires a later approved algorithm contract that binds the same permutation identity into old-log-prob computation.
+
 ## Freeze, checkpoint, and no-op contract
 
 The same joint actor checkpoint remains canonical. It keeps both `sub_models.0.*` and `sub_models.1.*` namespaces; Dynamic Permutation does not add a second checkpoint writer or permutation RNG state.

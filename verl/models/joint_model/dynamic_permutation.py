@@ -223,12 +223,15 @@ def target_preserving_dynamic_permutation(
         audit_dtype = torch.float64 if weak_logits.dtype == torch.float64 else torch.float32
         before = flat_logits.index_select(0, audit_indices).to(audit_dtype)
         after = output.index_select(0, audit_indices).to(audit_dtype)
-        before_entropy = torch.distributions.Categorical(logits=before).entropy()
-        after_entropy = torch.distributions.Categorical(logits=after).entropy()
+        # Canonicalize the reduction order before the entropy comparison.  The
+        # transform is a permutation, so unsorted softmax reductions can differ
+        # by a few float32 ulps solely because values are summed in a new order.
+        before_sorted = torch.sort(before, dim=-1).values
+        after_sorted = torch.sort(after, dim=-1).values
+        before_entropy = torch.distributions.Categorical(logits=before_sorted).entropy()
+        after_entropy = torch.distributions.Categorical(logits=after_sorted).entropy()
         max_entropy_error = float((before_entropy - after_entropy).abs().max().item())
-        max_multiset_error = float(
-            (torch.sort(before, dim=-1).values - torch.sort(after, dim=-1).values).abs().max().item()
-        )
+        max_multiset_error = float((before_sorted - after_sorted).abs().max().item())
 
     invariant_failures = int(target_mismatches > 0)
     invariant_failures += int(max_entropy_error > entropy_atol)

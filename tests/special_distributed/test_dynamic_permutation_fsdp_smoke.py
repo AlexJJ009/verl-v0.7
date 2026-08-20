@@ -39,7 +39,7 @@ from verl.models.joint_model.configuration_joint_qwen3 import QwenJointConfig
 from verl.models.joint_model.modeling_joint_qwen3 import QwenJointForCausalLM
 from verl.utils.checkpoint.fsdp_checkpoint_manager import FSDPCheckpointManager
 from verl.workers.actor.dp_actor import DataParallelPPOActor
-from verl.workers.config import FSDPActorConfig, WeakLogitPermutationConfig
+from verl.workers.config import FSDPActorConfig, PolicyLossConfig, WeakLogitPermutationConfig
 
 SEED = 20260820
 
@@ -108,6 +108,7 @@ def _build_actor(*, freeze_model1: bool, enabled: bool, rho: float):
         use_remove_padding=True,
         ulysses_sequence_parallel_size=1,
         rollout_n=1,
+        policy_loss=PolicyLossConfig(loss_mode="wdl_sft"),
         weak_logit_permutation=WeakLogitPermutationConfig(
             enabled=enabled,
             rho=rho,

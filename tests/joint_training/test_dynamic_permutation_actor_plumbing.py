@@ -22,7 +22,7 @@ from verl.models.joint_model.configuration_joint_qwen3 import QwenJointConfig
 from verl.models.joint_model.modeling_joint_qwen3 import QwenJointForCausalLM
 from verl.utils.attention_utils import is_remove_padding_backend_available
 from verl.workers.actor.dp_actor import DataParallelPPOActor
-from verl.workers.config import FSDPActorConfig, WeakLogitPermutationConfig
+from verl.workers.config import FSDPActorConfig, PolicyLossConfig, WeakLogitPermutationConfig
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -67,9 +67,43 @@ def _actor(model, *, use_remove_padding):
         use_remove_padding=use_remove_padding,
         ulysses_sequence_parallel_size=1,
         rollout_n=1,
+        policy_loss=PolicyLossConfig(loss_mode="wdl_sft"),
         weak_logit_permutation=WeakLogitPermutationConfig(enabled=True, rho=1.0, audit_rows=2),
     )
     return DataParallelPPOActor(config=config, actor_module=model, actor_optimizer=None)
+
+
+@pytest.mark.parametrize("loss_mode", ["vanilla", "wdl_sft_is", "wdl_group_adv_is", "minirl"])
+def test_dynamic_permutation_rejects_ratio_based_policy_losses(loss_mode):
+    with pytest.raises(ValueError, match="supports only policy_loss.loss_mode='wdl_sft'"):
+        FSDPActorConfig(
+            strategy="fsdp2",
+            ppo_mini_batch_size=2,
+            ppo_micro_batch_size_per_gpu=1,
+            ppo_epochs=1,
+            use_dynamic_bsz=False,
+            use_torch_compile=False,
+            ulysses_sequence_parallel_size=1,
+            rollout_n=1,
+            policy_loss=PolicyLossConfig(loss_mode=loss_mode),
+            weak_logit_permutation=WeakLogitPermutationConfig(enabled=True, rho=1.0),
+        )
+
+
+def test_dynamic_permutation_accepts_teacher_forced_wdl_sft_loss():
+    config = FSDPActorConfig(
+        strategy="fsdp2",
+        ppo_mini_batch_size=2,
+        ppo_micro_batch_size_per_gpu=1,
+        ppo_epochs=1,
+        use_dynamic_bsz=False,
+        use_torch_compile=False,
+        ulysses_sequence_parallel_size=1,
+        rollout_n=1,
+        policy_loss=PolicyLossConfig(loss_mode="wdl_sft"),
+        weak_logit_permutation=WeakLogitPermutationConfig(enabled=True, rho=1.0),
+    )
+    assert config.policy_loss.loss_mode == "wdl_sft"
 
 
 def _micro_batch(*, rho, attention_mask=None):
