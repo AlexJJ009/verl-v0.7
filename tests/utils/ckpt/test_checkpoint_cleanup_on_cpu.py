@@ -151,6 +151,30 @@ class TestCheckpointCleanupLogic:
 
         assert estimated_bytes == (16 * 4) + (8 * 2) + (4 * 8)
 
+    def test_estimate_torch_save_size_bytes_counts_local_sharded_tensor_payload(self, manager, monkeypatch):
+        import torch
+
+        class FakeShard:
+            def __init__(self, tensor):
+                self.tensor = tensor
+
+        class FakeShardedTensor:
+            def local_shards(self):
+                return [FakeShard(torch.zeros(7, dtype=torch.bfloat16)), FakeShard(torch.zeros(3, dtype=torch.float32))]
+
+            def numel(self):
+                raise AssertionError("ShardedTensor.numel must not be called")
+
+        sharded = FakeShardedTensor()
+        original_is_tensor = torch.is_tensor
+        monkeypatch.setattr(torch, "is_tensor", lambda value: value is sharded or original_is_tensor(value))
+
+        estimated_bytes = manager.estimate_torch_save_size_bytes(
+            {"sharded": sharded}, safety_factor=1.0, overhead_bytes=0
+        )
+
+        assert estimated_bytes == (7 * 2) + (3 * 4)
+
     def test_ensure_free_space_raises_clear_error(self, manager, monkeypatch):
         usage = namedtuple("usage", ["total", "used", "free"])
 

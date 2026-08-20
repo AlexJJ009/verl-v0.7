@@ -164,13 +164,21 @@ class BaseCheckpointManager:
             for value in obj:
                 yield from BaseCheckpointManager.iter_tensors(value)
 
+    @staticmethod
+    def tensor_storage_size_bytes(tensor) -> int:
+        """Estimate serialized tensor payload, including local ShardedTensor shards."""
+        local_shards = getattr(tensor, "local_shards", None)
+        if callable(local_shards):
+            return sum(shard.tensor.numel() * shard.tensor.element_size() for shard in local_shards())
+        return tensor.numel() * tensor.element_size()
+
     @classmethod
     def estimate_torch_save_size_bytes(
         cls, obj, *, safety_factor: float = 1.05, overhead_bytes: int = 64 * 1024 * 1024
     ) -> int:
         tensor_bytes = 0
         for tensor in cls.iter_tensors(obj):
-            tensor_bytes += tensor.numel() * tensor.element_size()
+            tensor_bytes += cls.tensor_storage_size_bytes(tensor)
         return max(int(tensor_bytes * safety_factor) + overhead_bytes, overhead_bytes)
 
     @classmethod
