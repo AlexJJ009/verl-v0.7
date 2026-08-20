@@ -398,6 +398,16 @@ class FSDPActorConfig(ActorConfig):
                     f"got {loss_mode!r}. Ratio-based PPO/GRPO/IS losses compare against unpermuted "
                     "old_log_prob and require a separately approved algorithm contract."
                 )
+            if self.use_kl_loss:
+                raise ValueError(
+                    "weak-logit Dynamic Permutation MVP does not support actor reference KL; "
+                    "ref_log_prob is intentionally unpermuted"
+                )
+            if self.submodel_kl.is_effective():
+                raise ValueError(
+                    "weak-logit Dynamic Permutation MVP does not support effective submodel KL; "
+                    "submodel reference log-probabilities are intentionally unpermuted"
+                )
         self.engine = self.fsdp_config
 
         # backward compatibility

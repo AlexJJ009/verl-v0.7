@@ -145,7 +145,9 @@ submodel_kl:
 
 # Training-only target-preserving Dynamic Permutation of weak-model logits.
 # The MVP fails closed unless policy_loss.loss_mode=wdl_sft; ratio-based losses
-# require old_log_prob computed under the same intervention identity.
+# require old_log_prob computed under the same intervention identity. Actor
+# reference KL and effective submodel KL must also remain disabled because their
+# reference log-probabilities are intentionally unpermuted.
 weak_logit_permutation:
 
   # Target class for this configuration

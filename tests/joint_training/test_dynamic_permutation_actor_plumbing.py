@@ -22,7 +22,13 @@ from verl.models.joint_model.configuration_joint_qwen3 import QwenJointConfig
 from verl.models.joint_model.modeling_joint_qwen3 import QwenJointForCausalLM
 from verl.utils.attention_utils import is_remove_padding_backend_available
 from verl.workers.actor.dp_actor import DataParallelPPOActor
-from verl.workers.config import FSDPActorConfig, PolicyLossConfig, WeakLogitPermutationConfig
+from verl.workers.config import (
+    FSDPActorConfig,
+    PolicyLossConfig,
+    SubmodelKLConfig,
+    SubmodelKLPairConfig,
+    WeakLogitPermutationConfig,
+)
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -104,6 +110,38 @@ def test_dynamic_permutation_accepts_teacher_forced_wdl_sft_loss():
         weak_logit_permutation=WeakLogitPermutationConfig(enabled=True, rho=1.0),
     )
     assert config.policy_loss.loss_mode == "wdl_sft"
+
+
+def test_dynamic_permutation_rejects_actor_reference_kl():
+    with pytest.raises(ValueError, match="does not support actor reference KL"):
+        FSDPActorConfig(
+            strategy="fsdp2",
+            ppo_mini_batch_size=2,
+            ppo_micro_batch_size_per_gpu=1,
+            rollout_n=1,
+            policy_loss=PolicyLossConfig(loss_mode="wdl_sft"),
+            use_kl_loss=True,
+            weak_logit_permutation=WeakLogitPermutationConfig(enabled=True, rho=1.0),
+        )
+
+
+@pytest.mark.parametrize("model_name", ["model1", "model2"])
+def test_dynamic_permutation_rejects_effective_submodel_kl(model_name):
+    models = {
+        "model1": SubmodelKLConfig(),
+        "model2": SubmodelKLConfig(),
+    }
+    models[model_name] = SubmodelKLConfig(enabled=True, coef=0.1)
+    with pytest.raises(ValueError, match="does not support effective submodel KL"):
+        FSDPActorConfig(
+            strategy="fsdp2",
+            ppo_mini_batch_size=2,
+            ppo_micro_batch_size_per_gpu=1,
+            rollout_n=1,
+            policy_loss=PolicyLossConfig(loss_mode="wdl_sft"),
+            submodel_kl=SubmodelKLPairConfig(enabled=True, **models),
+            weak_logit_permutation=WeakLogitPermutationConfig(enabled=True, rho=1.0),
+        )
 
 
 def _micro_batch(*, rho, attention_mask=None):
