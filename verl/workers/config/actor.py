@@ -408,6 +408,11 @@ class FSDPActorConfig(ActorConfig):
                     "weak-logit Dynamic Permutation MVP does not support effective submodel KL; "
                     "submodel reference log-probabilities are intentionally unpermuted"
                 )
+            if float(self.entropy_coeff) != 0.0:
+                raise ValueError(
+                    "weak-logit Dynamic Permutation MVP requires entropy_coeff=0; "
+                    "entropy regularization is outside the approved teacher-forced WDL-SFT objective"
+                )
         self.engine = self.fsdp_config
 
         # backward compatibility

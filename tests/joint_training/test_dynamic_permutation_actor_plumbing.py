@@ -125,6 +125,19 @@ def test_dynamic_permutation_rejects_actor_reference_kl():
         )
 
 
+def test_dynamic_permutation_rejects_entropy_regularization():
+    with pytest.raises(ValueError, match="requires entropy_coeff=0"):
+        FSDPActorConfig(
+            strategy="fsdp2",
+            ppo_mini_batch_size=2,
+            ppo_micro_batch_size_per_gpu=1,
+            rollout_n=1,
+            policy_loss=PolicyLossConfig(loss_mode="wdl_sft"),
+            entropy_coeff=0.01,
+            weak_logit_permutation=WeakLogitPermutationConfig(enabled=True, rho=1.0),
+        )
+
+
 @pytest.mark.parametrize("model_name", ["model1", "model2"])
 def test_dynamic_permutation_rejects_effective_submodel_kl(model_name):
     models = {
