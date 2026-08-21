@@ -9,8 +9,8 @@ from pathlib import Path
 
 import yaml
 
-from scripts.math_wdl_first_step_gate import DYNPERM_METRICS, REQUIRED_METRICS, validate_step_one
 from scripts.l40s.resolve_image_config_digest import resolve_image_config_digest
+from scripts.math_wdl_first_step_gate import DYNPERM_METRICS, REQUIRED_METRICS, validate_step_one
 
 ROOT = Path(__file__).resolve().parents[2]
 MATH = ROOT / "recipe/on_policy_wdl_sft/math_task"
@@ -85,7 +85,7 @@ def test_dynperm_admission_hard_pins_shared_non_treatment_contract() -> None:
         "actor_rollout_ref.actor.use_kl_loss=False",
         "actor_rollout_ref.actor.submodel_kl.enabled=false",
         "actor_rollout_ref.rollout.n=8",
-        "actor_rollout_ref.rollout.seed=0",
+        "+actor_rollout_ref.rollout.seed=0",
         "trainer.total_training_steps=60",
     ):
         assert final_override in admission
