@@ -79,6 +79,10 @@ def test_dynperm_admission_hard_pins_shared_non_treatment_contract() -> None:
         "export JOINT_TRAINING_ROLLOUT_SOURCE=model2",
         "export TRAIN_PROMPT_BSZ=64",
         "export ROLLOUT_N=8",
+        "export TEMPERATURE=1.0",
+        "export TOP_P=1.0",
+        "export TOP_K=-1",
+        "export ROLLOUT_DO_SAMPLE=True",
         "export MAX_RESPONSE_LENGTH=4096",
         "export VAL_N=3",
         "export ROLLOUT_GPU_MEMORY_UTILIZATION=0.55",
@@ -102,6 +106,10 @@ def test_dynperm_admission_hard_pins_shared_non_treatment_contract() -> None:
         "actor_rollout_ref.actor.submodel_kl.enabled=false",
         "actor_rollout_ref.rollout.n=8",
         "+actor_rollout_ref.rollout.seed=0",
+        "actor_rollout_ref.rollout.temperature=1.0",
+        "actor_rollout_ref.rollout.top_p=1.0",
+        "actor_rollout_ref.rollout.top_k=-1",
+        "actor_rollout_ref.rollout.do_sample=True",
         "trainer.total_training_steps=60",
     ):
         assert final_override in admission
