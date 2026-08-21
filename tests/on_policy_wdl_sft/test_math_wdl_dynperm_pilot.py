@@ -73,6 +73,7 @@ def test_dynperm_admission_hard_pins_shared_non_treatment_contract() -> None:
     ):
         assert exact_pin in admission
     for final_override in (
+        'hydra.run.dir="${LOG_DIR}/hydra/${SLURM_JOB_ID:-manual}"',
         "data.seed=20260719",
         "data.shuffle=False",
         "actor_rollout_ref.actor.optim.lr=1e-6",
