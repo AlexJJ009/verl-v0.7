@@ -21,6 +21,9 @@ import pytest
 
 SBATCH = Path("tests/special_distributed/run_gon34_dynamic_permutation_fsdp_smoke.sbatch")
 RUNNER = Path("tests/special_distributed/test_dynamic_permutation_fsdp_smoke.py")
+FORMAL_JOB = Path(
+    "recipe/on_policy_wdl_sft/math_task/slurm/run_math_qwen3_1p7b_wdl_dynperm_p60_job.sh"
+)
 
 
 def test_gpu_smoke_is_bounded_exclusive_and_controller_excluded():
@@ -43,6 +46,13 @@ def test_gpu_smoke_is_candidate_bound_read_only_and_offline():
     assert "dst=/workspace,readonly" in text
     assert "--network=none" in text
     assert "WANDB_MODE=offline" in text
+
+
+def test_formal_nvidia_job_drops_slurm_rocm_visibility_alias_before_container_launch():
+    text = FORMAL_JOB.read_text()
+    unset_pos = text.index("unset ROCR_VISIBLE_DEVICES")
+    launch_pos = text.index('bash "$repo_host/scripts/l40s/run_train.sh"')
+    assert unset_pos < launch_pos
 
 
 def test_gpu_smoke_uses_fsdp_runner_and_unique_job_paths():
