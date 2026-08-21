@@ -252,6 +252,10 @@ def test_three_node_slurm_matrix_prioritizes_fixed_model1_and_is_fail_closed() -
     assert '"phase": "pre-admission"' in job
     assert job.index("trap bootstrap_cleanup EXIT") < job.index("for required_name in")
     assert "${bootstrap_relay_root}/bootstrap-terminal.json" in job
+    assert "_slurm_bootstrap" not in job
+    assert "bootstrap_root" not in job
+    assert "bootstrap_receipt" in job
+    assert "cat > '${bootstrap_relay_root}/bootstrap-terminal.json'" in job
     assert "formal DynPerm P60 rho must be one of" in job
     assert '"training_exit_code"' in job
     assert '"evidence_set_relayed"' in job
