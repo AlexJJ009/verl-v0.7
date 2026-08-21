@@ -221,6 +221,9 @@ def test_three_node_slurm_matrix_prioritizes_fixed_model1_and_is_fail_closed() -
     assert "relay_files admission.json first-step.json first-step.log terminal.json" in job
     assert "node_local_job_root" in job
     assert "relay_job_root" in job
+    assert 'while kill -0 "$training_pid"' in job
+    assert '&& kill -0 "$gate_pid"' in job
+    assert "training exited before first-step admission completed" in job
     assert "first-step admission failed; stopping only this job's training container" in job
     assert "scancel" not in job
 
