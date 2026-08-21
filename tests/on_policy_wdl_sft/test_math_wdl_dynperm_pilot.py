@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -9,6 +10,7 @@ from pathlib import Path
 import yaml
 
 from scripts.math_wdl_first_step_gate import DYNPERM_METRICS, REQUIRED_METRICS, validate_step_one
+from scripts.l40s.resolve_image_config_digest import resolve_image_config_digest
 
 ROOT = Path(__file__).resolve().parents[2]
 MATH = ROOT / "recipe/on_policy_wdl_sft/math_task"
@@ -226,7 +228,7 @@ def test_three_node_slurm_matrix_prioritizes_fixed_model1_and_is_fail_closed() -
     assert "DYNPERM_STAGE_REL" in submitter
     assert 'node_root="$(node_root_for "$node")"' in submitter
     assert 'git -C "$repo/recipe" rev-parse HEAD' in submitter
-    assert 'docker image inspect verl-harness:latest' in submitter
+    assert 'resolve_image_config_digest.py" verl-harness:latest' in submitter
 
     fixed_sbatch = _read("slurm/run_math_qwen3_1p7b_wdl_dynperm_fixed_m1_p60.sbatch")
     standard_sbatch = _read("slurm/run_math_qwen3_1p7b_wdl_dynperm_standard_c_p60.sbatch")
@@ -277,6 +279,7 @@ def test_three_node_slurm_matrix_prioritizes_fixed_model1_and_is_fail_closed() -
     assert 'data2_host="$(realpath -e "${workspace}/runtime/data-2")"' in job
     assert 'export DATA1_HOST="$data1_host"' in job
     assert 'export DATA2_HOST="$data2_host"' in job
+    assert "export DOCKER_IMAGE=verl-harness:latest" in job
     assert "branch --show-current" not in job
     assert "export REPO_MOUNT_MODE=ro" in job
     assert '"training_exit_code"' in job
@@ -288,6 +291,27 @@ def test_three_node_slurm_matrix_prioritizes_fixed_model1_and_is_fail_closed() -
     assert "training exited before first-step admission completed" in job
     assert "first-step admission failed; stopping only this job's training container" in job
     assert "scancel" not in job
+
+
+def test_image_config_digest_is_stable_across_docker_image_stores() -> None:
+    config_digest = "sha256:" + "c" * 64
+    manifest_digest = "sha256:" + "5" * 64
+
+    def legacy_run(command: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        assert command[:3] == ["docker", "image", "inspect"]
+        stdout = json.dumps([{"Id": config_digest}])
+        return subprocess.CompletedProcess(command, 0, stdout, "")
+
+    def containerd_run(command: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        if command[:3] == ["docker", "image", "inspect"]:
+            stdout = json.dumps([{"Id": manifest_digest, "Descriptor": {"digest": manifest_digest}}])
+        else:
+            assert command == ["ctr", "-n", "moby", "content", "get", manifest_digest]
+            stdout = json.dumps({"config": {"digest": config_digest}})
+        return subprocess.CompletedProcess(command, 0, stdout, "")
+
+    assert resolve_image_config_digest("verl-harness:latest", run=legacy_run) == config_digest
+    assert resolve_image_config_digest("verl-harness:latest", run=containerd_run) == config_digest
 
 
 def test_l40s_wrapper_supports_candidate_staged_data_roots() -> None:
