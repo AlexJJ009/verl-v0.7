@@ -237,6 +237,8 @@ def test_three_node_slurm_matrix_prioritizes_fixed_model1_and_is_fail_closed() -
         assert "#SBATCH --no-requeue" in sbatch
         assert "DYNPERM_NODE_ROOT_MAP" in sbatch
         assert "DYNPERM_STAGE_REL" in sbatch
+        assert "dispatch-terminal.json" in sbatch
+        assert sbatch.index("trap dispatch_cleanup EXIT") < sbatch.index("DYNPERM_NODE_ROOT_MAP:?")
         assert 'workspace="$(realpath -e "${node_root}/${DYNPERM_STAGE_REL}")"' in sbatch
         assert "${workspace}/repo/recipe" in sbatch
     assert "fixed-m1-stage1" in fixed_sbatch
@@ -272,6 +274,7 @@ def test_three_node_slurm_matrix_prioritizes_fixed_model1_and_is_fail_closed() -
     assert 'data2_host="$(realpath -e "${workspace}/runtime/data-2")"' in job
     assert 'export DATA1_HOST="$data1_host"' in job
     assert 'export DATA2_HOST="$data2_host"' in job
+    assert "branch --show-current" not in job
     assert "export REPO_MOUNT_MODE=ro" in job
     assert '"training_exit_code"' in job
     assert '"evidence_set_relayed"' in job
