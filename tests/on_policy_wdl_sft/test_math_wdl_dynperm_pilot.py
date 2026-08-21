@@ -81,6 +81,9 @@ def test_dynperm_admission_hard_pins_shared_non_treatment_contract() -> None:
         "export ROLLOUT_N=8",
         "export MAX_RESPONSE_LENGTH=4096",
         "export VAL_N=3",
+        "export ROLLOUT_GPU_MEMORY_UTILIZATION=0.55",
+        "export ROLLOUT_FREE_CACHE_ENGINE=True",
+        "export ROLLOUT_ENABLE_SLEEP_MODE=True",
         'export LOG_DIR="${CAUSAL_ARTIFACT_ROOT}/logs"',
     ):
         assert exact_pin in admission
@@ -102,6 +105,17 @@ def test_dynperm_admission_hard_pins_shared_non_treatment_contract() -> None:
         "trainer.total_training_steps=60",
     ):
         assert final_override in admission
+
+
+def test_shared_launcher_disables_expandable_segments_for_vllm_sleep_mode() -> None:
+    common = SHARED_JOINT_LAUNCHER.read_text(encoding="utf-8")
+    sleep_guard = 'if [ "${ROLLOUT_FREE_CACHE_ENGINE:-False}" = "True" ]; then'
+    guard_pos = common.index(sleep_guard)
+    cache_pos = common.index("# ===================== Cache, Temp, Runtime")
+    guarded = common[guard_pos:cache_pos]
+    assert "unset PYTORCH_CUDA_ALLOC_CONF" in guarded
+    assert "unset PYTORCH_ALLOC_CONF" in guarded
+    assert "expandable_segments:True" in guarded
 
 
 def test_p60_launcher_runs_fixed_m1_then_standard_c_with_same_two_variables() -> None:
