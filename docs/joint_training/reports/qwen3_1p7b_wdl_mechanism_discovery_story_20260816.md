@@ -976,7 +976,7 @@ temperature matching 也只匹配一个 scalar entropy，不保留 target probab
 
 - 固定 target coordinate `y`；
 - 只在所有 non-target coordinates 上置换；
-- permutation seed 由 training seed、global step、sample index 和 token position 确定；
+- permutation identity 由 training seed、global step、actor update index、stable sample id 和 absolute token position 确定；
 - 每一步重新采样，不给模型学习固定逆置换的机会。
 
 干预后的 weak logits 为：
