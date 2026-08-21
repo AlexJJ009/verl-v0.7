@@ -228,6 +228,10 @@ def test_three_node_slurm_matrix_prioritizes_fixed_model1_and_is_fail_closed() -
     assert "relay_files first-step.json first-step.log" in job
     assert "relay_files admission.json first-step.json first-step.log stdout.tail.log stderr.tail.log" in job
     assert "relay_terminal_verified" in job
+    assert "bootstrap-terminal.json" in job
+    assert '"phase": "pre-admission"' in job
+    assert job.index("trap bootstrap_cleanup EXIT") < job.index("for required_name in")
+    assert "${bootstrap_relay_root}/bootstrap-terminal.json" in job
     assert '"training_exit_code"' in job
     assert '"evidence_set_relayed"' in job
     assert "node_local_job_root" in job
