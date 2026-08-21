@@ -1,6 +1,6 @@
 # Target-Preserving Dynamic Permutation MVP
 
-Status: GON-34 implementation merged into the formal training branch at merge commit `8209576c04d89c7d778a249e8458c608f747c764`. Candidate-bound CPU and 8xL40S Slurm GPU/FSDP engineering smoke evidence passed. Formal P20/P30/P60 experiments are not part of the GON-34 Delivery evidence and have not been launched.
+Status: GON-34 implementation and the first formal-script contract are merged into the formal training branch through `425db4d1a1c85906f29499a07f932aa0a4eeb45c`. Candidate-bound CPU and 8xL40S Slurm GPU/FSDP engineering smoke evidence passed. Formal Dynamic Permutation training has not been launched.
 
 ## Scope
 
@@ -72,6 +72,6 @@ As of 2026-08-20, the GON-34 code candidate has CPU plus candidate-bound Slurm e
 - broader `tests/joint_training` still has pre-existing or environment-dependent failures unrelated to the Dynamic Permutation focused gate.
 - candidate-bound Slurm Job 146 completed an 8xL40S FSDP engineering smoke with result `PASS`, covering both `freeze_model1=false` and `freeze_model1=true`, checkpoint save/resume, and same-candidate `rho=0` comparison. Its receipt is explicitly `formal_experiment=false`.
 
-The Slurm wrapper remains part of the engineering admission contract: it fail-closes unless the candidate SHA is an exact lowercase 40-hex value, the staged workspace and output roots canonicalize below the intended node-local `workspace/jobs` and `checkpoints/jobs` prefixes, and the node-local preflight records durable GPU-process, Docker-container, and Slurm-allocation receipts showing no foreign workload before the job container starts. Its eight local ranks use explicit `127.0.0.1` static rendezvous so `--network=none` does not depend on container-hostname resolution. Formal P20/P30/P60 training remains outside Delivery; prepared experiment wrappers require separate exact-dose-and-horizon launch receipts.
+The Slurm wrapper remains part of the engineering admission contract: it fail-closes unless the candidate SHA is an exact lowercase 40-hex value, the staged workspace and output roots canonicalize below the intended node-local `workspace/jobs` and `checkpoints/jobs` prefixes, and the node-local preflight records durable GPU-process, Docker-container, and Slurm-allocation receipts showing no foreign workload before the job container starts. Its eight local ranks use explicit `127.0.0.1` static rendezvous so `--network=none` does not depend on container-hostname resolution. Formal training remains outside Delivery. The current execution decision uses one P60-only queue for Standard C and fixed-Model1, configured through `DYNPERM_ENABLED` and `DYNPERM_RHO`; it requires a separate candidate-bound P60 batch receipt.
 
 The resource-threshold smoke uses the production defaults `row_chunk_size=16` and `audit_rows=4`; invariant auditing remains enabled on every active step. The chunk default is the bounded tradeoff required by the 8xL40S gate: chunk 8 passed the 15% memory bound but failed the 25% step-time bound, while the earlier artificial chunk-64/audit-32 stress setting passed time but failed memory.

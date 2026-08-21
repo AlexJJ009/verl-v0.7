@@ -99,7 +99,9 @@ def validate_step_one(data: dict, expected_model1_gradient: str, dynperm_rho: fl
         audited = float(data.get("jointTraining/dynperm/audited_rows", -1.0))
         checks.update(
             dynperm_requested_rho_matches=abs(requested - dynperm_rho) <= 1e-12,
-            dynperm_realized_rho_matches=abs(realized - dynperm_rho) <= 1e-12,
+            # Partial doses select an integer number of vocabulary coordinates,
+            # so realized rho may differ from the requested float by one bin.
+            dynperm_realized_rho_matches=abs(realized - dynperm_rho) <= 1e-4,
             dynperm_has_active_rows=active_rows > 0.0,
             dynperm_selected_coordinates_match_dose=(selected == 0.0 if dynperm_rho == 0.0 else selected > 0.0),
             dynperm_audit_matches_dose=(audited == 0.0 if dynperm_rho == 0.0 else audited > 0.0),
@@ -121,12 +123,14 @@ def main() -> int:
     parser.add_argument("--project", required=True)
     parser.add_argument("--run-prefix", required=True)
     parser.add_argument("--expected-model1-gradient", choices=("zero", "nonzero"), required=True)
-    parser.add_argument("--dynperm-rho", type=float, choices=(0.0, 1.0))
+    parser.add_argument("--dynperm-rho", type=float)
     parser.add_argument("--queue-tmux", required=True)
     parser.add_argument("--timeout-seconds", type=int, default=7200)
     parser.add_argument("--poll-seconds", type=int, default=15)
     parser.add_argument("--receipt", type=Path, required=True)
     args = parser.parse_args()
+    if args.dynperm_rho is not None and not 0.0 <= args.dynperm_rho <= 1.0:
+        parser.error("--dynperm-rho must be in [0, 1]")
 
     deadline = time.monotonic() + args.timeout_seconds
     result = None

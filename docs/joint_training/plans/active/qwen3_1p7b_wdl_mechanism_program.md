@@ -1,13 +1,15 @@
 # Qwen3-1.7B On-Policy WDL Mechanism Program
 
-- Status: **ACTIVE RESEARCH DESIGN / DYNPERM FORMAL SCRIPT PREPARED** —
+- Status: **ACTIVE RESEARCH DESIGN / DYNPERM P60 TWO-ARM LAUNCHER IN REVIEW** —
   theory-derived Math-first mechanism matrix. Fixed-Model1 arms are prepared
   separately. Dynamic Permutation core code was merged into the formal training
   branch at `8209576c04d89c7d778a249e8458c608f747c764`, with final focused CPU
   evidence (`114 passed`) and candidate-bound Job 146 8xL40S FSDP engineering
-  smoke `PASS` (`formal_experiment=false`). Formal DynPerm P20/P30/P60 runs
-  have not been launched. The Math DynPerm wrappers/manifest are prepared with
-  `launch_allowed=false` and require separate exact-dose-and-horizon receipts.
+  smoke `PASS` (`formal_experiment=false`). Formal DynPerm training has not
+  been launched. The approved execution design now runs Standard C and its
+  fixed-Model1 factorial edge directly to P60 through the shared
+  `DYNPERM_ENABLED` / `DYNPERM_RHO` interface. The manifest remains
+  `launch_allowed=false` and requires a separate candidate-bound P60 receipt.
 - Created: 2026-08-16
 - Primary method result: `qwen3_1p7b_math_stage123.md`
 - Result attachment: `../../reports/qwen3_1p7b_math_stage123_matrix_results_20260723.md`
@@ -369,9 +371,10 @@ First validate the endpoints:
 - `DynPerm-100`: all non-target weak coordinates permuted independently per
   token and optimizer step, with deterministic seeds.
 
-After `rho=0` exact-equivalence tests, run `DynPerm-100` first as a P20/P30
-trajectory-separation pilot. Admit the P60 endpoint only if entropy/multiset,
-gradient connectivity, runtime, and curve validity pass. `DynPerm-25/50` are
+After `rho=0` exact-equivalence tests, run `DynPerm-100` directly to P60 for
+both Standard C (Model1 trainable) and the matched fixed-Model1 factorial edge.
+Use the P20/P30 checkpoints on those continuous P60 trajectories for early
+diagnosis rather than launching separate truncated jobs. `DynPerm-25/50` remain
 conditional dose-response arms: run them only if the endpoint contrast is real
 but the transition shape is needed for the paper.
 
@@ -576,26 +579,24 @@ logit-fusion mechanism itself approximates or improves standard distillation.
 ## 7. Minimal Math-first execution matrix
 
 All first-wave runs use Qwen3-1.7B, the existing Stage1 source, the ordered
-post-Stage1 3,840-prompt shard, Model2 rollout, `beta=0`, `lambda=0.8`, a maximum
-horizon of P60, and the existing Math-7 online validation contract unless the
-arm definition explicitly changes the rollout source. Screening pilots stop at
-P20/P30 and inherit every other setting.
+post-Stage1 3,840-prompt shard, Model2 rollout, `beta=0`, `lambda=0.8`, P60, and
+the existing Math-7 online validation contract unless the arm definition
+explicitly changes the rollout source.
 
 | Wave | New training | Primary comparison | Gate to next wave |
 | --- | --- | --- | --- |
 | M0 | none | existing C/D0 checkpoints | telemetry can distinguish real, D0, and confidence bins |
 | M1 | prepared fixed-M1 arms; resolve Slurm admission before treating them as running | joint/fixed/D0 | quantify static guidance vs co-adaptation |
-| M2 pilot | `DynPerm-100` P20/P30 after exact `rho=0` no-op proof | real vs random same-entropy assignment | intervention validity passes and trajectories separate interpretably |
-| M2 confirm | only a valid/material pilot to P60; matched `rho=0` rerun when needed | common-revision endpoint contrast | endpoint and curve difference is interpretable |
+| M2 P60 | `DynPerm-100` Standard C plus fixed-Model1 after exact `rho=0` no-op proof | token assignment crossed with Model1 update state | intervention validity passes and P20/P30/P60 trajectories are interpretable |
 | M3 pilot | `AlignSort`, `AntiAlignSort`, optional `RankBinPerm` P20/P30 | directional affinity ordering | measured `C_lambda` and gradient ordering match theory |
 | M3 confirm | only material pilot arms to P60 and second seed | geometry vs semantic identity | identify sufficient statistics |
 | M4 | one calibrated target-margin/entropy controller; richer surrogate only if needed | controller vs C/fixed/D0 | controller approaches C without online WM1 |
 | M5 | short same-rollout 2x2; online confirmation only if needed | data source x loss geometry | separate trajectory transfer from training geometry |
 
-The minimum immediate incremental GPU cost is the two prepared fixed-M1 arms
-plus one P20/P30 `DynPerm-100` pilot. Promote DynPerm to P60 only after its
-validity gate passes. Do not launch all partial permutations or synthetic
-controls before the endpoint result is known.
+The immediate DynPerm batch is exactly two continuous P60 runs: Standard C and
+fixed-Model1 Stage1, with the same enabled/rho treatment. Do not launch all
+partial permutations or synthetic controls before this endpoint result is
+known.
 
 ## 8. Metrics and validity contracts
 
@@ -696,21 +697,19 @@ The next coding task should implement only:
 2. deterministic per-step/sample/token seeds;
 3. autograd-preserving gather/scatter semantics;
 4. intervention validity assertions and `C_lambda`/gradient telemetry;
-5. one Math `DynPerm-100` P20/P30 pilot wrapper, a conditional P60 wrapper, and
-   a no-op-equivalent `rho=0` path;
+5. one Math P60 queue that crosses Standard C versus fixed-Model1 with a shared
+   `DYNPERM_ENABLED` / `DYNPERM_RHO` interface and retains a no-op-equivalent
+   `rho=0` path;
 6. unit tests for entropy, target probability, multiset, gradient connectivity,
    determinism, and `rho=0` exact equivalence.
 
 Do not implement the full M3--M6 matrix in the first patch. Their exact form is
 conditioned on M0--M2 evidence.
 
-2026-08-20 update: the formal-script preparation keeps this boundary. The
-prepared Math entrypoints are `run_math_qwen3_1p7b_wdl_dynperm_pilot.sh` for
-P20/P30 `rho=1.0` by default, the same pilot wrapper with `DYNPERM_RHO=0.0` for
-the exact no-op path, and `run_math_qwen3_1p7b_wdl_dynperm_p60.sh` as a
-conditional endpoint. They inherit C/fixed-Model1 Stage1 source, beta `0`, LR,
-ordered 3,840-row shard, Model2 rollout, no KL, validation, and checkpoint
-contract; the only scientific treatment is the weak-logit permutation block.
-Real execution is fail-closed on the GON-34 engineering receipt and a separate
-human launch receipt; P60 additionally requires a passing P20/P30 pilot
-admission with material curve validity.
+2026-08-20 execution decision: do not launch separate P20/P30 jobs. The shared
+causal-P60 entry accepts only the two public DynPerm knobs
+`DYNPERM_ENABLED` and `DYNPERM_RHO`; the existing Standard C and fixed-Model1
+wrappers continue to own Model1 update state. The P60 queue runs Standard C
+then fixed-Model1 with identical model/data/optimizer/validation settings and
+the same DynPerm dose. Real execution remains fail-closed on the GON-34
+engineering receipt plus a separate candidate-bound P60 batch receipt.
