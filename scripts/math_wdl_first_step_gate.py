@@ -60,6 +60,17 @@ def _tmux_alive(name: str) -> bool:
     )
 
 
+def _slurm_job_alive(job_id: str) -> bool:
+    result = subprocess.run(
+        ["squeue", "-h", "-j", job_id, "-o", "%T"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        check=False,
+        text=True,
+    )
+    return result.returncode == 0 and result.stdout.strip() in {"RUNNING", "COMPLETING"}
+
+
 def _find_step_one(metrics_root: Path, project: str, run_prefix: str) -> tuple[Path, dict] | None:
     directory = metrics_root / project
     for path in sorted(directory.glob(f"{run_prefix}_*.jsonl"), key=lambda item: item.stat().st_mtime, reverse=True):
@@ -124,7 +135,9 @@ def main() -> int:
     parser.add_argument("--run-prefix", required=True)
     parser.add_argument("--expected-model1-gradient", choices=("zero", "nonzero"), required=True)
     parser.add_argument("--dynperm-rho", type=float)
-    parser.add_argument("--queue-tmux", required=True)
+    owner = parser.add_mutually_exclusive_group(required=True)
+    owner.add_argument("--queue-tmux")
+    owner.add_argument("--slurm-job-id")
     parser.add_argument("--timeout-seconds", type=int, default=7200)
     parser.add_argument("--poll-seconds", type=int, default=15)
     parser.add_argument("--receipt", type=Path, required=True)
@@ -139,8 +152,12 @@ def main() -> int:
         result = _find_step_one(args.metrics_root, args.project, args.run_prefix)
         if result is not None:
             break
-        if not _tmux_alive(args.queue_tmux):
-            failure_reason = "queue tmux exited before step 1 metrics appeared"
+        owner_alive = (
+            _tmux_alive(args.queue_tmux) if args.queue_tmux is not None else _slurm_job_alive(args.slurm_job_id)
+        )
+        if not owner_alive:
+            owner_name = "queue tmux" if args.queue_tmux is not None else "Slurm job"
+            failure_reason = f"{owner_name} exited before step 1 metrics appeared"
             break
         time.sleep(args.poll_seconds)
 

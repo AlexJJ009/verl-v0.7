@@ -86,17 +86,23 @@ def test_dynperm_admission_hard_pins_shared_non_treatment_contract() -> None:
         assert final_override in admission
 
 
-def test_p60_launcher_runs_standard_c_then_fixed_m1_with_same_two_variables() -> None:
+def test_p60_launcher_runs_fixed_m1_then_standard_c_with_same_two_variables() -> None:
     launcher = _read("run_math_qwen3_1p7b_wdl_dynperm_p60.sh")
     assert ': "${DYNPERM_ENABLED:?set DYNPERM_ENABLED=true}"' in launcher
     assert ': "${DYNPERM_RHO:?set DYNPERM_RHO in [0, 1]}"' in launcher
-    assert "export TOTAL_TRAINING_STEPS=60" in launcher
     assert "20|30" not in launcher
-    standard = "run_math_qwen3_1p7b_wdl_causal_arm_c.sh"
-    fixed = "run_math_qwen3_1p7b_wdl_fixed_m1_stage1.sh"
-    assert launcher.index(standard) < launcher.index(fixed)
-    assert 'if [ "${DRY_RUN:-0}" != "1" ] && [ -z "${TMUX:-}" ]' in launcher
-    assert "nvidia-smi --query-gpu=utilization.gpu" in launcher
+    fixed = "run_math_qwen3_1p7b_wdl_dynperm_fixed_m1_p60.sh"
+    standard = "run_math_qwen3_1p7b_wdl_dynperm_standard_c_p60.sh"
+    assert launcher.index(fixed) < launcher.index(standard)
+    arm_common = _read("run_math_qwen3_1p7b_wdl_dynperm_p60_arm_common.sh")
+    assert "export TOTAL_TRAINING_STEPS=60" in arm_common
+    assert '[ -z "${TMUX:-}" ] && [ -z "${SLURM_JOB_ID:-}" ]' in arm_common
+    assert "nvidia-smi --query-gpu=utilization.gpu" in arm_common
+    for entry in (fixed, standard):
+        text = _read(entry)
+        assert 'if [ "$#" -ne 0 ]' in text
+        assert "DYNPERM_ENABLED" in text
+        assert "DYNPERM_RHO" in text
 
 
 def test_formal_dynperm_is_p60_only_and_candidate_bound() -> None:
@@ -104,9 +110,11 @@ def test_formal_dynperm_is_p60_only_and_candidate_bound() -> None:
     admission = _read("run_math_qwen3_1p7b_wdl_dynperm_common.sh")
     assert "formal DynPerm experiments are P60-only" in causal
     assert "formal DynPerm P60 requires DYNPERM_LAUNCH_RECEIPT" in admission
+    assert "formal DynPerm P60 requires the exact container image id" in admission
     assert '"max_training_steps": 60' in admission
     assert '"parent_candidate_sha": parent_sha' in admission
     assert '"recipe_candidate_sha": recipe_sha' in admission
+    assert '"image_id": image_id' in admission
     assert 'arm_id not in receipt.get("arms", [])' in admission
     assert "DYNPERM_PILOT_ADMISSION_RECEIPT" not in admission
     assert "formal DynPerm launch requires clean parent and recipe worktrees" in admission
@@ -163,9 +171,50 @@ def test_manifest_matches_c_and_models_the_two_p60_arms() -> None:
         ("standard-c", False),
         ("fixed-m1-stage1", True),
     ]
-    assert manifest["execution"]["queue_order"] == ["standard-c", "fixed-m1-stage1"]
+    assert manifest["execution"]["rho_values"] == [0.0, 1.0, 0.25, 0.5]
+    assert manifest["execution"]["queue_order"] == ["fixed-m1-stage1", "standard-c"]
+    assert manifest["execution"]["formal_job_count"] == 8
+    assert manifest["execution"]["slurm_node_count"] == 3
     assert manifest["launch_allowed"] is False
     assert manifest["execution"]["formal_runs_started"] is False
+
+
+def test_three_node_slurm_matrix_prioritizes_fixed_model1_and_is_fail_closed() -> None:
+    submitter = _read("submit_math_qwen3_1p7b_wdl_dynperm_p60_matrix.sh")
+    assert "RHO_VALUES=(0 1 0.25 0.5)" in submitter
+    assert "ARM_IDS=(fixed-m1-stage1 standard-c)" in submitter
+    assert "ARM_NICE=(0 1000)" in submitter
+    assert "DYNPERM_SUBMIT_AUTHORIZED:-0" in submitter
+    assert "PREVIEW ONLY" in submitter
+    assert "sinfo -N -h -p l40s" in submitter
+    assert "DYNPERM_ENABLED=true,DYNPERM_RHO=${rho}" in submitter
+    assert "DYNPERM_PARENT_SHA=${PARENT_SHA}" in submitter
+    assert "DYNPERM_RECIPE_SHA=${RECIPE_SHA}" in submitter
+    assert "DYNPERM_IMAGE_ID=${IMAGE_ID}" in submitter
+    assert "DYNPERM_LAUNCH_RECEIPT=${launch_receipt}" in submitter
+
+    fixed_sbatch = _read("slurm/run_math_qwen3_1p7b_wdl_dynperm_fixed_m1_p60.sbatch")
+    standard_sbatch = _read("slurm/run_math_qwen3_1p7b_wdl_dynperm_standard_c_p60.sbatch")
+    for sbatch in (fixed_sbatch, standard_sbatch):
+        assert "#SBATCH --partition=l40s" in sbatch
+        assert "#SBATCH --gres=gpu:L40S:8" in sbatch
+        assert "#SBATCH --exclusive" in sbatch
+        assert "#SBATCH --no-requeue" in sbatch
+    assert "fixed-m1-stage1" in fixed_sbatch
+    assert "standard-c" in standard_sbatch
+
+    job = _read("slurm/run_math_qwen3_1p7b_wdl_dynperm_p60_job.sh")
+    for identity in (
+        "DYNPERM_PARENT_SHA",
+        "DYNPERM_RECIPE_SHA",
+        "DYNPERM_IMAGE_ID",
+        "DYNPERM_LAUNCH_RECEIPT",
+    ):
+        assert identity in job
+    assert "foreign GPU compute process present" in job
+    assert '--slurm-job-id "$SLURM_JOB_ID"' in job
+    assert "first-step admission failed; stopping only this job's training container" in job
+    assert "scancel" not in job
 
 
 def _valid_dynperm_metrics(rho: float, *, model1_grad: float = 1.0) -> dict:
@@ -212,7 +261,7 @@ def test_first_step_gate_accepts_partial_rho_integer_bin_error() -> None:
 
 def test_monitor_covers_both_p60_arms_without_mutating_jobs() -> None:
     monitor = _read("monitor_math_qwen3_1p7b_wdl_dynperm.sh")
-    assert "ARMS=(standard-c fixed-m1-stage1)" in monitor
+    assert "ARMS=(fixed-m1-stage1 standard-c)" in monitor
     assert "expected_gradient=nonzero" in monitor
     assert "expected_gradient=zero" in monitor
     assert "monitor requires the same DYNPERM_RHO as the P60 launcher" in monitor

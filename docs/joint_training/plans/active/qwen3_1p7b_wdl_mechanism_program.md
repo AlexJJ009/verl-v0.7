@@ -1,13 +1,13 @@
 # Qwen3-1.7B On-Policy WDL Mechanism Program
 
-- Status: **ACTIVE RESEARCH DESIGN / DYNPERM P60 TWO-ARM LAUNCHER IN REVIEW** —
+- Status: **ACTIVE RESEARCH DESIGN / DYNPERM 2x4 P60 MATRIX PREPARED** —
   theory-derived Math-first mechanism matrix. Fixed-Model1 arms are prepared
   separately. Dynamic Permutation core code was merged into the formal training
   branch at `8209576c04d89c7d778a249e8458c608f747c764`, with final focused CPU
   evidence (`114 passed`) and candidate-bound Job 146 8xL40S FSDP engineering
   smoke `PASS` (`formal_experiment=false`). Formal DynPerm training has not
-  been launched. The approved execution design now runs Standard C and its
-  fixed-Model1 factorial edge directly to P60 through the shared
+  been launched. The approved execution design now crosses Standard C and its
+  fixed-Model1 factorial edge with `rho={0,0.25,0.5,1}` directly to P60 through the shared
   `DYNPERM_ENABLED` / `DYNPERM_RHO` interface. The manifest remains
   `launch_allowed=false` and requires a separate candidate-bound P60 receipt.
 - Created: 2026-08-16
@@ -371,12 +371,31 @@ First validate the endpoints:
 - `DynPerm-100`: all non-target weak coordinates permuted independently per
   token and optimizer step, with deterministic seeds.
 
-After `rho=0` exact-equivalence tests, run `DynPerm-100` directly to P60 for
-both Standard C (Model1 trainable) and the matched fixed-Model1 factorial edge.
-Use the P20/P30 checkpoints on those continuous P60 trajectories for early
-diagnosis rather than launching separate truncated jobs. `DynPerm-25/50` remain
-conditional dose-response arms: run them only if the endpoint contrast is real
-but the transition shape is needed for the paper.
+Run the frozen dose grid `rho={0,0.25,0.5,1}` directly to P60 for both Standard
+C (Model1 trainable) and the matched fixed-Model1 factorial edge. This is a 2x4
+factorial matrix with eight runs. `rho=0` keeps the feature enabled and is the
+same-revision no-op control; `rho=1` is the full endpoint, while `rho=0.25/0.5`
+identify whether any endpoint effect is monotone, threshold-like, or non-linear.
+Use the P20/P30 checkpoints on each continuous P60 trajectory for early
+diagnosis rather than launching separate truncated jobs.
+
+The scheduling order is fixed-Model1 first, in dose order `0,1,0.25,0.5`, then
+the same four Standard C runs at lower Slurm priority. All eight jobs may be
+submitted together to the three-node `l40s` partition; each run owns one
+exclusive 8xL40S node, so three run concurrently and the rest remain queued.
+Scheduling priority is an operational policy, not an experimental variable.
+
+The preregistered analysis order is:
+
+1. fixed-Model1 endpoint contrast, `rho=0` versus `rho=1`;
+2. fixed-Model1 four-dose curve;
+3. the corresponding Standard C endpoint and curve;
+4. the Model1-update-state by rho interaction.
+
+A decreasing curve as rho increases supports dependence on weak-logit token
+assignment. A larger degradation for trainable Standard C than fixed-Model1
+supports a co-adaptive assignment mechanism. A flat curve rejects this
+intervention under the frozen contract; it does not prove Model1 is replaceable.
 
 For fast screening, the historical C run may serve as `rho=0` only after a
 `rho=0` no-op equivalence test proves identical forward, backward, RNG, and
@@ -587,16 +606,15 @@ explicitly changes the rollout source.
 | --- | --- | --- | --- |
 | M0 | none | existing C/D0 checkpoints | telemetry can distinguish real, D0, and confidence bins |
 | M1 | prepared fixed-M1 arms; resolve Slurm admission before treating them as running | joint/fixed/D0 | quantify static guidance vs co-adaptation |
-| M2 P60 | `DynPerm-100` Standard C plus fixed-Model1 after exact `rho=0` no-op proof | token assignment crossed with Model1 update state | intervention validity passes and P20/P30/P60 trajectories are interpretable |
+| M2 P60 | 2x4 `rho={0,0.25,0.5,1}` matrix over Standard C and fixed-Model1 | dose crossed with Model1 update state | intervention validity passes and P20/P30/P60 trajectories are interpretable |
 | M3 pilot | `AlignSort`, `AntiAlignSort`, optional `RankBinPerm` P20/P30 | directional affinity ordering | measured `C_lambda` and gradient ordering match theory |
 | M3 confirm | only material pilot arms to P60 and second seed | geometry vs semantic identity | identify sufficient statistics |
 | M4 | one calibrated target-margin/entropy controller; richer surrogate only if needed | controller vs C/fixed/D0 | controller approaches C without online WM1 |
 | M5 | short same-rollout 2x2; online confirmation only if needed | data source x loss geometry | separate trajectory transfer from training geometry |
 
-The immediate DynPerm batch is exactly two continuous P60 runs: Standard C and
-fixed-Model1 Stage1, with the same enabled/rho treatment. Do not launch all
-partial permutations or synthetic controls before this endpoint result is
-known.
+The immediate DynPerm batch is eight continuous P60 runs: four rho values for
+fixed-Model1 Stage1 and the same four for Standard C. Fixed-Model1 receives
+higher scheduling priority. The batch does not include M3 synthetic controls.
 
 ## 8. Metrics and validity contracts
 
@@ -697,9 +715,9 @@ The next coding task should implement only:
 2. deterministic per-step/sample/token seeds;
 3. autograd-preserving gather/scatter semantics;
 4. intervention validity assertions and `C_lambda`/gradient telemetry;
-5. one Math P60 queue that crosses Standard C versus fixed-Model1 with a shared
-   `DYNPERM_ENABLED` / `DYNPERM_RHO` interface and retains a no-op-equivalent
-   `rho=0` path;
+5. one Math P60 matrix that crosses Standard C versus fixed-Model1 at
+   `rho={0,0.25,0.5,1}` through the shared `DYNPERM_ENABLED` / `DYNPERM_RHO`
+   interface and retains an enabled no-op-equivalent `rho=0` path;
 6. unit tests for entropy, target probability, multiset, gradient connectivity,
    determinism, and `rho=0` exact equivalence.
 
@@ -709,7 +727,8 @@ conditioned on M0--M2 evidence.
 2026-08-20 execution decision: do not launch separate P20/P30 jobs. The shared
 causal-P60 entry accepts only the two public DynPerm knobs
 `DYNPERM_ENABLED` and `DYNPERM_RHO`; the existing Standard C and fixed-Model1
-wrappers continue to own Model1 update state. The P60 queue runs Standard C
-then fixed-Model1 with identical model/data/optimizer/validation settings and
-the same DynPerm dose. Real execution remains fail-closed on the GON-34
-engineering receipt plus a separate candidate-bound P60 batch receipt.
+wrappers continue to own Model1 update state. The three-node Slurm submitter
+queues all eight P60 runs with fixed-Model1 first and lower-priority Standard C.
+Every non-treatment model/data/optimizer/validation/seed/image setting remains
+identical. Real execution remains fail-closed on the GON-34 engineering receipt
+plus a separate candidate-, image-, and rho-bound P60 receipt.
