@@ -229,6 +229,7 @@ def test_three_node_slurm_matrix_prioritizes_fixed_model1_and_is_fail_closed() -
     assert 'node_root="$(node_root_for "$node")"' in submitter
     assert 'git -C "$repo/recipe" rev-parse HEAD' in submitter
     assert 'resolve_image_config_digest.py" verl-harness:latest' in submitter
+    assert 'resolve_image_config_digest.py" "$local_image_ref"' in submitter
 
     fixed_sbatch = _read("slurm/run_math_qwen3_1p7b_wdl_dynperm_fixed_m1_p60.sbatch")
     standard_sbatch = _read("slurm/run_math_qwen3_1p7b_wdl_dynperm_standard_c_p60.sbatch")
@@ -279,7 +280,8 @@ def test_three_node_slurm_matrix_prioritizes_fixed_model1_and_is_fail_closed() -
     assert 'data2_host="$(realpath -e "${workspace}/runtime/data-2")"' in job
     assert 'export DATA1_HOST="$data1_host"' in job
     assert 'export DATA2_HOST="$data2_host"' in job
-    assert "export DOCKER_IMAGE=verl-harness:latest" in job
+    assert 'export DOCKER_IMAGE="$local_image_ref"' in job
+    assert 'resolve_image_config_digest.py" "$local_image_ref"' in job
     assert "branch --show-current" not in job
     assert "export REPO_MOUNT_MODE=ro" in job
     assert '"training_exit_code"' in job
