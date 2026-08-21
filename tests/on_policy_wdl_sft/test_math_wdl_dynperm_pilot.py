@@ -222,6 +222,11 @@ def test_three_node_slurm_matrix_prioritizes_fixed_model1_and_is_fail_closed() -
     assert "rollback_held_jobs" in submitter
     assert 'scontrol release "$job_id_list"' in submitter
     assert "relay_preflight_root=" in submitter
+    assert "DYNPERM_NODE_ROOT_MAP" in submitter
+    assert "DYNPERM_STAGE_REL" in submitter
+    assert 'node_root="$(node_root_for "$node")"' in submitter
+    assert 'git -C "$repo/recipe" rev-parse HEAD' in submitter
+    assert 'docker image inspect verl-harness:latest' in submitter
 
     fixed_sbatch = _read("slurm/run_math_qwen3_1p7b_wdl_dynperm_fixed_m1_p60.sbatch")
     standard_sbatch = _read("slurm/run_math_qwen3_1p7b_wdl_dynperm_standard_c_p60.sbatch")
@@ -230,6 +235,10 @@ def test_three_node_slurm_matrix_prioritizes_fixed_model1_and_is_fail_closed() -
         assert "#SBATCH --gres=gpu:L40S:8" in sbatch
         assert "#SBATCH --exclusive" in sbatch
         assert "#SBATCH --no-requeue" in sbatch
+        assert "DYNPERM_NODE_ROOT_MAP" in sbatch
+        assert "DYNPERM_STAGE_REL" in sbatch
+        assert 'workspace="$(realpath -e "${node_root}/${DYNPERM_STAGE_REL}")"' in sbatch
+        assert "${workspace}/repo/recipe" in sbatch
     assert "fixed-m1-stage1" in fixed_sbatch
     assert "standard-c" in standard_sbatch
 
@@ -240,6 +249,8 @@ def test_three_node_slurm_matrix_prioritizes_fixed_model1_and_is_fail_closed() -
         "DYNPERM_IMAGE_ID",
         "DYNPERM_LAUNCH_RECEIPT",
         "DYNPERM_EVIDENCE_RELAY_HOST",
+        "DYNPERM_NODE_ROOT_MAP",
+        "DYNPERM_STAGE_REL",
     ):
         assert identity in job
     assert "foreign GPU compute process present" in job
@@ -257,6 +268,10 @@ def test_three_node_slurm_matrix_prioritizes_fixed_model1_and_is_fail_closed() -
     assert "bootstrap_receipt" in job
     assert "cat > '${bootstrap_relay_root}/bootstrap-terminal.json'" in job
     assert "formal DynPerm P60 rho must be one of" in job
+    assert 'data1_host="$(realpath -e "${workspace}/runtime/data-1")"' in job
+    assert 'data2_host="$(realpath -e "${workspace}/runtime/data-2")"' in job
+    assert 'export DATA1_HOST="$data1_host"' in job
+    assert 'export DATA2_HOST="$data2_host"' in job
     assert '"training_exit_code"' in job
     assert '"evidence_set_relayed"' in job
     assert "node_local_job_root" in job
@@ -266,6 +281,14 @@ def test_three_node_slurm_matrix_prioritizes_fixed_model1_and_is_fail_closed() -
     assert "training exited before first-step admission completed" in job
     assert "first-step admission failed; stopping only this job's training container" in job
     assert "scancel" not in job
+
+
+def test_l40s_wrapper_supports_candidate_staged_data_roots() -> None:
+    wrapper = (ROOT / "scripts/l40s/run_train.sh").read_text(encoding="utf-8")
+    assert "DATA1_HOST=${DATA1_HOST:-/data-1}" in wrapper
+    assert "DATA2_HOST=${DATA2_HOST:-/data-2}" in wrapper
+    assert '-v "${DATA1_HOST}:/data-1"' in wrapper
+    assert '-v "${DATA2_HOST}:/data-2"' in wrapper
 
 
 def _valid_dynperm_metrics(rho: float, *, model1_grad: float = 1.0) -> dict:

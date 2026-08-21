@@ -4,6 +4,13 @@ set -euo pipefail
 REPO_HOST=${REPO_HOST:-/data-1/verl07/verl}
 REPO_CONTAINER=${REPO_CONTAINER:-/workspace/verl}
 DOCKER_IMAGE=${DOCKER_IMAGE:-verl-harness:latest}
+DATA1_HOST=${DATA1_HOST:-/data-1}
+DATA2_HOST=${DATA2_HOST:-/data-2}
+
+for data_root in "$DATA1_HOST" "$DATA2_HOST"; do
+    test "${data_root#/}" != "$data_root"
+    test -d "$data_root"
+done
 
 env_args=()
 name_args=()
@@ -20,8 +27,8 @@ done < <(env)
 exec docker run --rm --gpus all --ipc=host --network=host --shm-size=64g \
     "${name_args[@]}" \
     "${env_args[@]}" \
-    -v /data-1:/data-1 \
-    -v /data-2:/data-2 \
+    -v "${DATA1_HOST}:/data-1" \
+    -v "${DATA2_HOST}:/data-2" \
     -v "${REPO_HOST}:${REPO_CONTAINER}" \
     -w "${REPO_CONTAINER}" \
     "${DOCKER_IMAGE}" \
