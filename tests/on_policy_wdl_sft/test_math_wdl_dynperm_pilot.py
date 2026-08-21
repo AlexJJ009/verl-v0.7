@@ -194,6 +194,14 @@ def test_three_node_slurm_matrix_prioritizes_fixed_model1_and_is_fail_closed() -
     assert "DYNPERM_IMAGE_ID=${IMAGE_ID}" in submitter
     assert "DYNPERM_LAUNCH_RECEIPT=${launch_receipt}" in submitter
     assert "DYNPERM_EVIDENCE_RELAY_HOST=${DYNPERM_EVIDENCE_RELAY_HOST}" in submitter
+    assert submitter.index("launch_receipts=()") < submitter.index("sbatch --parsable")
+    assert '"status": "authorized"' in submitter
+    assert '"max_training_steps": 60' in submitter
+    assert 'set(receipt.get("arms", []))' in submitter
+    assert "--parsable --hold" in submitter
+    assert "rollback_held_jobs" in submitter
+    assert 'scontrol release "$job_id_list"' in submitter
+    assert "relay_preflight_root=" in submitter
 
     fixed_sbatch = _read("slurm/run_math_qwen3_1p7b_wdl_dynperm_fixed_m1_p60.sbatch")
     standard_sbatch = _read("slurm/run_math_qwen3_1p7b_wdl_dynperm_standard_c_p60.sbatch")
@@ -218,7 +226,10 @@ def test_three_node_slurm_matrix_prioritizes_fixed_model1_and_is_fail_closed() -
     assert '--slurm-job-id "$SLURM_JOB_ID"' in job
     assert "relay_files admission.json" in job
     assert "relay_files first-step.json first-step.log" in job
-    assert "relay_files admission.json first-step.json first-step.log terminal.json" in job
+    assert "relay_files admission.json first-step.json first-step.log stdout.tail.log stderr.tail.log" in job
+    assert "relay_terminal_verified" in job
+    assert '"training_exit_code"' in job
+    assert '"evidence_set_relayed"' in job
     assert "node_local_job_root" in job
     assert "relay_job_root" in job
     assert 'while kill -0 "$training_pid"' in job

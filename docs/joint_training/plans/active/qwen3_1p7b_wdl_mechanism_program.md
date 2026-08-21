@@ -390,6 +390,14 @@ to the controller. The submission ledger records both the worker-local artifact
 root and the controller receipt path; a failed relay fails that job rather than
 silently claiming monitored completion.
 
+Before any `sbatch`, the submitter validates all four rho receipts against the
+same parent, recipe, image, horizon, and exact two-arm authorization, then
+exercises worker-to-controller rsync from all three nodes. It submits all eight
+jobs held; a submission error cancels only those new held job IDs, and the
+matrix is released only after all eight submissions succeed. Terminal evidence
+is transferred separately after the rest of the bounded evidence set and is
+accepted only when the controller copy has the expected SHA-256.
+
 The preregistered analysis order is:
 
 1. fixed-Model1 endpoint contrast, `rho=0` versus `rho=1`;
