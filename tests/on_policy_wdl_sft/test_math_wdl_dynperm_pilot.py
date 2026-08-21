@@ -225,6 +225,12 @@ def test_three_node_slurm_matrix_prioritizes_fixed_model1_and_is_fail_closed() -
     assert 'scontrol release "$job_id_list"' in submitter
     assert "relay_preflight_root=" in submitter
     assert "DYNPERM_NODE_ROOT_MAP" in submitter
+    assert ': "${DYNPERM_ALLOWED_NODES:?' in submitter
+    assert "IFS=',' read -r -a slurm_nodes <<<\"$DYNPERM_ALLOWED_NODES\"" in submitter
+    assert '--nodelist="$allowed_node_list"' in submitter
+    assert "allowed_nodes=%s" in submitter
+    assert 'for node in "${slurm_nodes[@]}"' in submitter
+    assert "mapfile -t slurm_nodes < <(sinfo" not in submitter
     assert "DYNPERM_STAGE_REL" in submitter
     assert 'node_root="$(node_root_for "$node")"' in submitter
     assert 'git -C "$repo/recipe" rev-parse HEAD' in submitter
