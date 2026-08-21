@@ -1,11 +1,13 @@
 # Qwen3-1.7B On-Policy WDL Mechanism Program
 
-- Status: **ACTIVE RESEARCH DESIGN / DYNPERM DELIVERY IN PROGRESS** —
+- Status: **ACTIVE RESEARCH DESIGN / DYNPERM FORMAL SCRIPT PREPARED** —
   theory-derived Math-first mechanism matrix. Fixed-Model1 arms are prepared
-  separately. Dynamic Permutation now has a code candidate and CPU gate evidence
-  on the `linear/gon-34-dynperm-mvp` Delivery branch, but it is not experiment
-  admitted until the candidate-bound Slurm GPU/FSDP smoke passes. Formal
-  DynPerm P20/P30/P60 runs have not been launched.
+  separately. Dynamic Permutation core code was merged into the formal training
+  branch at `8209576c04d89c7d778a249e8458c608f747c764`, with final focused CPU
+  evidence (`114 passed`) and candidate-bound Job 146 8xL40S FSDP engineering
+  smoke `PASS` (`formal_experiment=false`). Formal DynPerm P20/P30/P60 runs
+  have not been launched. The Math DynPerm wrappers/manifest are prepared with
+  `launch_allowed=false` and require separate exact-dose-and-horizon receipts.
 - Created: 2026-08-16
 - Primary method result: `qwen3_1p7b_math_stage123.md`
 - Result attachment: `../../reports/qwen3_1p7b_math_stage123_matrix_results_20260723.md`
@@ -701,3 +703,14 @@ The next coding task should implement only:
 
 Do not implement the full M3--M6 matrix in the first patch. Their exact form is
 conditioned on M0--M2 evidence.
+
+2026-08-20 update: the formal-script preparation keeps this boundary. The
+prepared Math entrypoints are `run_math_qwen3_1p7b_wdl_dynperm_pilot.sh` for
+P20/P30 `rho=1.0` by default, the same pilot wrapper with `DYNPERM_RHO=0.0` for
+the exact no-op path, and `run_math_qwen3_1p7b_wdl_dynperm_p60.sh` as a
+conditional endpoint. They inherit C/fixed-Model1 Stage1 source, beta `0`, LR,
+ordered 3,840-row shard, Model2 rollout, no KL, validation, and checkpoint
+contract; the only scientific treatment is the weak-logit permutation block.
+Real execution is fail-closed on the GON-34 engineering receipt and a separate
+human launch receipt; P60 additionally requires a passing P20/P30 pilot
+admission with material curve validity.

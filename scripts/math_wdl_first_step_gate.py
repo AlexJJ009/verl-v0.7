@@ -34,6 +34,19 @@ REQUIRED_METRICS = {
     "response_length/clip_ratio",
 }
 
+DYNPERM_METRICS = {
+    "jointTraining/dynperm/requested_rho",
+    "jointTraining/dynperm/realized_rho",
+    "jointTraining/dynperm/active_rows",
+    "jointTraining/dynperm/selected_coordinates",
+    "jointTraining/dynperm/fixed_points",
+    "jointTraining/dynperm/target_mismatches",
+    "jointTraining/dynperm/audited_rows",
+    "jointTraining/dynperm/max_entropy_error",
+    "jointTraining/dynperm/max_multiset_error",
+    "jointTraining/dynperm/invariant_failures",
+}
+
 
 def _tmux_alive(name: str) -> bool:
     return (
@@ -61,8 +74,9 @@ def _find_step_one(metrics_root: Path, project: str, run_prefix: str) -> tuple[P
     return None
 
 
-def validate_step_one(data: dict, expected_model1_gradient: str) -> dict[str, bool]:
-    missing = sorted(REQUIRED_METRICS - data.keys())
+def validate_step_one(data: dict, expected_model1_gradient: str, dynperm_rho: float | None = None) -> dict[str, bool]:
+    required = REQUIRED_METRICS | (DYNPERM_METRICS if dynperm_rho is not None else set())
+    missing = sorted(required - data.keys())
     model1_grad = float(data.get("jointTraining/model1_grad_norm", float("nan")))
     model2_grad = float(data.get("jointTraining/model2_grad_norm", float("nan")))
     checks = {
@@ -77,6 +91,26 @@ def validate_step_one(data: dict, expected_model1_gradient: str) -> dict[str, bo
         checks["model1_gradient_matches_arm"] = abs(model1_grad) <= 1e-12
     else:
         checks["model1_gradient_matches_arm"] = 0.0 < model1_grad < float("inf")
+    if dynperm_rho is not None:
+        requested = float(data.get("jointTraining/dynperm/requested_rho", float("nan")))
+        realized = float(data.get("jointTraining/dynperm/realized_rho", float("nan")))
+        active_rows = float(data.get("jointTraining/dynperm/active_rows", 0.0))
+        selected = float(data.get("jointTraining/dynperm/selected_coordinates", -1.0))
+        audited = float(data.get("jointTraining/dynperm/audited_rows", -1.0))
+        checks.update(
+            dynperm_requested_rho_matches=abs(requested - dynperm_rho) <= 1e-12,
+            dynperm_realized_rho_matches=abs(realized - dynperm_rho) <= 1e-12,
+            dynperm_has_active_rows=active_rows > 0.0,
+            dynperm_selected_coordinates_match_dose=(selected == 0.0 if dynperm_rho == 0.0 else selected > 0.0),
+            dynperm_audit_matches_dose=(audited == 0.0 if dynperm_rho == 0.0 else audited > 0.0),
+            dynperm_has_no_fixed_points=float(data.get("jointTraining/dynperm/fixed_points", -1.0)) == 0.0,
+            dynperm_target_is_unchanged=float(data.get("jointTraining/dynperm/target_mismatches", -1.0)) == 0.0,
+            dynperm_entropy_is_preserved=float(data.get("jointTraining/dynperm/max_entropy_error", float("inf")))
+            <= 2.0e-6,
+            dynperm_multiset_is_preserved=float(data.get("jointTraining/dynperm/max_multiset_error", float("inf")))
+            == 0.0,
+            dynperm_invariants_pass=float(data.get("jointTraining/dynperm/invariant_failures", -1.0)) == 0.0,
+        )
     checks["no_missing_metrics"] = not missing
     return {**checks, "missing_metrics": missing}
 
@@ -87,6 +121,7 @@ def main() -> int:
     parser.add_argument("--project", required=True)
     parser.add_argument("--run-prefix", required=True)
     parser.add_argument("--expected-model1-gradient", choices=("zero", "nonzero"), required=True)
+    parser.add_argument("--dynperm-rho", type=float, choices=(0.0, 1.0))
     parser.add_argument("--queue-tmux", required=True)
     parser.add_argument("--timeout-seconds", type=int, default=7200)
     parser.add_argument("--poll-seconds", type=int, default=15)
@@ -115,13 +150,16 @@ def main() -> int:
         receipt.update(status="fail", failure_reason=failure_reason or "timed out waiting for step 1")
     else:
         metrics_path, data = result
-        checks = validate_step_one(data, args.expected_model1_gradient)
+        checks = validate_step_one(data, args.expected_model1_gradient, args.dynperm_rho)
         passed = all(value for key, value in checks.items() if key != "missing_metrics")
         receipt.update(
             status="pass" if passed else "fail",
             metrics_path=str(metrics_path),
             checks=checks,
-            observed={key: data.get(key) for key in sorted(REQUIRED_METRICS)},
+            observed={
+                key: data.get(key)
+                for key in sorted(REQUIRED_METRICS | (DYNPERM_METRICS if args.dynperm_rho is not None else set()))
+            },
         )
 
     args.receipt.parent.mkdir(parents=True, exist_ok=True)

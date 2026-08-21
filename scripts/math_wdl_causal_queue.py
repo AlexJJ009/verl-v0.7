@@ -80,6 +80,12 @@ def validate_manifest(manifest: dict, *, require_launch: bool) -> None:
         "lr": 1e-6,
         "lr_warmup_steps": 0,
         "data_shuffle": False,
+        "randomness": {
+            "actor_fsdp_seed": 42,
+            "actor_data_loader_seed": 42,
+            "rollout_base_seed": 0,
+            "data_seed": 20260719,
+        },
         "validation_frequency": 5,
         "save_frequency": 5,
         "protected_checkpoint_steps": [20, 40, 45, 50, 60],

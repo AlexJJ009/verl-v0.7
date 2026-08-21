@@ -1,6 +1,6 @@
 # Target-Preserving Dynamic Permutation MVP
 
-Status: implementation candidate in `linear/gon-34-dynperm-mvp`; CPU evidence exists, candidate-bound Slurm GPU/FSDP smoke is still required before experiment admission. Formal P20/P30/P60 experiments are not part of this document and must not be launched from the Delivery Batch.
+Status: GON-34 implementation merged into the formal training branch at merge commit `8209576c04d89c7d778a249e8458c608f747c764`. Candidate-bound CPU and 8xL40S Slurm GPU/FSDP engineering smoke evidence passed. Formal P20/P30/P60 experiments are not part of the GON-34 Delivery evidence and have not been launched.
 
 ## Scope
 
@@ -66,11 +66,12 @@ With `freeze_model1=false`, gradients flow through the gather/scatter permutatio
 
 ## Current evidence boundary
 
-As of 2026-08-20, the code candidate has CPU evidence only:
+As of 2026-08-20, the GON-34 code candidate has CPU plus candidate-bound Slurm engineering evidence:
 
-- focused Dynamic Permutation, actor/config plumbing, checkpoint/no-op, sharded-checkpoint capacity estimation, and hardened Slurm-contract gate: `122 passed` in the offline CPU harness with `CUDA_VISIBLE_DEVICES=""`; the wrapper-specific executable/static subset is `18 passed`;
+- focused Dynamic Permutation, actor/config plumbing, checkpoint/no-op, sharded-checkpoint capacity estimation, and hardened Slurm-contract gate: `114 passed` in the final focused offline CPU harness with `CUDA_VISIBLE_DEVICES=""`;
 - broader `tests/joint_training` still has pre-existing or environment-dependent failures unrelated to the Dynamic Permutation focused gate.
+- candidate-bound Slurm Job 146 completed an 8xL40S FSDP engineering smoke with result `PASS`, covering both `freeze_model1=false` and `freeze_model1=true`, checkpoint save/resume, and same-candidate `rho=0` comparison. Its receipt is explicitly `formal_experiment=false`.
 
-Candidate-bound Slurm GPU/FSDP smoke must still run from an immutable candidate before experiment admission. It must use Slurm, exclude `controller-dev`, avoid protected workloads, cover both `freeze_model1=false` and `freeze_model1=true`, save/resume a checkpoint, and compare against the same-candidate `rho=0` path. The Slurm wrapper is also part of the admission contract: it fail-closes unless the candidate SHA is an exact lowercase 40-hex value, the staged workspace and output roots canonicalize below the intended node-local `workspace/jobs` and `checkpoints/jobs` prefixes, and the node-local preflight records durable GPU-process, Docker-container, and Slurm-allocation receipts showing no foreign workload before the job container starts. Its eight local ranks use explicit `127.0.0.1` static rendezvous so `--network=none` does not depend on container-hostname resolution. Formal P20/P30/P60 training remains outside Delivery.
+The Slurm wrapper remains part of the engineering admission contract: it fail-closes unless the candidate SHA is an exact lowercase 40-hex value, the staged workspace and output roots canonicalize below the intended node-local `workspace/jobs` and `checkpoints/jobs` prefixes, and the node-local preflight records durable GPU-process, Docker-container, and Slurm-allocation receipts showing no foreign workload before the job container starts. Its eight local ranks use explicit `127.0.0.1` static rendezvous so `--network=none` does not depend on container-hostname resolution. Formal P20/P30/P60 training remains outside Delivery; prepared experiment wrappers require separate exact-dose-and-horizon launch receipts.
 
 The resource-threshold smoke uses the production defaults `row_chunk_size=16` and `audit_rows=4`; invariant auditing remains enabled on every active step. The chunk default is the bounded tradeoff required by the 8xL40S gate: chunk 8 passed the 15% memory bound but failed the 25% step-time bound, while the earlier artificial chunk-64/audit-32 stress setting passed time but failed memory.
