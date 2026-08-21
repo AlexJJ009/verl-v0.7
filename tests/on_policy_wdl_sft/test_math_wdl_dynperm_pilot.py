@@ -272,6 +272,7 @@ def test_three_node_slurm_matrix_prioritizes_fixed_model1_and_is_fail_closed() -
     assert 'data2_host="$(realpath -e "${workspace}/runtime/data-2")"' in job
     assert 'export DATA1_HOST="$data1_host"' in job
     assert 'export DATA2_HOST="$data2_host"' in job
+    assert "export REPO_MOUNT_MODE=ro" in job
     assert '"training_exit_code"' in job
     assert '"evidence_set_relayed"' in job
     assert "node_local_job_root" in job
@@ -287,8 +288,10 @@ def test_l40s_wrapper_supports_candidate_staged_data_roots() -> None:
     wrapper = (ROOT / "scripts/l40s/run_train.sh").read_text(encoding="utf-8")
     assert "DATA1_HOST=${DATA1_HOST:-/data-1}" in wrapper
     assert "DATA2_HOST=${DATA2_HOST:-/data-2}" in wrapper
+    assert "REPO_MOUNT_MODE=${REPO_MOUNT_MODE:-rw}" in wrapper
     assert '-v "${DATA1_HOST}:/data-1"' in wrapper
     assert '-v "${DATA2_HOST}:/data-2"' in wrapper
+    assert '-v "${REPO_HOST}:${REPO_CONTAINER}:${REPO_MOUNT_MODE}"' in wrapper
 
 
 def _valid_dynperm_metrics(rho: float, *, model1_grad: float = 1.0) -> dict:
