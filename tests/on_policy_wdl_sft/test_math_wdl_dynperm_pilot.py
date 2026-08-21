@@ -240,7 +240,9 @@ def test_three_node_slurm_matrix_prioritizes_fixed_model1_and_is_fail_closed() -
         assert "dispatch-terminal.json" in sbatch
         assert sbatch.index("trap dispatch_cleanup EXIT") < sbatch.index("DYNPERM_NODE_ROOT_MAP:?")
         assert 'workspace="$(realpath -e "${node_root}/${DYNPERM_STAGE_REL}")"' in sbatch
-        assert "${workspace}/repo/recipe" in sbatch
+        assert 'job_body="${workspace}/repo/recipe' in sbatch
+        assert 'test -r "$job_body"' in sbatch
+        assert "trap - EXIT TERM INT" not in sbatch
     assert "fixed-m1-stage1" in fixed_sbatch
     assert "standard-c" in standard_sbatch
 
