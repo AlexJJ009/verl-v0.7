@@ -88,6 +88,7 @@ def test_dynperm_admission_hard_pins_shared_non_treatment_contract() -> None:
         "export ROLLOUT_GPU_MEMORY_UTILIZATION=0.55",
         "export ROLLOUT_FREE_CACHE_ENGINE=True",
         "export ROLLOUT_ENABLE_SLEEP_MODE=True",
+        'export CHECKPOINT_SAVE_CONTENTS="[model,optimizer,extra]"',
         'export LOG_DIR="${CAUSAL_ARTIFACT_ROOT}/logs"',
     ):
         assert exact_pin in admission
@@ -102,6 +103,8 @@ def test_dynperm_admission_hard_pins_shared_non_treatment_contract() -> None:
         "actor_rollout_ref.actor.policy_loss.loss_mode=wdl_sft",
         "actor_rollout_ref.actor.policy_loss.wdl_sft_beta=0.0",
         "actor_rollout_ref.actor.entropy_coeff=0",
+        'actor_rollout_ref.actor.checkpoint.save_contents="[model,optimizer,extra]"',
+        'actor_rollout_ref.actor.checkpoint.load_contents="[model,optimizer,extra]"',
         "actor_rollout_ref.actor.use_kl_loss=False",
         "actor_rollout_ref.actor.submodel_kl.enabled=false",
         "actor_rollout_ref.rollout.n=8",
