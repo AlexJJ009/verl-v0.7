@@ -5,7 +5,7 @@
 - 文档类型：机制调研与实验设计沉淀
 - 创建日期：2026-08-16
 - 适用范围：Qwen3-1.7B、Math-first、`beta=0` 的 On-Policy WDL-SFT 主实验
-- 当前状态：理论框架与第一批实验合同草案完成；fixed-Model1 代码与配置已准备但尚无正式运行凭据；Dynamic Permutation 及后续机制控制仍未实现或启动
+- 当前状态：理论框架与第一批实验合同已冻结；Dynamic Permutation MVP、fixed-Model1/Standard-C P60 启动入口及工程验证已经实现。正式训练状态与结果由独立运行凭据记录，本文不把“已实现/已提交”写成“实验已完成”。
 - 相关方法论文：[Weak-Driven Learning: How Weak Agents Make Strong Agents Stronger](https://arxiv.org/abs/2602.08222)
 - 原始同熵实验草案：[动态同熵 Weak-Structure Ablation](https://ocnwds5io8yp.feishu.cn/docx/NEIvdnwU0o0vszxi2wycfcTHnjd)
 - 审稿记录：[OpenReview](https://openreview.net/forum?id=WAqz1qihuI)
@@ -991,12 +991,17 @@ $$
 \widetilde z_m=(1-\lambda)\widetilde z_1+\lambda z_2.
 $$
 
-如果需要 partial dose，可以只对比例为 $\rho$ 的 non-target coordinates 置换。第一批只做两个端点：
+partial dose 对恰好 $k=\lfloor\rho(V-1)\rfloor$ 个 non-target coordinates 做置换。后来批准的正式矩阵不再启动独立 P20/P30 pilot，而是让两种 Model1 update state 都直接连续运行到 P60，并从同一条轨迹读取中间 checkpoint：
 
-- `rho=0`：严格 no-op，应与真实 C 完全等价；
+- `rho=0`：严格 no-op，同 revision 下应与未启用干预完全等价；
+- `rho=0.25/0.5`：分别破坏约四分之一和二分之一的 non-target assignment；
 - `rho=1`：所有 non-target coordinates 参与动态置换。
 
-只有端点产生稳定、可解释的 separation 后，`rho=0.25/0.5` 才有必要用于描绘 dose-response。
+每个 dose 同时包含 fixed-Model1 和 Standard C 两条 arm。P20/P30 不再是单独截断任务，而只是连续 P60 轨迹中的诊断 checkpoint。这个执行修订增加了 GPU 预算，但没有改变机制 estimand：主比较仍是 `rho=0` 对 `rho=1`，中间 dose 只用于判断单调、阈值或非线性关系。
+
+当前 MVP 还需要一个精确的解释边界：它不是从 $(V-1)!$ 个 non-target permutations 中均匀采样。`rho=1` 使用的是由 row identity 决定的非零 cyclic rotation；partial dose 先在 compact token-ID 顺序上选一个 keyed cyclic window，再在窗口内旋转。这种实现满足固定 target、无 selected-set fixed point、确定性重放和显存上界，但比 uniform random derangement 保留更多 token-ID 邻接/顺序结构。
+
+因此，当前实验的准确名称应理解为 **step-resampled keyed cyclic reassignment**。它仍然能检验真实 assignment 在这种持续重分配下是否重要，但 flat curve 不能证明“任意随机 permutation 都无影响”，separation 也不能自动归因于纯语义。如果未来要使用“uniformly random assignment”这一更强表述，需要增加第二种 permutation family 作为确认实验，不能把当前 cyclic MVP 的结果外推过去。
 
 ### 8.4 该干预精确保留什么
 
@@ -1028,13 +1033,64 @@ Dynamic Permutation 不保留：
 
 所以，`real C > DynPerm` 最多说明“真实 token assignment 或与之绑定的 cross-model geometry 有贡献”。它不能单独证明 semantic dark knowledge。要把 semantics 与 geometry 分开，还必须补 `Align/Random/Anti` 和 `RankBinPerm`。
 
-### 8.6 为什么必须动态重采样，而不能用固定 permutation
+### 8.6 从 rollout 到训练：干预怎样进入每个 step
+
+```mermaid
+flowchart TD
+    A["step t: 64 prompts"] --> B["Model2-only rollout<br/>每个 prompt 采样 8 条 response"]
+    B --> C["vLLM sleep<br/>释放 rollout cache 和权重显存"]
+    C --> D["合并 response batch<br/>分配稳定 sample_id"]
+    D --> R["reward 判断正确/错误<br/>共 512 条 rollout"]
+    R --> E["prompt+response teacher-forced actor forward"]
+    E --> M1["Model1 输出 weak logits z1"]
+    E --> M2["Model2 输出 strong logits z2"]
+    M1 --> P["仅对有效 response token<br/>固定 target y<br/>动态置换 rho 比例的 non-target logits"]
+    P --> F["融合<br/>z=0.2 P(z1)+0.8 z2"]
+    M2 --> F
+    F --> L["beta=0 WDL-SFT<br/>只训练正确 responses"]
+    L --> G["backward + optimizer step"]
+    G --> H{"Model1 是否冻结"}
+    H -->|"不冻结"| I["Model1 与 Model2 都更新"]
+    H -->|"Frozen"| J["Model1 不更新<br/>只更新 Model2"]
+    I --> K["同步更新后的 Model2 到 rollout<br/>进入 step t+1"]
+    J --> K
+```
+
+最关键的时间边界是：当前 step 的 response 已经由未置换的 Model2-only rollout 生成，DynPerm 不会回头改变这些 token。它改变的是随后 teacher-forced fused loss 的梯度；更新后的 Model2 再影响下一 step 的 rollout 分布。因此，实验效应先进入 optimizer update，再通过后续 on-policy trajectory 闭环累积。
+
+对一个 reward-positive token，记：
+
+$$
+\widetilde z_1=Pz_1,\qquad z_m=(1-\lambda)\widetilde z_1+\lambda z_2,\qquad p=\operatorname{softmax}(z_m),\qquad g=p-e_y.
+$$
+
+虽然 target weak logit 和 weak value multiset 不变，non-target weak values 与 Model2 token coordinates 的配对已经变化，所以 fused softmax 分母、fused target probability 和完整梯度向量通常都会变化。它不是简单地给 loss 加噪声，也不是把 learning rate 乘上一个常数。
+
+**Model1 Frozen。** Model1 仍做 forward 并提供 $Pz_1$，但没有参数梯度。Model2 的梯度为：
+
+$$
+\frac{\partial L}{\partial z_2}=\lambda(p-e_y),\qquad \frac{\partial L}{\partial\theta_2}=J_2^\top\lambda(p-e_y).
+$$
+
+相对同一 frozen state 下的真实 assignment，变化量是 $\Delta g_2=\lambda(p_{perm}-p_{real})$。如果 permutation 降低 fused target probability，Model2 target logit 上的负梯度绝对值和 aggregate non-target mass 会增大；如果 target probability 上升，两者会减小。更重要的是，各 non-target token 获得的梯度被重新分配，因此梯度方向也会变。由于 Model1 冻结，它不能调整 spectrum 或学习任何补偿；这条 arm 测量的是固定 weak distribution 的真实 assignment 被破坏后，Model2 单独如何响应。
+
+**Model1 不 Frozen。** Model2 仍收到上式梯度，同时 Model1 收到 inverse-permuted 梯度：
+
+$$
+\frac{\partial L}{\partial z_1}=(1-\lambda)P^\top(p-e_y),\qquad \frac{\partial L}{\partial\theta_1}=J_1^\top(1-\lambda)P^\top(p-e_y).
+$$
+
+因为 target coordinate 固定，Model1 提高正确 token logit 的信号仍然是连贯的；但在 non-target tail 中，某个原始 vocabulary coordinate 收到的是其 value 被移动到的新 token coordinate 上的梯度。逐 step 动态改变 $P$，使 Model1 无法学习一个固定逆映射。这会破坏 token-specific co-adaptation，同时仍允许 Model1 调整 target margin、value spectrum 和其他 distribution-level statistics。两条分支又共享同一个 $p$，所以 Model1 的适应会改变 Model2 后续看到的梯度场，Model2 的变化也会反过来改变 Model1 的梯度。
+
+因此，`Standard C` 与 `Fixed Model1` 的 dose 差异具有直接机制含义：如果 trainable arm 随 $\rho$ 退化得更明显，说明真实 assignment 的作用可能部分来自双模型共同适应；如果两条 arm 的 dose 曲线相近，则主要影响更像是 Model2 在固定 weak geometry 下接收到的梯度重排。两种情况都必须同时检查 per-branch grad norm、clip frequency 和 update norm，不能只看 endpoint accuracy。
+
+### 8.7 为什么必须动态重采样，而不能用固定 permutation
 
 固定 permutation 会在整个训练过程中保持同一个 token 映射。由于两条分支都可训练，Model1 可能逐渐学会把需要作用于 token `k` 的值输出到固定映射后的 coordinate 上，相当于适应甚至反演干预。最终“置换没有影响”可能只是模型学会了绕过控制。
 
 逐 optimizer step 重采样让映射不再稳定，使训练无法建立一个固定逆变换。这样，实验估计的是“持续保留真实 token assignment 是否重要”，而不是“模型能否学会适应一个新的固定 vocabulary 编码”。
 
-### 8.7 为什么这个实验仍然不能去掉 WM1
+### 8.8 为什么这个实验仍然不能去掉 WM1
 
 DynPerm 仍然执行 WM1 forward，仍然从 WM1 产生 values，也仍然把梯度传回 WM1。它只改变中间的 value-to-token assignment。
 
@@ -1046,7 +1102,7 @@ DynPerm 仍然执行 WM1 forward，仍然从 WM1 产生 values，也仍然把梯
 
 真正的 WM1 replacement 必须满足更严格的 operational definition：正式训练时不运行 online WM1 forward，不更新 WM1 optimizer，也不依赖当前 batch 的 WM1 logits。若 replacement 的参数来自历史 WM1 traces，还必须把结论限制为“online WM1 不必要”，而不是“weak-model information 从未被使用”。
 
-### 8.8 Dynamic Permutation 的结果应怎样写
+### 8.9 Dynamic Permutation 的结果应怎样写
 
 | 观测 | 可以支持的解释 | 仍然不能支持的解释 |
 | --- | --- | --- |
@@ -1125,7 +1181,7 @@ fixed-M1 仍然不能回答 token assignment 是否重要，也不能宣称去�
 
 ### 9.3 M2：Dynamic Permutation 先做 assignment/geometry 的粗粒度消融
 
-完成 `rho=0` exact no-op test 后，先做一个 `DynPerm-100` P20/P30 pilot，而不是直接铺开 P60 全矩阵。pilot 的 admission 条件包括：
+最初方案要求先做 `DynPerm-100` P20/P30 pilot。后续在工程 smoke、`rho=0` no-op 和资源合同通过后，执行方案经批准修订为：两种 Model1 update state 都直接运行 `rho={0,0.25,0.5,1}` 的连续 P60，并把 P20/P30 作为同一轨迹上的诊断 checkpoint，而不是独立任务。正式 admission 条件仍包括：
 
 - target coordinate 完全不变；
 - weak entropy、target probability 与 sorted-value checksum 在数值容差内不变；
@@ -1135,7 +1191,7 @@ fixed-M1 仍然不能回答 token assignment 是否重要，也不能宣称去�
 - `rho=0` 在 forward、backward、RNG 和 config 上与 C 完全等价；
 - runtime、格式与 reward contract 正常。
 
-如果 P20/P30 已出现可解释 separation，再把端点推进到 P60。若没有 separation，则先做等价性分析和第二 seed，不应立刻追加多个 partial ratios。只有端点对比真实且需要定位转折，才补 `rho=0.25/0.5`。
+分析仍先读端点，再读中间 dose：先比较 `rho=0` 与 `rho=1`，然后才使用 `rho=0.25/0.5` 判断单调、阈值或非线性。P20/P30 只允许用于早期健康和机制 telemetry，不允许替代 P60 endpoint，也不允许在看到中间曲线后改变预注册的端点主比较。
 
 fixed-M1 与 DynPerm 的先后顺序有逻辑含义。fixed-M1 先回答 WM1 是否必须共同适应；DynPerm 再在保持 WM1 forward/trainability 的条件下，对真实 assignment 及其绑定的 fusion geometry 做粗粒度消融。这个结果不能直接写成 semantic assignment，必须由 M3a/M3b/M3c 继续拆分 scalar、rank 与 identity。若先做 DynPerm，负结果还会和 co-adaptation behavior 混在一起，解释更困难。
 
@@ -1532,14 +1588,13 @@ DynPerm 仍应运行，因为它能判断共同适应需要真实 token assignme
 | 顺序 | 新训练 | Horizon | 进入下一步的门槛 |
 | ---: | --- | ---: | --- |
 | 0 | 无：M0 frozen diagnostics | 无 | telemetry 能区分 C/D0 与关键 confidence bins |
-| 1 | fixed-M1 Cold Start | P60 | 冻结、双模型 validation、grad/clip/update telemetry 完整 |
-| 2 | fixed-M1 Stage1 | P60 | 与 joint C、D0 的 source/fairness contract 对齐 |
-| 3 | `DynPerm-100` pilot | P20/P30 | `rho=0` no-op proof 与所有 intervention validity checks 通过 |
-| 4 | DynPerm endpoint confirmation | 最多 P60 | pilot separation 真实且可解释；common revision、matched seed |
+| 1 | fixed-M1 Stage1 DynPerm dose grid | 连续 P60，`rho={0,0.25,0.5,1}` | 冻结、双模型 validation、grad/clip/update telemetry 完整 |
+| 2 | Standard C DynPerm dose grid | 连续 P60，`rho={0,0.25,0.5,1}` | 与 fixed-M1 使用相同 source/fairness contract；Model1/Model2 都可训练 |
+| 3 | P20/P30 中间诊断 | 从上述连续轨迹读取 | 不另起 truncated job，不改变 P60 endpoint 主比较 |
 
-这就是当前最小 immediate GPU cost：两个 fixed-M1 P60 arms 加一个 P20/P30 DynPerm pilot。不能在 pilot 前一次性启动 partial permutation、RankBin、synthetic surrogate 和 reverse grid。
+这是后来批准的 2x4 factorial wave。它比最初的端点 pilot 使用更多 GPU，但能在同一轮估计 `rho × Model1-update-state` interaction。RankBin、synthetic surrogate、reverse 和其他 geometry controls 仍不属于这一 wave。
 
-fixed-M1 的代码、admission 与 diagnostic run 可以和 common evaluation 准备并行；但 DynPerm 的正式 P60 endpoint、controller、reverse arms 以及任何论文机制结论，都必须先确认 C-A 的完整方法收益，并进一步确认 C-D0 weak-logit 增量通过 common frozen evaluation 和第二 seed。
+DynPerm P60 训练结果仍不能直接升级为论文机制结论。controller、reverse arms 和更强语义叙事仍要求 common frozen evaluation、第二 training seed，并先确认 C-D0 weak-logit 增量稳定存在。
 
 ### 12.4 conditional waves
 
@@ -1637,7 +1692,7 @@ WDL 每一步更新两个 submodels，不能用相同步数暗示与 single-mode
 9. 只报告最佳 checkpoint、不披露 terminal 与选择规则；
 10. null result 没有等价性 margin 与 uncertainty。
 
-截至本文创建时，fixed-M1 的底层代码、配置字段、权重准备工具、单测和两个 Math wrapper 已经存在，但没有可核验的正式 Slurm 运行、独立 joint cache 与 admission receipt。因此，本文把它们称为“prepared arms”，不称为“running”或“completed”。Dynamic Permutation 及后续 controls 也尚未实现或启动。
+Dynamic Permutation MVP、fixed-M1/Standard-C P60 wrappers、candidate-bound engineering smoke 和正式配置入口已经实现。训练是否运行、是否完成以及结果是否可发布，必须以对应 candidate 的 admission、first-step、terminal 和 release-gate receipts 为准；本文不从代码存在推断实验完成。RankBin、controller、reverse 等后续 controls 仍属于未实现或未启动的后续机制工作。
 
 ---
 
