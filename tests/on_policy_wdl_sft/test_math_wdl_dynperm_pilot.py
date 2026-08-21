@@ -65,6 +65,7 @@ def test_dynperm_admission_hard_pins_shared_non_treatment_contract() -> None:
         "export ROLLOUT_N=8",
         "export MAX_RESPONSE_LENGTH=4096",
         "export VAL_N=3",
+        'export LOG_DIR="${CAUSAL_ARTIFACT_ROOT}/logs"',
     ):
         assert exact_pin in admission
     for final_override in (
@@ -192,6 +193,7 @@ def test_three_node_slurm_matrix_prioritizes_fixed_model1_and_is_fail_closed() -
     assert "DYNPERM_RECIPE_SHA=${RECIPE_SHA}" in submitter
     assert "DYNPERM_IMAGE_ID=${IMAGE_ID}" in submitter
     assert "DYNPERM_LAUNCH_RECEIPT=${launch_receipt}" in submitter
+    assert "DYNPERM_EVIDENCE_RELAY_HOST=${DYNPERM_EVIDENCE_RELAY_HOST}" in submitter
 
     fixed_sbatch = _read("slurm/run_math_qwen3_1p7b_wdl_dynperm_fixed_m1_p60.sbatch")
     standard_sbatch = _read("slurm/run_math_qwen3_1p7b_wdl_dynperm_standard_c_p60.sbatch")
@@ -209,10 +211,16 @@ def test_three_node_slurm_matrix_prioritizes_fixed_model1_and_is_fail_closed() -
         "DYNPERM_RECIPE_SHA",
         "DYNPERM_IMAGE_ID",
         "DYNPERM_LAUNCH_RECEIPT",
+        "DYNPERM_EVIDENCE_RELAY_HOST",
     ):
         assert identity in job
     assert "foreign GPU compute process present" in job
     assert '--slurm-job-id "$SLURM_JOB_ID"' in job
+    assert "relay_files admission.json" in job
+    assert "relay_files first-step.json first-step.log" in job
+    assert "relay_files admission.json first-step.json first-step.log terminal.json" in job
+    assert "node_local_job_root" in job
+    assert "relay_job_root" in job
     assert "first-step admission failed; stopping only this job's training container" in job
     assert "scancel" not in job
 

@@ -384,6 +384,11 @@ the same four Standard C runs at lower Slurm priority. All eight jobs may be
 submitted together to the three-node `l40s` partition; each run owns one
 exclusive 8xL40S node, so three run concurrently and the rest remain queued.
 Scheduling priority is an operational policy, not an experimental variable.
+Each job writes full logs and checkpoints on its executing node and relays only
+candidate-bound admission, first-step, terminal, and bounded log-tail evidence
+to the controller. The submission ledger records both the worker-local artifact
+root and the controller receipt path; a failed relay fails that job rather than
+silently claiming monitored completion.
 
 The preregistered analysis order is:
 
@@ -731,4 +736,6 @@ wrappers continue to own Model1 update state. The three-node Slurm submitter
 queues all eight P60 runs with fixed-Model1 first and lower-priority Standard C.
 Every non-treatment model/data/optimizer/validation/seed/image setting remains
 identical. Real execution remains fail-closed on the GON-34 engineering receipt
-plus a separate candidate-, image-, and rho-bound P60 receipt.
+plus a separate candidate-, image-, and rho-bound P60 receipt. Worker-local
+first-step and terminal receipts are relayed to the controller; relay failure is
+terminal failure, not missing-but-assumed evidence.
