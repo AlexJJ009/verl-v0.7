@@ -230,7 +230,7 @@ def test_three_node_slurm_matrix_prioritizes_fixed_model1_and_is_fail_closed() -
     assert "IFS=',' read -r -a slurm_nodes <<<\"$DYNPERM_ALLOWED_NODES\"" in submitter
     assert '--nodelist="$allowed_node_list"' in submitter
     assert "allowed_nodes=%s" in submitter
-    assert "DYNPERM_INITIAL_RELEASE_COUNT:-8" in submitter
+    assert "DYNPERM_INITIAL_RELEASE_COUNT:-1" in submitter
     assert '[[ "$initial_release_count" =~ ^[1-8]$ ]]' in submitter
     assert 'released_job_ids=("${submitted_job_ids[@]:0:initial_release_count}")' in submitter
     assert 'held_job_ids=("${submitted_job_ids[@]:initial_release_count}")' in submitter
