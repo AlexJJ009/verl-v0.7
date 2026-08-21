@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import subprocess
 from pathlib import Path
 
 import yaml
@@ -90,7 +92,7 @@ def test_dynperm_admission_hard_pins_shared_non_treatment_contract() -> None:
 def test_p60_launcher_runs_fixed_m1_then_standard_c_with_same_two_variables() -> None:
     launcher = _read("run_math_qwen3_1p7b_wdl_dynperm_p60.sh")
     assert ': "${DYNPERM_ENABLED:?set DYNPERM_ENABLED=true}"' in launcher
-    assert ': "${DYNPERM_RHO:?set DYNPERM_RHO in [0, 1]}"' in launcher
+    assert ': "${DYNPERM_RHO:?set DYNPERM_RHO to 0, 0.25, 0.5, or 1}"' in launcher
     assert "20|30" not in launcher
     fixed = "run_math_qwen3_1p7b_wdl_dynperm_fixed_m1_p60.sh"
     standard = "run_math_qwen3_1p7b_wdl_dynperm_standard_c_p60.sh"
@@ -104,6 +106,24 @@ def test_p60_launcher_runs_fixed_m1_then_standard_c_with_same_two_variables() ->
         assert 'if [ "$#" -ne 0 ]' in text
         assert "DYNPERM_ENABLED" in text
         assert "DYNPERM_RHO" in text
+
+
+def test_formal_p60_entries_reject_rho_outside_the_frozen_matrix() -> None:
+    env = os.environ | {"DRY_RUN": "1", "DYNPERM_ENABLED": "true", "DYNPERM_RHO": "0.75"}
+    for entry in (
+        "run_math_qwen3_1p7b_wdl_dynperm_fixed_m1_p60.sh",
+        "run_math_qwen3_1p7b_wdl_dynperm_standard_c_p60.sh",
+    ):
+        result = subprocess.run(
+            ["bash", str(MATH / entry)],
+            cwd=ROOT,
+            env=env,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode != 0
+        assert "formal DynPerm P60 rho must be one of" in result.stderr
 
 
 def test_formal_dynperm_is_p60_only_and_candidate_bound() -> None:
@@ -232,6 +252,7 @@ def test_three_node_slurm_matrix_prioritizes_fixed_model1_and_is_fail_closed() -
     assert '"phase": "pre-admission"' in job
     assert job.index("trap bootstrap_cleanup EXIT") < job.index("for required_name in")
     assert "${bootstrap_relay_root}/bootstrap-terminal.json" in job
+    assert "formal DynPerm P60 rho must be one of" in job
     assert '"training_exit_code"' in job
     assert '"evidence_set_relayed"' in job
     assert "node_local_job_root" in job
