@@ -16,10 +16,20 @@ ROOT = Path(__file__).resolve().parents[2]
 MATH = ROOT / "recipe/on_policy_wdl_sft/math_task"
 MANIFEST = ROOT / "recipe/on_policy_wdl_sft/experiment_manifest/math_qwen3_1p7b_wdl_dynperm.yaml"
 CAUSAL_MANIFEST = ROOT / "recipe/on_policy_wdl_sft/experiment_manifest/math_qwen3_1p7b_wdl_causal_p60.yaml"
+SHARED_JOINT_LAUNCHER = ROOT / "recipe/on_policy_wdl_sft/_common_wdl_sft_is_joint.sh"
 
 
 def _read(name: str) -> str:
     return (MATH / name).read_text(encoding="utf-8")
+
+
+def test_shared_joint_launcher_prewarms_remote_code_before_ray_workers() -> None:
+    common = SHARED_JOINT_LAUNCHER.read_text(encoding="utf-8")
+    refresh_pos = common.index("refresh_joint_remote_code\n")
+    prewarm_pos = common.index("AutoConfig.from_pretrained(model_path, trust_remote_code=True)")
+    trainer_pos = common.index("python3 -m verl.trainer.main_ppo")
+    assert refresh_pos < prewarm_pos < trainer_pos
+    assert 'type(config).__name__ != "QwenJointConfig"' in common
 
 
 def test_two_variable_dynperm_interface_is_final_in_shared_causal_entry() -> None:
