@@ -1,9 +1,11 @@
 # Qwen3-1.7B On-Policy WDL Mechanism Program
 
-- Status: **ACTIVE RESEARCH DESIGN** — theory-derived Math-first mechanism matrix;
-  fixed-Model1 arms are prepared separately but no live Slurm/admission evidence
-  was observed in the 2026-08-16 audit; DynPerm and the later controls in this
-  document are not yet implemented or admitted.
+- Status: **ACTIVE RESEARCH DESIGN / DYNPERM DELIVERY IN PROGRESS** —
+  theory-derived Math-first mechanism matrix. Fixed-Model1 arms are prepared
+  separately. Dynamic Permutation now has a code candidate and CPU gate evidence
+  on the `linear/gon-34-dynperm-mvp` Delivery branch, but it is not experiment
+  admitted until the candidate-bound Slurm GPU/FSDP smoke passes. Formal
+  DynPerm P20/P30/P60 runs have not been launched.
 - Created: 2026-08-16
 - Primary method result: `qwen3_1p7b_math_stage123.md`
 - Result attachment: `../../reports/qwen3_1p7b_math_stage123_matrix_results_20260723.md`
@@ -284,6 +286,20 @@ rank-alignment-induced gradient strength.
 This is the central extension to the existing same-entropy plan: after plain
 DynPerm, add a control that also matches the relevant **cross-model fusion
 geometry**.
+
+The repository implementation note is
+`../../specs/dynamic_permutation_mvp.md`. The current MVP uses a stateless keyed
+cyclic selected-set with a non-zero rotation over exactly
+$k=\lfloor\rho(V-1)\rfloor$ non-target coordinates, processes token rows in
+bounded chunks with `O(row_chunk_size * k)` index memory, and derives the mapping
+from explicit training identities rather than process-global RNG. Runtime audits
+are bounded counters plus sampled entropy/multiset checks; exhaustive invariant
+checks remain in CPU fixtures.
+
+As of 2026-08-20, the Delivery evidence is code and CPU-only tests. The
+candidate-bound Slurm GPU/FSDP smoke, independent review, and PR/CI evidence are
+still required before merge readiness. This plan must stay active; code delivery
+does not mark the mechanism experiment complete.
 
 Two useful boundary facts follow. First, replacing weak logits with a uniform
 vector is already equivalent, up to an additive logit constant, to matched-scale

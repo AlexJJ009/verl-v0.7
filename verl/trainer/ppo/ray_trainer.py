@@ -114,6 +114,19 @@ WDL_GROUP_ADV_IS_LOSS_MODE = "wdl_group_adv_is"
 BEST_CHECKPOINT_TRACKER = "best_checkpoint.json"
 
 
+def assign_dynamic_permutation_sample_ids(batch: DataProto, global_step: int) -> None:
+    """Assign stable global actor-row identities after final rollout expansion."""
+
+    if global_step < 0 or global_step >= 2**31:
+        raise ValueError("global_step is outside the stable dynperm_sample_id encoding range")
+    if "dynperm_sample_id" in batch.batch:
+        raise ValueError("dynperm_sample_id already exists before final actor-row assignment")
+    row_count = len(batch.batch)
+    if row_count >= 2**32:
+        raise ValueError("actor batch is too large for the stable dynperm_sample_id encoding")
+    batch.batch["dynperm_sample_id"] = torch.arange(row_count, dtype=torch.int64) + (int(global_step) << 32)
+
+
 def _metric_value_to_python_scalar(value: Any) -> Any | None:
     if isinstance(value, Number | np.generic):
         return value.item() if isinstance(value, np.generic) else value
@@ -1278,7 +1291,7 @@ class RayPPOTrainer:
         # Verifier pred/gt disagreement: pred matches gt text but answer_correct is False
         if preds and ground_truths and answer_corrects:
             disagreement_count = 0
-            for pred, gt, correct in zip(preds, ground_truths, answer_corrects, strict=False):
+            for pred, gt, correct in zip(preds, ground_truths, answer_corrects, strict=True):
                 if pred == gt and not correct and pred != "[NO_BOXED]":
                     disagreement_count += 1
             metrics["jointTraining/verifier_pred_gt_disagreement_count"] = disagreement_count
@@ -2030,9 +2043,19 @@ class RayPPOTrainer:
 
     def _update_actor(self, batch: DataProto) -> DataProto:
         rollout_config = self.config.actor_rollout_ref.rollout
+        weak_logit_permutation = self.config.actor_rollout_ref.actor.get("weak_logit_permutation", None)
+        if (
+            weak_logit_permutation
+            and weak_logit_permutation.get("enabled", False)
+            and self.use_legacy_worker_impl == "disable"
+        ):
+            raise NotImplementedError(
+                "weak-logit Dynamic Permutation requires the DataParallelPPOActor worker implementation"
+            )
         batch.meta_info["multi_turn"] = rollout_config.multi_turn.enable
         # TODO: Make "temperature" single source of truth from generation.
         batch.meta_info["temperature"] = rollout_config.temperature
+        batch.meta_info["global_step"] = self.global_steps
         # update actor
         if self.use_legacy_worker_impl == "disable":
             batch_td = batch.to_tensordict()
@@ -2237,6 +2260,9 @@ class RayPPOTrainer:
 
                     if "response_mask" not in batch.batch.keys():
                         batch.batch["response_mask"] = compute_response_mask(batch)
+                    weak_logit_permutation = self.config.actor_rollout_ref.actor.get("weak_logit_permutation", None)
+                    if weak_logit_permutation and weak_logit_permutation.get("enabled", False):
+                        assign_dynamic_permutation_sample_ids(batch, self.global_steps)
                     # Balance the number of valid tokens across DP ranks.
                     # NOTE: This usually changes the order of data in the `batch`,
                     # which won't affect the advantage calculation (since it's based on uid),

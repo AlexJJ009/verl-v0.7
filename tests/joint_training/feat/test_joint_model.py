@@ -1,4 +1,16 @@
-# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Bytedance Ltd. and/or its affiliates
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 """Feature tests for QwenJointForCausalLM model class.
 
@@ -11,6 +23,9 @@ They verify:
 5. State dict key structure
 6. AutoModel loading with trust_remote_code
 """
+
+import copy
+import io
 
 import pytest
 import torch
@@ -42,6 +57,28 @@ def _make_joint_model(fusion_lambda=0.5, freeze_model1=False):
     config = _make_small_joint_config(fusion_lambda, freeze_model1)
     model = QwenJointForCausalLM(config)
     return model
+
+
+def _dynperm_context(input_ids, *, rho, global_step=1, actor_update_index=0):
+    batch_size, seqlen = input_ids.shape
+    targets = torch.roll(input_ids, shifts=-1, dims=1)
+    targets[:, -1] = 0
+    active = torch.ones_like(input_ids, dtype=torch.bool)
+    active[:, -1] = False
+    return {
+        "target_ids": targets,
+        "sample_ids": torch.arange(batch_size, dtype=torch.int64)[:, None].expand(-1, seqlen),
+        "token_positions": torch.arange(seqlen, dtype=torch.int64)[None, :].expand(batch_size, -1),
+        "active_mask": active,
+        "rho": rho,
+        "base_seed": 42,
+        "global_step": global_step,
+        "actor_update_index": actor_update_index,
+        "row_chunk_size": 2,
+        "audit_rows": 2,
+        "entropy_atol": 2e-6,
+        "multiset_atol": 0.0,
+    }
 
 
 class TestQwenJointConfig:
@@ -113,7 +150,7 @@ class TestQwenJointModelInstantiation:
     def test_no_shared_parameters(self):
         """Model1 and model2 should NOT share parameters."""
         model = _make_joint_model()
-        for p0, p1 in zip(model.sub_models[0].parameters(), model.sub_models[1].parameters(), strict=False):
+        for p0, p1 in zip(model.sub_models[0].parameters(), model.sub_models[1].parameters(), strict=True):
             assert p0.data_ptr() != p1.data_ptr(), "Sub-models should not share parameters"
 
 
@@ -261,6 +298,188 @@ class TestGradientFlow:
 
         assert all(parameter.grad is None for parameter in model.sub_models[0].parameters())
         assert any(parameter.grad is not None for parameter in model.sub_models[1].parameters())
+
+
+class TestDynamicPermutationIntegration:
+    def test_training_forward_only_permutates_weak_logits(self):
+        model = _make_joint_model(fusion_lambda=0.8)
+        model.eval()
+        input_ids = torch.randint(0, 1000, (2, 6))
+        attention_mask = torch.ones_like(input_ids)
+        context = _dynperm_context(input_ids, rho=1.0)
+
+        with torch.no_grad():
+            plain = model(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                return_submodel_logits=True,
+            )
+            permuted = model(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                return_submodel_logits=True,
+                apply_weak_logit_permutation=True,
+                weak_logit_permutation_context=context,
+            )
+
+        targets = context["target_ids"]
+        assert torch.equal(
+            plain.submodel_logits[0].gather(-1, targets.unsqueeze(-1)),
+            permuted.submodel_logits[0].gather(-1, targets.unsqueeze(-1)),
+        )
+        assert torch.equal(
+            torch.sort(plain.submodel_logits[0], dim=-1).values,
+            torch.sort(permuted.submodel_logits[0], dim=-1).values,
+        )
+        assert torch.equal(plain.submodel_logits[1], permuted.submodel_logits[1])
+        assert not torch.equal(plain.logits[:, :-1], permuted.logits[:, :-1])
+        assert permuted.dynamic_permutation_telemetry["dynperm/target_mismatches"] == 0
+
+        with torch.no_grad():
+            eval_output = model(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                eval_only=True,
+                apply_weak_logit_permutation=True,
+                weak_logit_permutation_context=context,
+            )
+            direct_model2 = model.sub_models[1](input_ids=input_ids, attention_mask=attention_mask)
+        assert torch.equal(eval_output.logits, direct_model2.logits)
+
+    @pytest.mark.parametrize("freeze_model1", [False, True])
+    def test_rho_zero_matches_disabled_forward_backward_and_rng(self, freeze_model1):
+        disabled = _make_joint_model(fusion_lambda=0.8, freeze_model1=freeze_model1)
+        rho_zero = copy.deepcopy(disabled)
+        disabled.train()
+        rho_zero.train()
+        input_ids = torch.randint(0, 1000, (2, 6))
+        attention_mask = torch.ones_like(input_ids)
+        labels = torch.randint(0, 1000, (2, 6))
+        context = _dynperm_context(input_ids, rho=0.0)
+
+        rng_start = torch.random.get_rng_state().clone()
+        plain_output = disabled(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
+        plain_output.loss.backward()
+        rng_after_disabled = torch.random.get_rng_state().clone()
+
+        torch.random.set_rng_state(rng_start)
+        zero_output = rho_zero(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            labels=labels,
+            apply_weak_logit_permutation=True,
+            weak_logit_permutation_context=context,
+        )
+        zero_output.loss.backward()
+        rng_after_zero = torch.random.get_rng_state().clone()
+
+        assert torch.equal(plain_output.logits, zero_output.logits)
+        assert torch.equal(plain_output.loss, zero_output.loss)
+        assert torch.equal(rng_after_disabled, rng_after_zero)
+        for (plain_name, plain_param), (zero_name, zero_param) in zip(
+            disabled.named_parameters(), rho_zero.named_parameters(), strict=True
+        ):
+            assert plain_name == zero_name
+            if plain_param.grad is None:
+                assert zero_param.grad is None
+            else:
+                assert torch.equal(plain_param.grad, zero_param.grad)
+
+    @pytest.mark.parametrize("freeze_model1", [False, True])
+    def test_rho_zero_matches_disabled_optimizer_update(self, freeze_model1):
+        disabled = _make_joint_model(fusion_lambda=0.8, freeze_model1=freeze_model1)
+        rho_zero = copy.deepcopy(disabled)
+        disabled_optimizer = torch.optim.AdamW(disabled.parameters(), lr=1e-4)
+        zero_optimizer = torch.optim.AdamW(rho_zero.parameters(), lr=1e-4)
+        input_ids = torch.randint(0, 1000, (2, 6))
+        attention_mask = torch.ones_like(input_ids)
+        labels = torch.randint(0, 1000, (2, 6))
+        context = _dynperm_context(input_ids, rho=0.0)
+
+        disabled(input_ids=input_ids, attention_mask=attention_mask, labels=labels).loss.backward()
+        disabled_optimizer.step()
+        rho_zero(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            labels=labels,
+            apply_weak_logit_permutation=True,
+            weak_logit_permutation_context=context,
+        ).loss.backward()
+        zero_optimizer.step()
+
+        for key, value in disabled.state_dict().items():
+            assert torch.equal(value, rho_zero.state_dict()[key]), key
+        disabled_states = list(disabled_optimizer.state.values())
+        zero_states = list(zero_optimizer.state.values())
+        assert len(disabled_states) == len(zero_states)
+        for disabled_state, zero_state in zip(disabled_states, zero_states, strict=True):
+            assert disabled_state.keys() == zero_state.keys()
+            for key, value in disabled_state.items():
+                if isinstance(value, torch.Tensor):
+                    assert torch.equal(value, zero_state[key])
+                else:
+                    assert value == zero_state[key]
+
+    @pytest.mark.parametrize("freeze_model1", [False, True])
+    def test_joint_checkpoint_round_trip_replays_next_step_permutation(self, freeze_model1):
+        uninterrupted = _make_joint_model(fusion_lambda=0.8, freeze_model1=freeze_model1)
+        optimizer = torch.optim.SGD(uninterrupted.parameters(), lr=1e-4)
+        input_ids = torch.randint(0, 1000, (2, 6))
+        attention_mask = torch.ones_like(input_ids)
+        labels = torch.randint(0, 1000, (2, 6))
+
+        step1_context = _dynperm_context(input_ids, rho=1.0, global_step=1)
+        uninterrupted(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            labels=labels,
+            apply_weak_logit_permutation=True,
+            weak_logit_permutation_context=step1_context,
+        ).loss.backward()
+        optimizer.step()
+        optimizer.zero_grad()
+
+        buffer = io.BytesIO()
+        torch.save(
+            {"model": uninterrupted.state_dict(), "optimizer": optimizer.state_dict(), "global_step": 1},
+            buffer,
+        )
+        buffer.seek(0)
+        checkpoint = torch.load(buffer, weights_only=True)
+        assert any(key.startswith("sub_models.0.") for key in checkpoint["model"])
+        assert any(key.startswith("sub_models.1.") for key in checkpoint["model"])
+
+        resumed = _make_joint_model(fusion_lambda=0.8, freeze_model1=freeze_model1)
+        resumed_optimizer = torch.optim.SGD(resumed.parameters(), lr=1e-4)
+        resumed.load_state_dict(checkpoint["model"])
+        resumed_optimizer.load_state_dict(checkpoint["optimizer"])
+        assert checkpoint["global_step"] == 1
+
+        next_context = _dynperm_context(input_ids, rho=1.0, global_step=2)
+        uninterrupted_next = uninterrupted(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            labels=labels,
+            apply_weak_logit_permutation=True,
+            weak_logit_permutation_context=next_context,
+        )
+        resumed_next = resumed(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            labels=labels,
+            apply_weak_logit_permutation=True,
+            weak_logit_permutation_context=next_context,
+        )
+        assert torch.equal(uninterrupted_next.logits, resumed_next.logits)
+        assert uninterrupted_next.dynamic_permutation_telemetry["dynperm/fixed_points"] == 0
+        assert resumed_next.dynamic_permutation_telemetry["dynperm/fixed_points"] == 0
+
+        uninterrupted_next.loss.backward()
+        resumed_next.loss.backward()
+        optimizer.step()
+        resumed_optimizer.step()
+        for key, value in uninterrupted.state_dict().items():
+            assert torch.equal(value, resumed.state_dict()[key]), key
 
 
 class TestParameterFreezing:

@@ -158,6 +158,7 @@ Documentation in `docs/joint_training/` was created during the parent branch's j
 | Directory | Purpose | Status |
 |---|---|---|
 | `specs/` | Technical specs for joint model / logit fusion | ARCHIVAL — infrastructure reference |
+| `specs/dynamic_permutation_mvp.md` | **Target-preserving Dynamic Permutation MVP technical design** — keyed cyclic selected-set transform, deterministic actor identities, telemetry, no-op/freeze/checkpoint boundary, and Delivery evidence status | ACTIVE DELIVERY DESIGN / GPU SMOKE PENDING |
 | `constraints/` | Development rules and boundaries | Still applicable |
 | `constraints/principles/workspace_artifact_hygiene.md` | **Workspace artifact hygiene** — mandatory rules for keeping repo root and `/data-1` clean when agents run tests, dry-runs, generated code, benchmark harnesses, or cleanup work | ACTIVE |
 | `constraints/experiment_tracking/training_script_index_policy.md` | **Training script index policy** — shared rule that every branch keeps its own script index and updates it when runnable training/monitor scripts are created or used | ACTIVE |
@@ -183,6 +184,7 @@ Documentation in `docs/joint_training/` was created during the parent branch's j
 | `reports/qwen3_1p7b_math_stage123_matrix_results_20260723.md` | **Qwen3-1.7B Math Stage123 matrix results** — completed 16-run result attachment with every validation step, effective-step curves, data-order analysis, training-dynamics analysis, and updated causal conclusions | ACTIVE RESULT |
 | `plans/completed/deepcoder_stage1_training_execution_plan.md` | **DeepCoder Stage1 training execution plan** — completed/superseded execution contract for the DeepCoder Stage1 batch; preserved for traceability after the DeepCoder data switch was recorded as a negative transfer result | ARCHIVAL |
 | `plans/active/wdl_group_advantage_is_goal.md` | **WDL group-advantage IS implementation contract** — new beta-free loss with group advantages, all-correct positive-SFT fallback, explicit mixed-policy old/current IS, `norm_adv_by_std_in_grpo=false`; excludes rollout IS weights, KL penalty, and length normalization; requires complete Meituan four-layer launch scripts | ACTIVE |
+| `plans/active/qwen3_1p7b_wdl_mechanism_program.md` | **Qwen3-1.7B WDL mechanism program** — Dynamic Permutation code candidate and CPU evidence exist on `linear/gon-34-dynperm-mvp`; candidate-bound Slurm GPU/FSDP smoke, PR/CI, and independent review remain pending; formal DynPerm P20/P30/P60 experiments have not started | ACTIVE DESIGN / DELIVERY IN PROGRESS |
 | `plans/active/wdl_sft_is.md` | **WDL-SFT v2 (IS-corrected)** — post-fix rerun matrix remains open; historical 1A/1B/1C are pre-fix | ACTIVE |
 | `plans/active/ablation_single_model.md` | **Single-model ablation (2A/B/C + 2Z baseline)** — partially complete; post-fix rows remain open | ACTIVE |
 | `plans/completed/dual_submodel_rollout_wdl_sft.md` | Dual-submodel rollout WDL-SFT — implemented and smoke-passed, but 3A real run failed as method-level negative result | ARCHIVAL |
@@ -246,6 +248,7 @@ Before launching any training, monitoring, checkpoint transfer, or large file op
 - Archived Stage 2 Model2-rollout fused-loss fast validation: `docs/joint_training/plans/completed/stage2_model2_rollout_fused_loss_fast_validation.md`
 - Archived staged v1 On-Policy SFT -> WDL-SFT beta search: `docs/joint_training/plans/completed/on_policy_sft_then_wdl_sft_beta_search.md`
 - WDL group-advantage IS implementation contract: `docs/joint_training/plans/active/wdl_group_advantage_is_goal.md`
+- Dynamic Permutation MVP technical design: `docs/joint_training/specs/dynamic_permutation_mvp.md`
 - **Current focus**: Math causal-P60 plan: `docs/joint_training/plans/active/qwen3_1p7b_math_stage123.md`
 - Archived dual-submodel rollout negative result: `docs/joint_training/plans/completed/dual_submodel_rollout_wdl_sft.md`
 - Dual-submodel 3A failure analysis: `docs/joint_training/plans/completed/dual_submodel_rollout_wdl_sft_3a_failure_analysis.md`

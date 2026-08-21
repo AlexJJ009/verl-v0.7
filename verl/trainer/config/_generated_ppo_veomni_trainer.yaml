@@ -89,6 +89,18 @@ actor_rollout_ref:
         coef: 0.0
         kl_type: low_var_kl
         ref_path: null
+    weak_logit_permutation:
+      _target_: verl.workers.config.WeakLogitPermutationConfig
+      enabled: false
+      rho: 0.0
+      seed: 42
+      row_chunk_size: 16
+      audit_invariants: true
+      audit_frequency: 1
+      audit_rows: 4
+      entropy_atol: 2.0e-06
+      multiset_atol: 0.0
+      log_telemetry: true
     use_prefix_grouper: false
     use_torch_compile: true
     kl_loss_coef: 0.001

@@ -47,6 +47,56 @@ logger = logging.getLogger(__file__)
 logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
 
 
+def build_dynamic_permutation_training_context(
+    *,
+    input_ids: torch.Tensor,
+    position_ids: torch.Tensor,
+    responses: torch.Tensor,
+    response_mask: torch.Tensor,
+    sample_ids: torch.Tensor,
+) -> dict[str, torch.Tensor]:
+    """Align next-token identities to full padded causal-logit rows."""
+
+    if (
+        input_ids.ndim != 2
+        or position_ids.shape != input_ids.shape
+        or responses.ndim != 2
+        or response_mask.shape != responses.shape
+    ):
+        raise ValueError("Dynamic Permutation requires 2-D input_ids/responses and an aligned response_mask")
+    batch_size, seqlen = input_ids.shape
+    response_length = responses.shape[1]
+    if sample_ids.shape != (batch_size,):
+        raise ValueError(
+            f"dynperm_sample_id shape {tuple(sample_ids.shape)} must equal actor microbatch {(batch_size,)}"
+        )
+    response_start = seqlen - response_length - 1
+    if response_start < 0:
+        raise ValueError("response sequence is too long to align next-token targets")
+
+    target_ids = torch.roll(input_ids, shifts=-1, dims=1)
+    # The final input position has no causal target and is always inactive.
+    target_ids[:, -1] = 0
+    active_mask = torch.zeros_like(input_ids, dtype=torch.bool)
+    active_mask[:, response_start : response_start + response_length] = response_mask.to(torch.bool)
+    token_positions = position_ids.to(device=input_ids.device, dtype=torch.int64)
+    sample_ids = sample_ids.to(device=input_ids.device, dtype=torch.int64)[:, None].expand(-1, seqlen)
+    return {
+        "target_ids": target_ids,
+        "sample_ids": sample_ids,
+        "token_positions": token_positions,
+        "active_mask": active_mask,
+    }
+
+
+def dynamic_permutation_actor_update_index(ppo_epoch: int, mini_batch_index: int, mini_batch_count: int) -> int:
+    """Return the optimizer-update identity shared by all accumulation microbatches."""
+
+    if ppo_epoch < 0 or mini_batch_index < 0 or mini_batch_count <= 0 or mini_batch_index >= mini_batch_count:
+        raise ValueError("invalid PPO epoch/mini-batch coordinates for Dynamic Permutation")
+    return ppo_epoch * mini_batch_count + mini_batch_index
+
+
 class DataParallelPPOActor(BasePPOActor):
     """FSDP DataParallel PPO Actor or Ref worker
 
@@ -83,6 +133,16 @@ class DataParallelPPOActor(BasePPOActor):
         self.use_dynamic_bsz = self.config.get("use_dynamic_bsz", False)
 
         self.use_prefix_grouper = self.config.get("use_prefix_grouper", False)
+
+        dynperm_cfg = self._conf_get(self.config, "weak_logit_permutation")
+        self.use_weak_logit_permutation = bool(
+            dynperm_cfg is not None and self._conf_get(dynperm_cfg, "enabled", False)
+        )
+        if self.use_weak_logit_permutation and (self.use_fused_kernels or self.use_prefix_grouper):
+            raise NotImplementedError("weak-logit Dynamic Permutation does not support fused kernels or PrefixGrouper")
+        if self.use_weak_logit_permutation and self._find_joint_sub_models() is None:
+            raise ValueError("weak-logit Dynamic Permutation requires a two-submodel joint actor")
+
         if torch.distributed.get_rank() == 0:
             print(f"{role} use_prefix_grouper={self.use_prefix_grouper}")
 
@@ -169,6 +229,7 @@ class DataParallelPPOActor(BasePPOActor):
         sum_pi_squared_checkpointing = self.config.get("sum_pi_squared_checkpointing", False)
         return_submodel_log_probs = bool(micro_batch.get("return_submodel_log_probs", False))
         submodel_log_prob_grad_indices = set(micro_batch.get("submodel_log_prob_grad_indices", []))
+        apply_weak_logit_permutation = bool(micro_batch.get("apply_weak_logit_permutation", False))
         if return_submodel_log_probs and (self.use_fused_kernels or self.use_prefix_grouper):
             raise NotImplementedError("submodel KL log-probs do not support fused kernels or PrefixGrouper yet")
         # PrefixGrouper path for shared-prefix optimization
@@ -205,6 +266,26 @@ class DataParallelPPOActor(BasePPOActor):
             attention_mask = micro_batch["attention_mask"]
             position_ids = micro_batch["position_ids"]
             entropy = None
+            dynamic_permutation_context = None
+            dynamic_permutation_parameters = None
+            if apply_weak_logit_permutation:
+                dynamic_permutation_context = build_dynamic_permutation_training_context(
+                    input_ids=input_ids,
+                    position_ids=position_ids,
+                    responses=micro_batch["responses"],
+                    response_mask=micro_batch["response_mask"],
+                    sample_ids=micro_batch["dynperm_sample_id"],
+                )
+                dynamic_permutation_parameters = {
+                    "rho": micro_batch["dynperm_rho"],
+                    "base_seed": micro_batch["dynperm_base_seed"],
+                    "global_step": micro_batch["dynperm_global_step"],
+                    "actor_update_index": micro_batch["dynperm_actor_update_index"],
+                    "row_chunk_size": micro_batch["dynperm_row_chunk_size"],
+                    "audit_rows": micro_batch["dynperm_audit_rows"],
+                    "entropy_atol": micro_batch["dynperm_entropy_atol"],
+                    "multiset_atol": micro_batch["dynperm_multiset_atol"],
+                }
             if position_ids.dim() == 3:  # qwen2vl mrope
                 position_ids = position_ids.transpose(0, 1)  # (bsz, 4, seqlen) -> (4, bsz, seqlen)
 
@@ -213,6 +294,12 @@ class DataParallelPPOActor(BasePPOActor):
                     input_ids.unsqueeze(-1), attention_mask
                 )  # input_ids_rmpad (total_nnz, ...)
                 input_ids_rmpad = input_ids_rmpad.transpose(0, 1)  # (1, total_nnz)
+
+                if dynamic_permutation_context is not None:
+                    for context_key, context_value in list(dynamic_permutation_context.items()):
+                        dynamic_permutation_context[context_key] = index_first_axis(
+                            rearrange(context_value.unsqueeze(-1), "b s ... -> (b s) ..."), indices
+                        ).transpose(0, 1)
 
                 # unpad the position_ids to align the rotary
                 if position_ids.dim() == 3:
@@ -245,6 +332,13 @@ class DataParallelPPOActor(BasePPOActor):
                             device=position_ids.device,
                             dtype=position_ids.dtype,
                         )
+                    if dynamic_permutation_context is not None:
+                        for context_key, context_value in list(dynamic_permutation_context.items()):
+                            dynamic_permutation_context[context_key] = torch.zeros(
+                                (1, self.ulysses_sequence_parallel_size),
+                                device=context_value.device,
+                                dtype=context_value.dtype,
+                            )
 
                 if "image_bound" in multi_modal_inputs:
                     from verl.utils.dataset.vision_utils import process_multi_modal_inputs_for_minicpmo
@@ -279,6 +373,14 @@ class DataParallelPPOActor(BasePPOActor):
                         position_ids_rmpad=None,
                         sp_size=self.ulysses_sequence_parallel_size,
                     )
+                    if dynamic_permutation_context is not None:
+                        for context_key, context_value in list(dynamic_permutation_context.items()):
+                            context_value, _, _ = ulysses_pad_and_slice_inputs(
+                                context_value,
+                                position_ids_rmpad=None,
+                                sp_size=self.ulysses_sequence_parallel_size,
+                            )
+                            dynamic_permutation_context[context_key] = context_value
 
                 input_ids_rmpad_rolled = input_ids_rmpad_rolled.squeeze(0)  # ((total_nnz / sp) + pad)
 
@@ -287,6 +389,12 @@ class DataParallelPPOActor(BasePPOActor):
                 if self.use_fused_kernels:
                     extra_args["temperature"] = temperature
                     extra_args["return_dict"] = True
+                if dynamic_permutation_context is not None:
+                    extra_args["apply_weak_logit_permutation"] = True
+                    extra_args["weak_logit_permutation_context"] = {
+                        **dynamic_permutation_context,
+                        **dynamic_permutation_parameters,
+                    }
 
                 output = self.actor_module(
                     input_ids=input_ids_rmpad,
@@ -431,6 +539,12 @@ class DataParallelPPOActor(BasePPOActor):
                 if self.use_fused_kernels:
                     extra_args["temperature"] = temperature
                     extra_args["return_dict"] = True
+                if dynamic_permutation_context is not None:
+                    extra_args["apply_weak_logit_permutation"] = True
+                    extra_args["weak_logit_permutation_context"] = {
+                        **dynamic_permutation_context,
+                        **dynamic_permutation_parameters,
+                    }
 
                 output = self.actor_module(
                     input_ids=input_ids,
@@ -477,6 +591,9 @@ class DataParallelPPOActor(BasePPOActor):
                         )
 
             outputs = {"log_probs": log_probs}
+            dynamic_permutation_telemetry = getattr(output, "dynamic_permutation_telemetry", None)
+            if dynamic_permutation_telemetry is not None:
+                outputs["dynamic_permutation_telemetry"] = dynamic_permutation_telemetry
             if calculate_entropy:
                 outputs["entropys"] = entropy
             if calculate_sum_pi_squared:
@@ -742,6 +859,9 @@ class DataParallelPPOActor(BasePPOActor):
 
         temperature = data.meta_info["temperature"]  # temperature must be in the data.meta_info to avoid silent error
         pad_token_id = data.meta_info.get("pad_token_id", 0)
+        global_step = int(data.meta_info.get("global_step", -1))
+        if self.use_weak_logit_permutation and global_step < 0:
+            raise ValueError("weak-logit Dynamic Permutation requires restored global_step in actor metadata")
 
         select_keys = [
             "responses",
@@ -766,6 +886,10 @@ class DataParallelPPOActor(BasePPOActor):
         # Include rollout_log_probs for computing rollout_corr metrics in bypass mode
         if "rollout_log_probs" in data.batch.keys():
             select_keys.append("rollout_log_probs")
+        if self.use_weak_logit_permutation:
+            if "dynperm_sample_id" not in data.batch:
+                raise ValueError("weak-logit Dynamic Permutation requires dynperm_sample_id tensor")
+            select_keys.append("dynperm_sample_id")
 
         has_multi_modal_inputs = "multi_modal_inputs" in data.non_tensor_batch.keys()
         non_tensor_select_keys = []
@@ -786,8 +910,9 @@ class DataParallelPPOActor(BasePPOActor):
             "actor/pg_loss": 0.0,
             "actor/kl_loss": 0.0,
         }
-        for _ in range(self.config.ppo_epochs):
+        for ppo_epoch in range(self.config.ppo_epochs):
             for batch_idx, mini_batch in enumerate(mini_batches):
+                actor_update_index = dynamic_permutation_actor_update_index(ppo_epoch, batch_idx, len(mini_batches))
                 if self.config.use_dynamic_bsz:
                     max_token_len = self.config.ppo_max_token_len_per_gpu * self.ulysses_sequence_parallel_size
                     micro_batches, _ = prepare_dynamic_batch(
@@ -828,11 +953,31 @@ class DataParallelPPOActor(BasePPOActor):
                         enabled_submodel_kl_indices or track_joint_submodel_losses
                     )
                     model_inputs["submodel_log_prob_grad_indices"] = enabled_submodel_kl_indices
+                    if self.use_weak_logit_permutation:
+                        dynperm_cfg = self.config.weak_logit_permutation
+                        audit_this_step = bool(dynperm_cfg.audit_invariants) and (
+                            global_step % int(dynperm_cfg.audit_frequency) == 0
+                        )
+                        model_inputs["apply_weak_logit_permutation"] = True
+                        model_inputs["dynperm_global_step"] = global_step
+                        model_inputs["dynperm_actor_update_index"] = actor_update_index
+                        model_inputs["dynperm_rho"] = float(dynperm_cfg.rho)
+                        model_inputs["dynperm_base_seed"] = int(dynperm_cfg.seed)
+                        model_inputs["dynperm_row_chunk_size"] = int(dynperm_cfg.row_chunk_size)
+                        model_inputs["dynperm_audit_rows"] = int(dynperm_cfg.audit_rows) if audit_this_step else 0
+                        model_inputs["dynperm_entropy_atol"] = float(dynperm_cfg.entropy_atol)
+                        model_inputs["dynperm_multiset_atol"] = float(dynperm_cfg.multiset_atol)
                     outputs = self._forward_micro_batch(
                         model_inputs, temperature=temperature, calculate_entropy=calculate_entropy
                     )
                     log_prob = outputs["log_probs"]
                     entropy = outputs["entropys"] if calculate_entropy else None
+
+                    dynamic_permutation_telemetry = outputs.get("dynamic_permutation_telemetry")
+                    if dynamic_permutation_telemetry and self.config.weak_logit_permutation.log_telemetry:
+                        for metric_name, metric_value in dynamic_permutation_telemetry.items():
+                            if math.isfinite(float(metric_value)):
+                                micro_batch_metrics[f"jointTraining/{metric_name}"] = metric_value
 
                     # Surface logit disagreement from joint model if available
                     unwrapped = getattr(self.actor_module, "_fsdp_wrapped_module", self.actor_module)

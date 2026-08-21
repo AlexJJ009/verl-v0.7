@@ -1,4 +1,16 @@
-# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Bytedance Ltd. and/or its affiliates
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 """QwenJointForCausalLM: Joint training model with logit fusion.
 
@@ -11,6 +23,7 @@ experiment; it intentionally leaves model1 out of the active objective.
 For evaluation, pass eval_only=True to get only model2's logits.
 """
 
+import time
 from dataclasses import dataclass
 from typing import Optional
 
@@ -22,6 +35,7 @@ from transformers.modeling_outputs import CausalLMOutputWithPast
 from transformers.modeling_utils import PreTrainedModel
 
 from verl.models.joint_model.configuration_joint_qwen3 import QwenJointConfig
+from verl.models.joint_model.dynamic_permutation import target_preserving_dynamic_permutation
 
 
 @dataclass
@@ -29,6 +43,7 @@ class QwenJointCausalLMOutputWithPast(CausalLMOutputWithPast):
     """CausalLM output that explicitly carries per-submodel logits when requested."""
 
     submodel_logits: Optional[tuple[torch.FloatTensor, ...]] = None
+    dynamic_permutation_telemetry: Optional[dict[str, float]] = None
 
 
 class QwenJointForCausalLM(PreTrainedModel, GenerationMixin):
@@ -48,6 +63,7 @@ class QwenJointForCausalLM(PreTrainedModel, GenerationMixin):
         self.fusion_mode = getattr(config, "fusion_mode", "mixture")
         self.last_logit_disagreement: float | None = None
         self.last_logit_diagnostics: dict[str, float] | None = None
+        self.last_dynamic_permutation_telemetry: dict[str, float] | None = None
 
         if config.freeze_model1:
             for param in self.sub_models[0].parameters():
@@ -68,6 +84,8 @@ class QwenJointForCausalLM(PreTrainedModel, GenerationMixin):
         logits_to_keep=0,
         eval_only=False,
         return_submodel_logits=False,
+        apply_weak_logit_permutation=False,
+        weak_logit_permutation_context=None,
         **kwargs,
     ):
         # Support eval_only via model attribute (for HF generate() which can't pass custom kwargs)
@@ -104,6 +122,34 @@ class QwenJointForCausalLM(PreTrainedModel, GenerationMixin):
                 **kwargs,
             )
             outputs_list[submodel_index] = out
+
+        self.last_dynamic_permutation_telemetry = None
+        if apply_weak_logit_permutation:
+            if self.fusion_mode != "mixture":
+                raise ValueError("weak-logit Dynamic Permutation requires fusion_mode='mixture'")
+            if not isinstance(weak_logit_permutation_context, dict):
+                raise ValueError("training-only weak_logit_permutation_context is required")
+            transform_start = time.perf_counter()
+            permuted, telemetry = target_preserving_dynamic_permutation(
+                outputs_list[0].logits,
+                weak_logit_permutation_context["target_ids"],
+                weak_logit_permutation_context["sample_ids"],
+                weak_logit_permutation_context["token_positions"],
+                weak_logit_permutation_context["active_mask"],
+                rho=weak_logit_permutation_context["rho"],
+                base_seed=weak_logit_permutation_context["base_seed"],
+                global_step=weak_logit_permutation_context["global_step"],
+                actor_update_index=weak_logit_permutation_context["actor_update_index"],
+                row_chunk_size=weak_logit_permutation_context["row_chunk_size"],
+                audit_rows=weak_logit_permutation_context["audit_rows"],
+                entropy_atol=weak_logit_permutation_context["entropy_atol"],
+                multiset_atol=weak_logit_permutation_context["multiset_atol"],
+            )
+            outputs_list[0].logits = permuted
+            self.last_dynamic_permutation_telemetry = telemetry.as_metrics()
+            self.last_dynamic_permutation_telemetry["dynperm/transform_host_time_ms"] = (
+                time.perf_counter() - transform_start
+            ) * 1_000.0
 
         lam = self.fusion_lambda
         if self.fusion_mode == "strong_scaled":
@@ -198,6 +244,7 @@ class QwenJointForCausalLM(PreTrainedModel, GenerationMixin):
                 if return_submodel_logits
                 else None
             ),
+            dynamic_permutation_telemetry=self.last_dynamic_permutation_telemetry,
         )
         return result
 
