@@ -30,6 +30,8 @@ def test_shared_joint_launcher_prewarms_remote_code_before_ray_workers() -> None
     trainer_pos = common.index("python3 -m verl.trainer.main_ppo")
     assert refresh_pos < prewarm_pos < trainer_pos
     assert 'type(config).__name__ != "QwenJointConfig"' in common
+    assert 'get_class_from_dynamic_module(model_class_ref, model_path)' in common
+    assert 'model_class.__name__ != "QwenJointForCausalLM"' in common
 
 
 def test_two_variable_dynperm_interface_is_final_in_shared_causal_entry() -> None:
