@@ -1,15 +1,13 @@
 # Qwen3-1.7B On-Policy WDL Mechanism Program
 
-- Status: **ACTIVE RESEARCH DESIGN / DYNPERM 2x4 P60 MATRIX PREPARED** —
-  theory-derived Math-first mechanism matrix. Fixed-Model1 arms are prepared
-  separately. Dynamic Permutation core code was merged into the formal training
-  branch at `8209576c04d89c7d778a249e8458c608f747c764`, with final focused CPU
-  evidence (`114 passed`) and candidate-bound Job 146 8xL40S FSDP engineering
-  smoke `PASS` (`formal_experiment=false`). Formal DynPerm training has not
-  been launched. The approved execution design now crosses Standard C and its
-  fixed-Model1 factorial edge with `rho={0,0.25,0.5,1}` directly to P60 through the shared
-  `DYNPERM_ENABLED` / `DYNPERM_RHO` interface. The manifest remains
-  `launch_allowed=false` and requires a separate candidate-bound P60 receipt.
+- Status: **ACTIVE RESEARCH PROGRAM / DYNPERM PARTIAL MATRIX COMPLETE** —
+  fixed-Model1 and Standard-C `rho={0,0.25,0.5}` P60 trajectories are complete;
+  the two `rho=1` confirmation arms are still running as Jobs 230/231 on
+  2026-08-23. Completed arms passed the intervention invariants, but common
+  offline evaluation is still pending. Here `rho` is the permutation dose;
+  every DynPerm arm retains fusion `lambda=0.8`. The next discriminating
+  intervention is the M3 Align/true-Random/Anti pilot, which is designed but
+  not yet implemented or launch-ready.
 - Created: 2026-08-16
 - Primary method result: `qwen3_1p7b_math_stage123.md`
 - Result attachment: `../../reports/qwen3_1p7b_math_stage123_matrix_results_20260723.md`
@@ -67,9 +65,10 @@ mechanism proof:
   improves from `42.50%` to `67.39%`.
 - C uses Model2-only rollout. Model1's large gain therefore cannot be explained
   by Model1 sampling its own successful trajectories.
-- These are still single-seed online estimates. Common frozen evaluation,
-  paired uncertainty, pass@k/diversity, and replication remain necessary for a
-  publication-level efficacy claim.
+- The common frozen `n=256` evaluation is now complete for A/C/D0/fixed-M1 and
+  the strict-GRPO arms. It confirms C's pass@1 gain but shows that C does not
+  dominate D0 at high `k`; second-training-seed replication remains necessary
+  for a publication-level efficacy claim.
 
 Any useful theory must predict at least the C--D0 gap, the early acceleration of
 C, and the fact that both trainable branches can improve.
@@ -174,6 +173,22 @@ trajectory improves held-out accuracy. Those become empirical hypotheses here.
 These are same-state, per-logit-coordinate ratios. Parameter-gradient and
 optimizer-update amplification additionally depends on each model's Jacobian,
 gradient clipping, optimizer state, and the trajectory distribution.
+
+The boundary is therefore explicit. Gradient analysis can derive exact
+same-state identities, test local direction and scale, expose impossible
+mechanism claims, and preregister telemetry or sign-reversal controls. It cannot
+infer the endpoint of the closed loop
+
+$$
+\theta_t\rightarrow\text{rollouts}\rightarrow\text{verifier-selected targets}
+\rightarrow\text{gradient/optimizer}\rightarrow\theta_{t+1},
+$$
+
+because the rollout distribution, selected examples, clipping, optimizer
+moments, format behavior and both model states change after every update.
+Longitudinal interventions such as DynPerm are stronger evidence than a frozen
+gradient snapshot, but still change several coupled quantities and must be
+followed by geometry-matched controls.
 
 ### 3.3 The defensible self-distillation interpretation is at the data layer
 
@@ -363,13 +378,23 @@ Interpretation:
 Frozen Model1 still requires Model1 forward. It does not establish a no-WM1
 method.
 
+The common `n=256` result is now available. fixed-M1 reaches pass@1 `71.713%`,
+statistically indistinguishable from C's `71.974%` in the 2,000-rep paired audit, and is
+`+2.981 pp` above D0. At pass@128/256, however, fixed-M1 trails C by
+`2.355/2.492 pp`. Thus static weak guidance explains nearly all of the main
+single-sample gain, while joint adaptation may contribute to tail coverage,
+answer diversity/sharpness or stability. This does not support the stronger
+claim that co-adaptation is irrelevant.
+
 ### 6.3 M2: canonical DynPerm
 
 First validate the endpoints:
 
 - `DynPerm-0`: real C;
-- `DynPerm-100`: all non-target weak coordinates permuted independently per
-  token and optimizer step, with deterministic seeds.
+- `DynPerm-100`: all selected non-target weak coordinates are reassigned by a
+  deterministic keyed cyclic rotation per token and optimizer step. This is
+  not an independent uniform random permutation and must not be labeled
+  `RandomPerm`; true keyed random pairing is a separate M3 arm.
 
 Run the frozen dose grid `rho={0,0.25,0.5,1}` directly to P60 for both Standard
 C (Model1 trainable) and the matched fixed-Model1 factorial edge. This is a 2x4
@@ -414,6 +439,25 @@ For fast screening, the historical C run may serve as `rho=0` only after a
 `rho=0` no-op equivalence test proves identical forward, backward, RNG, and
 configuration behavior. Publication confirmation should use a common code
 revision and matched seeds for both endpoints.
+
+As of 2026-08-23, the completed online Math-7 mean@3 endpoints are:
+
+| Model1 update state | rho=0 | rho=0.25 | rho=0.5 | Current interpretation |
+| --- | ---: | ---: | ---: | --- |
+| fixed-M1 | 69.72% | 43.35% | 47.59% | severe degradation despite preserved weak invariants |
+| Standard C | 70.67% | 14.23% | 0.04% | much larger collapse when Model1 also adapts |
+
+For Standard C, the endpoint collapse is dominated by strict-format failure:
+`rho=0.25` retains about `31.3%` raw answer correctness but only `25.7%` format
+success; `rho=0.5` retains about `23.0%` raw answer correctness but format
+success falls to `0.13%`. Across completed arms, requested/realized `rho`
+matches and target, entropy and multiset invariant failures remain zero. These
+facts establish that the real non-target assignment, or the cross-model fusion
+geometry destroyed with it, is important to the adaptive training procedure.
+They do not distinguish semantic token identity from rank affinity, fused
+target probability or gradient strength. Jobs 230/231 (`rho=1`) are provisional
+until terminal receipts and release gates exist; no DynPerm arm yet has common
+offline evaluation.
 
 ### 6.4 M3: directional same-entropy geometry controls
 

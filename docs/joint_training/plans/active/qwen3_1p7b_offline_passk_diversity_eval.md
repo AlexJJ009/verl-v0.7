@@ -1,10 +1,41 @@
 # Qwen3-1.7B 数学与代码 Offline Pass@k / 回答多样性评测方案
 
-- 文档职责：冻结 A/C/D0/GRPO checkpoint 的共同 offline generation、pass@k、回答多样性和多机并行合同
-- 当前状态：核心生成、thinking canary、8×TP1 单机并发、sample-shard 与 exact-coverage merge 代码已准备；scheduler canary、checkpoint manifest 和正式评测未开始
-- 当前修订：2026-08-11
+- 文档职责：冻结 A/C/D0/fixed-M1/GRPO checkpoint 的共同 offline generation、pass@k、回答多样性和多机并行合同
+- 当前状态：Math A/C/D0、fixed-M1 Stage1 P60、strict-scorer Cold/Stage1/C-P60→GRPO 已完成共同 `n=256`；DynPerm offline 与 Code matrix 尚未开始
+- 当前修订：2026-08-23
 - 目标硬件：多台 8 × NVIDIA L40S 46 GB；单机和美团路径均由环境变量覆盖
 - 关联方案：[`qwen3_1p7b_standard_rlvr_grpo_matrix.md`](qwen3_1p7b_standard_rlvr_grpo_matrix.md)
+
+## 0. Math common n=256 结果状态（2026-08-23）
+
+Math 正式入口已在每个 checkpoint 上完成八个 TP=1、每 shard `n=32` 的生成与
+exact-coverage merge。每个 arm 均覆盖 `2,798 prompts / 716,288 responses / n=256`，并使用
+同一组 shard seeds `20260811...20260818`、`temperature=0.6`、`top_p=0.95`、`top_k=20`、
+`min_p=0`、`max_tokens=4096`、`enable_thinking=true` 和同一 strict scorer。
+
+| Arm | pass@1 | pass@128 | pass@256 | maj@256 | 当前判读 |
+| --- | ---: | ---: | ---: | ---: | --- |
+| A P60 | 69.802% | 86.142% | 87.882% | 79.710% | 标准 On-Policy SFT anchor |
+| C P60 | 71.974% | 87.958% | 88.944% | 80.946% | 主 WDL 方法 |
+| D0 P60 | 68.733% | 88.719% | 90.393% | 78.346% | pass@1 较低、high-k coverage 最高 |
+| fixed-M1 Stage1 P60 | 71.713% | 85.604% | 86.452% | 82.330% | 复现 C 的 pass@1，但 high-k 较弱 |
+| Stage1→GRPO effective P200 | 70.682% | 85.235% | 86.037% | 81.717% | 未追平 C |
+| Cold→GRPO P200 | 71.242% | 87.086% | 88.335% | 81.152% | 未追平 C |
+| C-P60→GRPO effective P200 | 72.379% | 87.493% | 88.759% | 81.749% | pass@1 最高，但只比 C 高 0.405 pp |
+
+10,000-rep within-dataset prompt-stratified paired bootstrap 给出：`C-A` pass@1
+`+2.172 pp [1.631, 2.738]`，`C-D0` pass@1 `+3.242 pp [2.239, 4.307]`，但
+`C-D0` pass@256 为 `-1.448 pp [-3.242, -0.045]`。因此 weak-logit treatment 的主要确认结果是
+提高单样本质量，而不是全 `k` 支配；D0 的高预算 oracle coverage 更高。
+
+`C-P60→GRPO - C` 的 pass@1 为 `+0.405 pp [0.172, 0.648]`，pass@128/256 的区间均跨零。
+这支持“小幅 pass@1 refinement”，不支持额外 100 个 GRPO step 带来新的 high-k 能力突破。
+
+fixed-M1 的快速 2,000-rep paired audit 显示，`fixed-C` pass@1 为
+`-0.261 pp [-0.886, 0.348]`，而 pass@128/256 分别为
+`-2.355 pp [-3.746, -1.103]`、`-2.492 pp [-4.631, -0.507]`。正式报告前应按主协议重跑
+10,000-rep，但方向已经说明：冻结 weak guidance 足以解释主要 pass@1 收益，joint adaptation
+仍可能影响 tail coverage、答案锐化和稳定性。
 
 ## 1. 实验目的
 

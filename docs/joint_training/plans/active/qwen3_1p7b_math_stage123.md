@@ -1,12 +1,12 @@
 # Qwen3-1.7B 数学任务：Cold-Start、Stage123 与 WDL-first 实验方案
 
-> 2026-08-18 scorer audit：本文所有历史 Math GRPO 数字均为
-> diagnostic-only；strict-scorer fresh retrain 与共同 offline evaluation
-> 完成前，不得用于正式 WDL-vs-GRPO 排序。
+> 2026-08-23 status：2026-08-18 之前的历史 Math GRPO 数字仍为
+> diagnostic-only；strict-scorer aligned retrain 与共同 `n=256` 已完成，
+> 当前排序与证据边界见结果文档第 15 节。
 
 - 文档职责：只描述实验问题、实验变量、训练流程、评测协议和决策标准
 - 初始设计日期：2026-07-20
-- 当前方案修订：2026-08-13
+- 当前方案修订：2026-08-23
 - 目标硬件：8 × NVIDIA L40S 46 GB
 - 实验结果：[`../../reports/qwen3_1p7b_math_stage123_matrix_results_20260723.md`](../../reports/qwen3_1p7b_math_stage123_matrix_results_20260723.md)
 - 飞书结果文档：[Qwen3-1.7B 数学任务实验结果与分析](https://ocnwds5io8yp.feishu.cn/docx/CFx6dw2YsoFpqzxGl61c2HRNnlh)

@@ -1,11 +1,11 @@
 # Qwen3-1.7B On-Policy SFT Baseline Extension：文献调查与实验方案
 
-> 2026-08-18 scorer audit：下文历史 Math GRPO 比较均为
-> diagnostic-only，因为训练 reward 没有执行 A/C/D0 的结构化答案合同。
+> 2026-08-23 current evidence：2026-08-18 之前的历史 Math GRPO 比较仍为
+> diagnostic-only；strict-scorer aligned retrain 与共同 `n=256` 已完成并单独汇报。
 
 - 文档职责：给当前 1.7B Math-first WDL-SFT 工作补充外部 baseline、机制 ablation 和后续实验队列。
-- 创建日期：2026-08-15；调查结论复核于 2026-08-16
-- 状态：design/report；不代表任何新训练已经启动。
+- 创建日期：2026-08-15；实验状态更新于 2026-08-23
+- 状态：fixed-M1 P60 与 common `n=256` 已完成；strict-GRPO retrain/offline 已完成；DynPerm partial matrix 已完成。
 - 关联方案：
   - `qwen3_1p7b_math_stage123.md`
   - `qwen3_1p7b_code_acd0_p60_beta0.md`
@@ -17,12 +17,37 @@
 
 当前应把 baseline 分成三层，而不是只找“另一个 on-policy SFT 名字”的方法。
 
-1. **主外部 baseline 仍是 canonical GRPO/RLVR**。已有 Math GRPO 设计和部分结果已经说明：GRPO 在约 200 step、更多生成 token 和 GPU-hours 后仍未追平 WDL C 的当前 online endpoint；但最终结论必须等待共同冻结 offline pass@k。
+1. **主外部 baseline 仍是 canonical GRPO/RLVR**。strict-scorer aligned common `n=256` 已确认：Cold P200 和 Stage1 effective P200 都未追平 effective P100 的 WDL C；C+GRPO 只比 C 增加 `0.405 pp` pass@1，未带来 high-k 增益。多 training seed 仍未完成。
 2. **Standard On-Policy SFT continuation A 是最重要的内部 practical baseline**。它几乎就是“当前模型采样、正确样本过滤、正样本 SFT”，直接回答“WDL 是否比同预算 on-policy selected SFT 更有用”。
 3. **GFT 可以做外部 published baseline，但不是首轮最高性价比 baseline**。它已经发表于 ACL 2026 Findings，且有代码；但它混合 expert / teacher distillation / self-sampled responses，并使用 group advantage 与 DCR，和我们的方法在计算结构、teacher 依赖和目标问题上不完全对齐。
 4. **《On-Policy Supervised Fine-Tuning for Efficient Reasoning》截至本调查时只能按 arXiv preprint 处理**。它很适合做 related work / background；实验 A 已覆盖 correctness-filtered selected-CE 这一核心学习形式，但没有复现其 length-efficiency 目标、rollout 数和 aggregation，是否还需 GPU sensitivity 应先由 loss/gradient 等价审计决定。
-5. **fixed-Model1 是当前最该加入的机制 ablation**。底层 `freeze_model1` 和两个 Math-first wrappers 已实现；分别从 CS0 和 Stage1 Model2 起点运行，实验价值高于 IDFT 复现。
-6. **Dynamic Perturbation 不能回答“是否可以去掉 WM1”**。飞书文档中的设计保留 WM1 forward/backward，只打乱 non-target logits 与 token identity 的对应关系；它回答“token-specific weak structure 是否重要”。若要证明 WM1 可被替换，需要另做 synthetic / cached surrogate arms。
+5. **fixed-Model1 已成为 conclusion-changing arm**。它与 C 的 pass@1 近似相同、明显高于 D0，但 high-k coverage 低于 C；静态 guidance 是主要 pass@1 来源，joint adaptation 的剩余作用仍需多 seed 和 geometry controls 判断。
+6. **Dynamic Perturbation 不能回答“是否可以去掉 WM1”**。当前 keyed cyclic DynPerm 保留 WM1 forward/backward；中剂量显著破坏训练，说明真实 assignment 或其绑定 geometry 重要，但还不能归因为 token semantics。下一步应是 Align/true-Random/Anti，而不是直接宣称 semantic dark knowledge。
+
+### 0.1 下一轮两个实验问题必须分开
+
+`lambda` sweep 与 permutation geometry 是两套独立实验，首轮不能交叉成一个大网格。
+
+当前 Qwen3-1.7B Math 没有 `lambda=0.4/0.5` 的正式结果、checkpoint 或 launch-ready
+wrapper；仓库中命中的旧 `lambda=0.5` 属于 4B 或 Code/KodCode，不能复用。A 是 direct
+Model2 On-Policy SFT，不含 fusion `lambda`，因此正确矩阵不是八条新训练，而是共享 A anchor，
+并在每个 `lambda` 下新增 C、D0、fixed-M1 三条，共六条新 run：
+
+| fusion lambda | C | D0 scale control | fixed-M1 |
+| --- | --- | --- | --- |
+| 0.5 | `0.5z1 + 0.5z2` | `0.5z2` | `0.5z1 + 0.5z2`, freeze M1 |
+| 0.4 | `0.6z1 + 0.4z2` | `0.4z2` | `0.6z1 + 0.4z2`, freeze M1 |
+
+若要求同一 code revision，只需额外重跑一次 A，仍是七个 unique arms。所有新 run 必须继承
+causal-P60 的 Model1/Model2 hashes、3,840-row ordered shard、P60、strict scorer、LR、batch/N、
+seed `42`、rollout seed `0`、data seed `20260719`、`shuffle=false`，并使用 lambda-tagged
+run/cache/artifact identity。现有 wrappers hardcode `lambda=0.8`，所以在新增静态配置门禁、
+manifest 和 tests 前不得启动 sweep。
+
+geometry pilot 则固定 `lambda=0.8`，先在 fixed-M1 上比较 `Real/AlignSort/true
+RandomPerm/AntiAlignSort` 的 P20/P30 trajectory 与 affinity、fused target probability、
+gradient telemetry。只有 validity 与预注册方向成立才延长 P60。这样不会把“增加 weak 权重”
+与“改变 non-target assignment”混成一个无法解释的 treatment。
 
 ## 1. 文献调查
 
@@ -119,23 +144,23 @@ GFT 适合作为第二批 external baseline，原因是：
 
 ## 2. Baseline 优先级
 
-### 2.1 第一批：必须跑 / 已在跑
+### 2.1 第一批：已完成的核心 baseline
 
 | Baseline / control | 作用 | 当前状态 | 下一步 |
 | --- | --- | --- | --- |
-| A: Standard On-Policy SFT continuation | practical baseline；同预算正样本 selected SFT | Math / Code 均已进入 A/C/D0 体系 | 等共同冻结 offline pass@k |
-| D0: matched-scale no-weak | weak-logit causal control | Math / Code 均已设计并运行 | 等共同冻结 offline pass@k；Code 已显示强信号 |
-| Stage1 + GRPO | 主外部 RLVR baseline | Math 已有在线进展；Code 正在后台跑 | release gate 后进 offline eval |
-| Cold Start + GRPO | 检验 Stage1 是否必要 | Math 已有在线进展 | 等未完成 arm 和 offline eval |
+| A: Standard On-Policy SFT continuation | practical baseline；同预算正样本 selected SFT | Math P60 + common n=256 complete | 第二 training seed |
+| D0: matched-scale no-weak | weak-logit causal control | Math P60 + common n=256 complete | 第二 training seed；high-k trade-off 已显现 |
+| Stage1 + GRPO | 主外部 RLVR baseline | strict-aligned effective P200 + common n=256 complete | 补 terminal release event 与第二 seed |
+| Cold Start + GRPO | 检验 Stage1 是否必要 | strict-aligned P200 + common n=256 complete | 补 terminal release event 与第二 seed |
 
 ### 2.2 第二批：机制 ablation
 
 | 实验 | 优先级 | 回答的问题 | 推荐范围 |
 | --- | --- | --- | --- |
-| C-fixed-M1-CS0 / C-fixed-M1-S1 | 高 | fixed weak guidance 是否足够、是否依赖 Stage1 起点、还是必须 jointly update WM1 | 先 Math P60；Code 等 Math 方向明确后复用 |
-| Dynamic Perturbation | 中 | weak logits 的 token-specific assignment 是否重要 | 先跑 `rho=0` vs `rho=1`，必要时补 0.25/0.5 |
+| C-fixed-M1-CS0 / C-fixed-M1-S1 | 已完成主 arm | fixed weak guidance 是否足够、是否依赖 Stage1 起点、还是必须 jointly update WM1 | Stage1 P60 + common n=256 已完成；CS0 保留为次要参照 |
+| Dynamic Perturbation | 进行中 | real assignment 或其绑定 geometry 是否重要 | `rho=0/0.25/0.5` 双臂完成；`rho=1` running；之后做 geometry controls |
 | Synthetic / cached surrogate weak logits | 中低 | WM1 是否可被别的结构替代 | 只有 DynPerm 结果提示 token identity 不重要时再做 |
-| beta/lambda grid, KL tricks | 低 | 工程调参 | 基础结论稳定后再做 |
+| fusion-lambda grid | 新增高优先级 | weak coefficient 增大后 static guidance / co-adaptation / scale 如何变化 | 共享 A；每个 lambda 只跑 C/D0/fixed，先实现正式门禁 |
 
 ### 2.3 第三批：外部 published baselines
 
@@ -179,7 +204,7 @@ GFT 适合作为第二批 external baseline，原因是：
 
 ### 3.3 执行合同
 
-第一轮只在 Math 上做两个 P60 arms。二者共享下列训练合同；唯一 treatment 是 `freeze_model1=true`，另一个预注册因素是 Model2 source（CS0 或 Stage1）：
+第一轮 Math P60 已完成。二者共享下列训练合同；唯一 treatment 是 `freeze_model1=true`，另一个预注册因素是 Model2 source（CS0 或 Stage1）：
 
 - model family / size：Qwen3-1.7B；
 - Model1 init：两组都使用现有 CS0 weak source，并保持 frozen；
@@ -208,7 +233,7 @@ GFT 适合作为第二批 external baseline，原因是：
 - common launcher 用 `FREEZE_MODEL1=true` 向 joint preparation 传入 `--freeze_model1`，并对已有 cache 的 config fail closed；
 - `run_math_qwen3_1p7b_wdl_fixed_m1_{cold_start,stage1}.sh` 提供两个独立 run/cache identity。
 
-正式训练 admission 仍必须记录 `freeze_model1=true`、Model1 param hash before/after、Model1 grad norm 为 zero/None、Model2 grad norm 非零，并核对两个 source identities；wrapper 和 config 检查不能替代首步运行 receipt。
+正式运行已经按 admission 记录 `freeze_model1=true`、Model1 param hash before/after、Model1 grad norm 为 zero/None、Model2 grad norm 非零并核对 source identities；Stage1 fixed arm 的 common `n=256` 结果已进入主结论。
 
 ## 4. Dynamic Perturbation 与 WM1 替代问题
 
@@ -233,7 +258,7 @@ Chernoff-affinity telemetry、同熵 directional controls、反向实验和分�
 | `DynPerm-0 ≈ DynPerm-100` | token assignment 证据变弱，weak 的 distributional shape / optimization perturbation 可能足够 | generic sharpening 已被证明；可以去掉 WM1 |
 | `DynPerm-100` 训练不稳 | 置换破坏了某种必要结构，或引入 stochasticity/optimization cost | 不能直接归因于 hard-negative 机制 |
 
-DynPerm 必须显式预注册运行语义。原飞书 estimand 是 `freeze_model1=false` 的 joint 条件，因此首轮主比较是 `C-joint, rho=0` 对 `C-joint, rho=1`。若 frozen-WM1 arm 接近 C-joint，再补 `C-freeze, rho=0/1`，形成下列 2x2：
+DynPerm 已按显式预注册语义运行。由于 fixed-M1 接近 C-joint，正式矩阵直接交叉 joint/frozen 与 `rho={0,0.25,0.5,1}`，不再把 frozen 条件作为事后可选补充：
 
 | WM1 更新条件 | `rho=0` | `rho=1` | 回答的问题 |
 | --- | --- | --- | --- |
@@ -247,12 +272,12 @@ DynPerm 必须显式预注册运行语义。原飞书 estimand 是 `freeze_model
 3. **detached strong-logit perturbation**：用 `stopgrad(z2)` 构造同熵扰动，控制计算便宜，但容易把结论变成 strong self-regularization；
 4. **uniform / Gaussian reference**：只作为粗 reference，不是 same-entropy joint-training control。
 
-推荐顺序：
+当前顺序：
 
-1. 先跑两个 `C-fixed-M1` arms，并分别对齐 C/A/D0；
-2. 若 freeze 仍接近 joint，再跑 `DynPerm-0` vs `DynPerm-100`；
-3. 若 DynPerm-100 仍接近 DynPerm-0，再设计 no-WM1 synthetic surrogate；
-4. 只有 synthetic surrogate 也接近时，才有资格说“WM1 可能可被替代机制替换”。
+1. fixed-M1 Stage1 P60 与 common `n=256` 已完成；
+2. 完成 DynPerm `rho=1` terminal 与 common offline；
+3. 在 `lambda=0.8`、fixed-M1 上做 Align/true-Random/Anti P20/P30 pilot；
+4. 只有 geometry controls 表明低维统计足够时，才设计 no-online-WM1 surrogate。
 
 ## 5. Continual learning future experiment
 
@@ -281,14 +306,13 @@ IDFT 提到的 distribution / OOD / continual-learning 问题可以转化成 WDL
 
 Math-first，全部 1.7B：
 
-1. 完成现有 GRPO Math/Code 的 release gate 与共同冻结 offline pass@k；
-2. 运行 Math `C-fixed-M1-CS0 P60` 与 `C-fixed-M1-S1 P60`；
-3. 将两个 fixed arms 放入同一 n=8 / n=256 eval 合同，分别作 matched-source A/C/D0/GRPO 比较；
-4. 若 freeze 与 joint 的差异小，启动 Dynamic Perturbation `rho=0/1`；
-5. 若 DynPerm-100 仍接近，才进入 synthetic no-WM1 surrogate；
-6. GFT 作为 published external baseline 单独排期，先做 Math minimal reproduction；
-7. OPSFT 先做无 GPU 等价审计；只在发现结论相关差异时补最小 sensitivity arm；
-8. IDFT/continual-learning 留作下一轮机制扩展。
+1. 完成运行中的 DynPerm `rho=1` 与 common offline evaluation；
+2. 实现并验证 fixed-M1 `AlignSort / true RandomPerm / AntiAlignSort` P20/P30 pilot；
+3. 单独实现 fusion `lambda=0.5/0.4` 的 C/D0/fixed 六条 formal wrappers、manifests 与门禁，再启动 sweep；
+4. A 共享现有 matched anchor；若要求同 revision，只额外重跑一次 A；
+5. 第二 training seed 优先复制 C/fixed-M1/D0，估计 optimization uncertainty；
+6. GFT 作为 published external baseline 单独排期；OPSFT 只在等价审计发现结论相关差异时补 sensitivity arm；
+7. IDFT/continual-learning 留作下一轮机制扩展。
 
 ## 7. 论文写法建议
 

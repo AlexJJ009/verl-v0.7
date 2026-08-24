@@ -209,9 +209,11 @@ Key finding from v1: model2 ceiling ≈ 79-80% MATH-500 mean@3 regardless of lr/
 
 Key finding so far: **v2 breaks the v1 online ceiling** (+2.4 pp at step 300 vs M5.5). 1B matches 1A online despite β=0.1 — training-level evidence that v2 contains the reverse SFT instability. Preliminary offline eval on 1A step 225 model2: MATH-500 mean@3 = 83.07% (vs v1 EVAL-10 = 79.6%).
 
-**Current focus**: Run the strict-scorer GRPO retrain and confirmatory extensions
-after the completed Math causal-P60 matrix, then evaluate all admitted checkpoints
-with the common frozen offline contract.
+**Current focus**: The strict-scorer Math GRPO retrain and common `n=256`
+evaluation of A/C/D0/fixed-M1/GRPO are complete. Finish the DynPerm `rho=1`
+confirmation and common offline evaluation, then run the preregistered
+Align/true-Random/Anti geometry pilot. Keep the independent fusion-lambda sweep
+separate; its `lambda=0.4/0.5` wrappers and manifests are not yet launch-ready.
 
 ## Documentation (Archival)
 
@@ -220,6 +222,7 @@ Documentation in `docs/joint_training/` was created during the parent branch's j
 | Directory | Purpose | Status |
 |---|---|---|
 | `specs/` | Technical specs for joint model / logit fusion | ARCHIVAL — infrastructure reference |
+| `specs/dynamic_permutation_mvp.md` | **Target-preserving Dynamic Permutation MVP technical design** — keyed cyclic selected-set transform, deterministic actor identities, telemetry, no-op/freeze/checkpoint boundary, and Delivery evidence status | IMPLEMENTED / FORMAL MATRIX PARTIALLY COMPLETE |
 | `constraints/` | Development rules and boundaries | Still applicable |
 | `constraints/principles/workspace_artifact_hygiene.md` | **Workspace artifact hygiene** — mandatory rules for keeping repo root and `/data-1` clean when agents run tests, dry-runs, generated code, benchmark harnesses, or cleanup work | ACTIVE |
 | `constraints/experiment_tracking/training_script_index_policy.md` | **Training script index policy** — shared rule that every branch keeps its own script index and updates it when runnable training/monitor scripts are created or used | ACTIVE |
@@ -232,9 +235,9 @@ Documentation in `docs/joint_training/` was created during the parent branch's j
 | `plans/active/qwen3_1p7b_code_stage123_plateau_breakthrough.md` | **Qwen3-1.7B Code Stage123 matrix** — corrected matrix produced the beta `0.0/0.1` Stage1 sources, then stopped at Stage1-control admission; no Code Stage2 started, and the remaining matrix is deprioritized for the Math WDL-first causal test | PAUSED / STAGE1 SOURCES COMPLETE |
 | `plans/active/qwen3_1p7b_code_acd0_p60_beta0.md` | **Qwen3-1.7B Code beta=0 A/C/D0 P60** — completed A/C/D0 P60 matrix with native EOS telemetry, Code-3 curves, completion/correctness decomposition, and frozen follow-up requirements for peak-to-overfit, multi-seed, n=256 pass@k, cost, and freeze-Model1 validation | A/C/D0 P60 COMPLETE / CONFIRMATORY EXTENSIONS PLANNED |
 | `plans/active/qwen3_1p7b_stage123_model2_kl_split_stage3.md` | **Qwen3-1.7B Stage123 model2-KL / split-Stage3** — design retained, but old Model1/Stage1 identity is invalid and the manifests fail closed until CoT-v3 retraining and formal admission | ACTIVE DESIGN / LEGACY INPUTS INVALID |
-| `plans/active/qwen3_1p7b_math_stage123.md` | **Qwen3-1.7B Math cold-start / Stage123** — corrected CoT-v3 matrix and causal P60 completed; follow-up freezes matched A/C/D0 peak-to-overfit sweeps, multi-seed replication, common n=256 pass@k, paired uncertainty, cost accounting, and lower-priority freeze-Model1/cross-domain tests | P60 COMPLETE / CONFIRMATORY EXTENSIONS PLANNED |
-| `plans/active/qwen3_1p7b_standard_rlvr_grpo_matrix.md` | **Qwen3-1.7B Standard RLVR / GRPO matrix** — strict-scorer retrain of Math Cold/Stage1/C-P60 and noncanonical Code arms, primary `lr=1e-6`, fresh-run gates, explicit seeds, identity receipts, common n=256 pass@k, multi-seed and cost receipts | STRICT-SCORER RETRAIN LAUNCH SURFACES READY / GPU ADMISSION PENDING |
-| `plans/active/qwen3_1p7b_offline_passk_diversity_eval.md` | **Qwen3-1.7B Offline Pass@k / diversity evaluation** — common Math+Code thinking-enabled evaluation for CS0/S1-P0/A/C/D0/GRPO using the Qwen3-native T=0.6 decoder, pass@1...256, single-node 8×TP1 n32 shards, exact-coverage merge, official code scorers, paired uncertainty, and cost receipts | ACTIVE EVAL DESIGN / 8-GPU ENTRY AND CORE SHARDING PREPARED / SCHEDULER CANARY PENDING |
+| `plans/active/qwen3_1p7b_math_stage123.md` | **Qwen3-1.7B Math cold-start / Stage123** — corrected CoT-v3 matrix and causal P60 completed; common A/C/D0/fixed-M1/GRPO n=256 and paired uncertainty now attached; multi-seed, DynPerm offline and geometry controls remain open | CAUSAL P60 + COMMON N=256 COMPLETE / MECHANISM EXTENSIONS ACTIVE |
+| `plans/active/qwen3_1p7b_standard_rlvr_grpo_matrix.md` | **Qwen3-1.7B Standard RLVR / GRPO matrix** — strict-scorer aligned Math Cold/Stage1/C-P60 retrain and common n=256 are complete; C remains stronger than pure GRPO and C+GRPO adds only small pass@1 refinement; multi-seed and two pure-GRPO terminal gate events remain open | MATH RETRAIN + OFFLINE COMPLETE / MULTI-SEED OPEN |
+| `plans/active/qwen3_1p7b_offline_passk_diversity_eval.md` | **Qwen3-1.7B Offline Pass@k / diversity evaluation** — common Math thinking-enabled evaluation for A/C/D0/fixed-M1/strict-GRPO completed with eight TP1 n32 shards and exact n=256 coverage; DynPerm offline and Code remain open | MATH COMMON N=256 COMPLETE / DYNPERM + CODE OPEN |
 | `plans/active/feishu_cli_experiment_knowledge_sync.md` | **Feishu Research Hub architecture** — private Git-backed submodule for curated Feishu publication, remote-first human edits, recoverable three-way sync, attributable Git history, pre-push/root gates, local CI, and periodic pull | ACTIVE DESIGN / IMPLEMENTATION NOT STARTED |
 | `goals/feishu-research-hub-sync/plan.md` | **Feishu Research Hub Sync Goal** — staged Feature Story contract for repository/submodule bootstrap, Docx/Markdown diff and sync, Git attribution, local CI, deployed runtime, and independent acceptance | INDEPENDENTLY REVIEWED READY / IMPLEMENTATION NOT STARTED |
 | `goals/experiment-execution-core-consolidation/plan.md` | **Experiment execution core consolidation Goal** — generic observer, manifest-owned facts, Python execution state, structured failures, and three-class result authority | ACTIVE |
@@ -245,6 +248,7 @@ Documentation in `docs/joint_training/` was created during the parent branch's j
 | `reports/qwen3_1p7b_math_stage123_matrix_results_20260723.md` | **Qwen3-1.7B Math Stage123 matrix results** — completed 16-run result attachment with every validation step, effective-step curves, data-order analysis, training-dynamics analysis, and updated causal conclusions | ACTIVE RESULT |
 | `plans/completed/deepcoder_stage1_training_execution_plan.md` | **DeepCoder Stage1 training execution plan** — completed/superseded execution contract for the DeepCoder Stage1 batch; preserved for traceability after the DeepCoder data switch was recorded as a negative transfer result | ARCHIVAL |
 | `plans/active/wdl_group_advantage_is_goal.md` | **WDL group-advantage IS implementation contract** — new beta-free loss with group advantages, all-correct positive-SFT fallback, explicit mixed-policy old/current IS, `norm_adv_by_std_in_grpo=false`; excludes rollout IS weights, KL penalty, and length normalization; requires complete Meituan four-layer launch scripts | ACTIVE |
+| `plans/active/qwen3_1p7b_wdl_mechanism_program.md` | **Qwen3-1.7B WDL mechanism program** — fixed-M1 common n=256 and DynPerm rho=0/0.25/0.5 P60 are complete; rho=1 confirmation is running; Align/true-Random/Anti geometry controls are designed but not implemented | DYNPERM PARTIAL MATRIX COMPLETE / GEOMETRY PILOT NEXT |
 | `plans/active/wdl_sft_is.md` | **WDL-SFT v2 (IS-corrected)** — post-fix rerun matrix remains open; historical 1A/1B/1C are pre-fix | ACTIVE |
 | `plans/active/ablation_single_model.md` | **Single-model ablation (2A/B/C + 2Z baseline)** — partially complete; post-fix rows remain open | ACTIVE |
 | `plans/completed/dual_submodel_rollout_wdl_sft.md` | Dual-submodel rollout WDL-SFT — implemented and smoke-passed, but 3A real run failed as method-level negative result | ARCHIVAL |
@@ -308,6 +312,7 @@ Before launching any training, monitoring, checkpoint transfer, or large file op
 - Archived Stage 2 Model2-rollout fused-loss fast validation: `docs/joint_training/plans/completed/stage2_model2_rollout_fused_loss_fast_validation.md`
 - Archived staged v1 On-Policy SFT -> WDL-SFT beta search: `docs/joint_training/plans/completed/on_policy_sft_then_wdl_sft_beta_search.md`
 - WDL group-advantage IS implementation contract: `docs/joint_training/plans/active/wdl_group_advantage_is_goal.md`
+- Dynamic Permutation MVP technical design: `docs/joint_training/specs/dynamic_permutation_mvp.md`
 - **Current focus**: Math causal-P60 plan: `docs/joint_training/plans/active/qwen3_1p7b_math_stage123.md`
 - Archived dual-submodel rollout negative result: `docs/joint_training/plans/completed/dual_submodel_rollout_wdl_sft.md`
 - Dual-submodel 3A failure analysis: `docs/joint_training/plans/completed/dual_submodel_rollout_wdl_sft_3a_failure_analysis.md`

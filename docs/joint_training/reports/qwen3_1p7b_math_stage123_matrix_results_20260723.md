@@ -763,6 +763,70 @@ answer-level sharpening 与长输出风险”，而不是“多样性完全无�
 - joint C 的额外训练/显存/通信成本尚未与 practical gain 一起量化；
 - 两个领域仍不足以建立普适性，其他 reasoning 与 tool-use 是独立外推问题。
 
+## 15. 2026-08-23 共同 offline 与机制实验更新
+
+本节覆盖第 12--14 节中“共同 offline 尚未完成”和“fixed-M1 尚未运行”的旧状态；历史
+online 表与 compute receipt 仍保留原样以便追溯。
+
+### 15.1 Common `n=256` 主结果
+
+七个 arm 均使用同一 Math-7 文件与顺序、strict scorer、thinking-enabled decoder、八个
+TP=1 `n=32` shards、seeds `20260811...20260818`，并通过 `2,798 prompts / 716,288
+responses / n=256` exact coverage。
+
+| Arm | pass@1 | pass@128 | pass@256 | maj@256 |
+| --- | ---: | ---: | ---: | ---: |
+| A P60 | 69.802% | 86.142% | 87.882% | 79.710% |
+| C P60 | 71.974% | 87.958% | 88.944% | 80.946% |
+| D0 P60 | 68.733% | 88.719% | 90.393% | 78.346% |
+| fixed-M1 Stage1 P60 | 71.713% | 85.604% | 86.452% | 82.330% |
+| Stage1→GRPO effective P200 | 70.682% | 85.235% | 86.037% | 81.717% |
+| Cold→GRPO P200 | 71.242% | 87.086% | 88.335% | 81.152% |
+| C-P60→GRPO effective P200 | 72.379% | 87.493% | 88.759% | 81.749% |
+
+10,000-rep paired bootstrap 确认 `C-A` pass@1 `+2.172 pp [1.631, 2.738]`、
+`C-D0` pass@1 `+3.242 pp [2.239, 4.307]`。但 `C-D0` pass@256 为
+`-1.448 pp [-3.242, -0.045]`。因此 C 的确认收益是单样本质量，而不是对 D0 的全 `k`
+支配；D0 保留了更高的 oracle coverage。
+
+fixed-M1 的 2,000-rep paired audit 显示，它与 C 的 pass@1 差 `-0.261 pp [-0.886, 0.348]`，但 pass@128/256 分别低
+`2.355/2.492 pp`。这把机制判断收窄为：固定 weak guidance 足以解释主要 pass@1 收益，
+joint co-adaptation 不是该收益的必要条件，但可能影响 tail coverage、锐化和稳定性。
+
+### 15.2 GRPO 与 WDL 的当前结论
+
+Cold 和 Stage1 两条 pure GRPO 在 effective P200 仍未超过 C effective P100。C 相比 Cold
+的 pass@1/128 分别高 `0.732/0.872 pp`，相比 Stage1 GRPO 的 pass@1/128/256 分别高
+`1.293/2.723/2.908 pp`，paired intervals 均按主报告方向为正。
+
+在 C 后追加 100 个 GRPO step 得到全表最高 pass@1 `72.379%`，但相对 C 只增加
+`0.405 pp [0.172, 0.648]`，pass@128/256 没有显著改善且 truncation 增加。因此它是小幅
+pass@1 refinement，不是新的 high-k 能力突破。C-P60→GRPO 的 gate 已 `ALLOWED`；两条
+pure-GRPO exact run name 尚无 terminal release event，registry/W&B publication 仍为
+`BLOCKED`，不能用本文替代 gate。
+
+### 15.3 DynPerm 对机制判断的新增信息
+
+DynPerm 的 `rho` 是置换剂量，不是 fusion `lambda`；当前所有 DynPerm arm 均固定
+`lambda=0.8`。已完成 `rho=0/0.25/0.5` 的 fixed-M1 与 Standard-C P60，弱 target、entropy、
+value-multiset invariants 均通过。fixed-M1 endpoint 为 `69.72/43.35/47.59%`，Standard C
+为 `70.67/14.23/0.04%`。Standard C 的退化主要伴随 strict-format collapse，说明 adaptive
+Model1 会放大干预引起的闭环不稳定。
+
+这否定“weak entropy/target probability/value spectrum 已足够”的简单机制，但只能说明真实
+assignment 或与其绑定的 cross-model geometry 重要；它没有把 token semantics、rank affinity、
+fused target probability 和 gradient strength 分开。`rho=1` Jobs 230/231 尚在运行，DynPerm
+common offline 也尚未完成。下一步应实现 fixed-M1 上的 Align/true-Random/Anti P20/P30 pilot，
+通过 telemetry ordering 后再决定 P60；RankBinPerm 后置为近似 geometry-matched semantic control。
+
+### 15.4 梯度分析的结论边界
+
+梯度分析可以给出 fixed-state 的精确 PoE/Chernoff 恒等式、局部 logit-gradient 方向与尺度、
+干预 invariants 和 sign-reversal 预测；它也可以排除与公式矛盾的无条件解释。但它不能从单个
+batch 或 checkpoint 推断长期 endpoint。on-policy 训练每步都会改变 rollout、verifier-selected
+targets、format trajectory、clipping、optimizer moments 和两模型状态。因而最终机制证据必须来自
+有预注册方向的纵向干预与 matched controls，不能只用局部梯度图替代因果实验。
+
 ## 附录 A：Math 训练计算预算审计
 
 ### A.1 同行通常如何定义训练预算

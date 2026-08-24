@@ -5,7 +5,7 @@
 - 文档类型：机制调研与实验设计沉淀
 - 创建日期：2026-08-16
 - 适用范围：Qwen3-1.7B、Math-first、`beta=0` 的 On-Policy WDL-SFT 主实验
-- 当前状态：理论框架与第一批实验合同已冻结；Dynamic Permutation MVP、fixed-Model1/Standard-C P60 启动入口及工程验证已经实现。正式训练状态与结果由独立运行凭据记录，本文不把“已实现/已提交”写成“实验已完成”。
+- 当前状态：共同 `n=256` 已覆盖 A/C/D0/fixed-M1/strict-GRPO；DynPerm `rho=0/0.25/0.5` 双臂 P60 已完成，`rho=1` Jobs 230/231 仍在运行。本文只把有 terminal evidence 的 arm 写为完成，并把 `rho`（置换剂量）与 `lambda`（融合权重，当前固定 `0.8`）严格分开。
 - 相关方法论文：[Weak-Driven Learning: How Weak Agents Make Strong Agents Stronger](https://arxiv.org/abs/2602.08222)
 - 原始同熵实验草案：[动态同熵 Weak-Structure Ablation](https://ocnwds5io8yp.feishu.cn/docx/NEIvdnwU0o0vszxi2wycfcTHnjd)
 - 审稿记录：[OpenReview](https://openreview.net/forum?id=WAqz1qihuI)
@@ -40,10 +40,10 @@
 
 | 层级 | 当前可以说 | 当前不能说 |
 | --- | --- | --- |
-| 已观察 | C-A 与 C-D0 在单 seed、online `n=3` 下都出现初步正向差距；C 中两模型都提升 | 已经得到 publication-level efficacy 或 causality |
+| 已观察 | common `n=256` 确认 C 的 pass@1 高于 A/D0；fixed-M1 复现主要 pass@1 增益；DynPerm 中剂量严重退化 | 第二 training seed 已确认；DynPerm 已区分 semantics 与 geometry |
 | 已推导 | fused logits 严格对应 geometric PoE；成功轨迹监督项具有 verifier-gated hard self-training 解释 | PoE 保证 endpoint 更好；Model1 是标准 teacher |
 | 工作假设 | WM1 通过 fused distribution 改变局部梯度几何，并与 Model2 共同适应 | scalar、rank、token semantics 和 trajectory 各自贡献已经确定 |
-| 待验证 | fixed-M1、DynPerm、geometry matching、controller、reverse 和 same-rollout 2x2 | 机制已经被证实；online WM1 已可去掉 |
+| 待验证 | DynPerm `rho=1` terminal、共同 offline、Align/Random/Anti、controller、reverse 和 same-rollout 2x2 | 机制已经被证实；online WM1 已可去掉 |
 
 ### 0.2 本文使用的实验缩写
 
@@ -1113,6 +1113,48 @@ DynPerm 仍然执行 WM1 forward，仍然从 WM1 产生 values，也仍然把梯
 | partial permutation 非单调 | 可能存在最佳扰动强度或多种机制竞争 | 理论被简单否定；先检查干预有效性与 optimizer 行为 |
 
 这里必须使用等价性界限，而不是把“不显著”当作“相同”。如果要说 `real≈perm`，需要预先规定允许的 effect-size margin、paired interval 和 seed-level consistency。
+
+### 8.10 2026-08-23：第一批结果把问题缩小到了 assignment/geometry
+
+共同 `n=256` 先改变了 fixed-M1 的判断。fixed-M1 pass@1 为 `71.713%`，在
+2,000-rep paired audit 中与 C 的 `71.974%` 没有可分辨差异，且高于 D0 的 `68.733%`；但 fixed-M1 在
+pass@128/256 上比 C 低 `2.355/2.492 pp`。因此，固定 weak guidance 足以解释主要
+pass@1 收益，但不能据此说 Model1 的更新没有作用；joint adaptation 仍可能影响 tail
+coverage、答案锐化或训练稳定性。
+
+DynPerm 已完成 `rho=0/0.25/0.5` 的 fixed-M1 与 Standard-C 两条 P60 曲线。当前 MVP
+是 keyed cyclic reassignment，不是 uniform `RandomPerm`；所有 arm 的 fusion
+`lambda` 均固定为 `0.8`。endpoint Math-7 mean@3 如下：
+
+| Arm | rho=0 | rho=0.25 | rho=0.5 |
+| --- | ---: | ---: | ---: |
+| fixed-M1 | 69.72% | 43.35% | 47.59% |
+| Standard C | 70.67% | 14.23% | 0.04% |
+
+干预有效性计数保持干净：target、weak entropy 和 value multiset 没有观测到 invariant
+failure。Standard C 的退化主要伴随严格格式崩塌，且明显大于 fixed-M1。这排除了“只要保留
+weak entropy/target probability/value spectrum 就足够”的 H1 版本，并说明真实 assignment
+或它所绑定的 cross-model fusion geometry 对闭环训练很重要。它仍不能证明 token-specific
+semantic dark knowledge，因为 DynPerm 同时改变 affinity、fused target probability、Model2
+gradient 和后续 rollout trajectory。
+
+`rho=1` Jobs 230/231 仍在运行，本文不预写 terminal 结论；DynPerm common offline 也尚未
+完成。下一步不是再把 cyclic dose 曲线换个名字重复跑，而是在 fixed-M1 上实现同 revision
+的 `AlignSort / true RandomPerm / AntiAlignSort` P20/P30 pilot，再由 telemetry 与 endpoint
+是否共同呈现预注册方向决定是否延长 P60。`RankBinPerm` 是后续近似 geometry-matched 的
+semantic residual control。
+
+梯度分析在这里仍然有用，但它的职责应收窄：它能给出 fixed-state 的精确恒等式、局部方向与
+尺度、干预 validity 和 sign-reversal 预测；它不能从单个 batch 或 checkpoint 推出多步 endpoint。
+真实训练是
+
+$$
+\theta_t\rightarrow\text{rollout}\rightarrow\text{verifier selection}
+\rightarrow\text{gradient/optimizer}\rightarrow\theta_{t+1},
+$$
+
+每一步都会改变后续数据、格式、clipping、optimizer moments 和两模型状态。DynPerm 是对整个
+闭环的纵向干预，比静态梯度快照更强，但仍需 geometry-matched controls 才能完成归因。
 
 ---
 

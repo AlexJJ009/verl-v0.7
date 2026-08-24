@@ -1,8 +1,8 @@
 # Qwen3-1.7B 数学与代码 Standard RLVR / GRPO 对比实验方案
 
 - 文档职责：冻结 Standard On-Policy SFT、WDL 与 canonical GRPO 的对比问题、训练预算、公平性和评测协议
-- 当前状态：2026-08-18 scorer 审计撤回旧 Math GRPO 的正式公平 baseline 资格；Math 三条 pipeline 必须从原始初始化用 strict scorer 重训；Code Job 38 因 canonical 配置漂移也需重训，Code Jobs 43/63 保留为独立诊断/有效 arm
-- 当前修订：2026-08-18
+- 当前状态：Math 三条 strict-scorer aligned pipeline 已完成训练和共同 `n=256` offline eval；C 优于 pure GRPO，C+GRPO 仅带来小幅 pass@1 refinement；Cold/Stage1 两条 pure-GRPO terminal release events 仍需补齐
+- 当前修订：2026-08-23
 - 目标硬件：本地 8 × NVIDIA L40S 46 GB；训练入口必须同时支持美团 AFO
 - 关联方案：[`qwen3_1p7b_math_stage123.md`](qwen3_1p7b_math_stage123.md)、[`qwen3_1p7b_code_acd0_p60_beta0.md`](qwen3_1p7b_code_acd0_p60_beta0.md)
 
@@ -306,6 +306,34 @@ P60 恢复时得到 `60 // 98 = 0`，循环仍允许两个 epoch，最终由 har
    `docs/joint_training/reports/data/qwen3_1p7b_math_grpo_wdl_budget_estimate.csv`
    作为第一版 GPU-hours、train/validation generated tokens、rollout/old/reference forward 与训练 FLOPs
    receipt；严格结论还需要 GRPO 更长 saturation、共同冻结 offline evaluation 和多 seed。
+
+### 7.3 strict-scorer 重训与共同 n=256 结果（2026-08-23）
+
+本节是当前 Math GRPO 的主结果；上一节 Job 68/72/73/74 只保留为旧 scorer 和 resume
+bookkeeping 的历史诊断。aligned retrain 固定 scorer、seed `42`、rollout seed `0`、Math data seed
+`20260719`、数据顺序、batch/N、LR、KL/clip 和 fresh-run contract，并完成三条 pipeline：
+
+| Arm | 训练终点 | offline pass@1 | pass@128 | pass@256 | maj@256 |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Stage1→GRPO | local P160 / effective P200 | 70.682% | 85.235% | 86.037% | 81.717% |
+| Cold→GRPO | P200 | 71.242% | 87.086% | 88.335% | 81.152% |
+| C-P60→GRPO | local P100 / effective P200 | 72.379% | 87.493% | 88.759% | 81.749% |
+| WDL C anchor | post-Stage1 P60 / effective P100 | 71.974% | 87.958% | 88.944% | 80.946% |
+
+`C-Cold→GRPO` 的 paired delta 为 pass@1 `+0.732 pp [0.322, 1.122]`、pass@128
+`+0.872 pp [0.310, 1.578]`，pass@256 区间跨零。`C-Stage1→GRPO` 在 pass@1/128/256 上分别为
+`+1.293/+2.723/+2.908 pp`，三个区间均为正。由此，在当前 training seed 下，pure canonical
+GRPO 即使扩展到 effective P200 仍未追平 effective P100 的 C。
+
+`C-P60→GRPO - C` 的 pass@1 为 `+0.405 pp [0.172, 0.648]`，但 pass@128/256 为
+`-0.465/-0.185 pp` 且区间跨零；其 truncation 也由 C 的 17.750% 上升到 19.135%。因此 hybrid
+是当前最高 pass@1 路径，但科学表述应限定为“额外 100 个 GRPO step 带来小幅 pass@1
+refinement”，不能写成新的 high-k 能力突破或无条件质量提升。
+
+三条 offline merge 均通过 `2,798 prompts / 716,288 responses / n=256` exact coverage。
+C-P60→GRPO 的 training release gate 已为 `ALLOWED`；Cold/Stage1 两条训练虽 exit 0 且 offline
+产物完整，但 exact run name 尚无 terminal release event，写入 registry/W&B 前仍为 `BLOCKED`。
+这不影响其作为 source-backed local diagnostic 的比较，但正式发布必须先修复 gate，而不能由本文代替。
 
 ### 7.4 第一版 compute receipt（2026-08-14）
 
