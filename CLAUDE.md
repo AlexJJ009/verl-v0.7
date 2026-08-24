@@ -151,7 +151,9 @@ Key finding so far: **v2 breaks the v1 online ceiling** (+2.4 pp at step 300 vs 
 evaluation of A/C/D0/fixed-M1/GRPO are complete. Finish the DynPerm `rho=1`
 confirmation and common offline evaluation, then run the preregistered
 Align/true-Random/Anti geometry pilot. Keep the independent fusion-lambda sweep
-separate; its `lambda=0.4/0.5` wrappers and manifests are not yet launch-ready.
+separate; its C-only `lambda=0.4/0.5` wrappers/manifests are launch-ready and
+formal P60 Jobs 232/233 were submitted on 2026-08-23, while D0/fixed-M1 controls
+remain deferred.
 
 ## Documentation (Archival)
 
