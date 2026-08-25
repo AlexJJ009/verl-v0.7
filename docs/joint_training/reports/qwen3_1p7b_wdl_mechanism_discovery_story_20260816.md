@@ -5,7 +5,7 @@
 - 文档类型：机制调研与实验设计沉淀
 - 创建日期：2026-08-16
 - 适用范围：Qwen3-1.7B、Math-first、`beta=0` 的 On-Policy WDL-SFT 主实验
-- 当前状态：共同 `n=256` 已覆盖 A/C/D0/fixed-M1/strict-GRPO；DynPerm `rho=0/0.25/0.5` 双臂 P60 已完成，`rho=1` Jobs 230/231 仍在运行。本文只把有 terminal evidence 的 arm 写为完成，并把 `rho`（置换剂量）与 `lambda`（融合权重，当前固定 `0.8`）严格分开。
+- 当前状态：共同 `n=256` 已覆盖历史 A、C、D0、fixed-M1 与 strict-GRPO；历史 A 的 scorer 未与其余 arm 对齐，strict-A 重跑仍待完成。DynPerm `rho=0/0.25/0.5` 双臂 P60 已完成；`rho=1` Standard-C（Job 231）正常完成，fixed-M1（Job 230）失败，完整双臂端点仍未闭合。fusion `lambda=0.4/0.5` 的 C reconnaissance 已完成，matched D0/fixed-M1 controls 正在补齐。本文只把有 terminal evidence 的 arm 写为完成，并把 `rho`（置换剂量）与 `lambda`（融合权重）严格分开。
 - 相关方法论文：[Weak-Driven Learning: How Weak Agents Make Strong Agents Stronger](https://arxiv.org/abs/2602.08222)
 - 原始同熵实验草案：[动态同熵 Weak-Structure Ablation](https://ocnwds5io8yp.feishu.cn/docx/NEIvdnwU0o0vszxi2wycfcTHnjd)
 - 审稿记录：[OpenReview](https://openreview.net/forum?id=WAqz1qihuI)
@@ -40,10 +40,10 @@
 
 | 层级 | 当前可以说 | 当前不能说 |
 | --- | --- | --- |
-| 已观察 | common `n=256` 确认 C 的 pass@1 高于 A/D0；fixed-M1 复现主要 pass@1 增益；DynPerm 中剂量严重退化 | 第二 training seed 已确认；DynPerm 已区分 semantics 与 geometry |
+| 已观察 | common `n=256` 确认 C 的 pass@1 高于 D0；fixed-M1 复现主要 pass@1 增益；DynPerm 中剂量严重退化 | 历史 A 已形成 strict matched comparison；第二 training seed 已确认；DynPerm 已区分 semantics 与 geometry |
 | 已推导 | fused logits 严格对应 geometric PoE；成功轨迹监督项具有 verifier-gated hard self-training 解释 | PoE 保证 endpoint 更好；Model1 是标准 teacher |
 | 工作假设 | WM1 通过 fused distribution 改变局部梯度几何，并与 Model2 共同适应 | scalar、rank、token semantics 和 trajectory 各自贡献已经确定 |
-| 待验证 | DynPerm `rho=1` terminal、共同 offline、Align/Random/Anti、controller、reverse 和 same-rollout 2x2 | 机制已经被证实；online WM1 已可去掉 |
+| 待验证 | fixed-M1 `rho=1` terminal、DynPerm 共同 offline、strict-A、lambda matched controls、Align/Random/Anti、controller、reverse 和 same-rollout 2x2 | 机制已经被证实；online WM1 已可去掉 |
 
 ### 0.2 本文使用的实验缩写
 
@@ -78,13 +78,13 @@
 
 这迫使我们把问题重新收窄：不再问“Stage123 是否整体有效”，而是问：在同一个 Model2 起点、同一批 post-Stage1 prompts、同样的 60-step 预算和同样的 Model2-only rollout 机制下，仅仅让 weak logits 进入 fused training objective，是否仍然带来增益？这里的“机制相同”不表示两条 run 共享实际 trajectories；首个不同 update 之后，两个 Model2 proposer 及其后续采样就会分叉。
 
-### 1.2 A/C 建立方法增益，C/D0 再缩小机制入口
+### 1.2 历史 A 提供诊断锚点，C/D0 再缩小机制入口
 
-strict scorer 修复后，我们重新构造了 post-Stage1 的 A/B/C/D0 对比：
+post-Stage1 的 A/B/C/D0 对比给出了第一批方法信号；后续审计发现历史 A 使用 permissive scorer，未与 strict C/D0 完全对齐，因此 A 只能保留为诊断锚点，正式方法比较必须等待 strict-A 重跑。C/D0 使用共同 strict scorer，仍可用于隔离 weak-logit contribution：
 
 | Arm | 训练方式 | P60 Math-7 mean@3 | Exact pass@3 | 在故事中的角色 |
 | --- | --- | ---: | ---: | --- |
-| A | Standard On-Policy SFT continuation | 66.352% | 74.621% | 最直接的 practical selected-SFT baseline |
+| A | Standard On-Policy SFT continuation | 66.352% | 74.621% | 历史 permissive-scorer 诊断锚点；等待 strict 重跑 |
 | B | WDL20 后转为 Stage3 Model2-only 40 steps | 68.530% | 76.239% | legacy staged/allocation baseline |
 | D0 | matched-scale no-weak，`0.8 z2` | 67.394% | 75.323% | 隔离 scale 与 weak-logit contribution 的内部 control |
 | C | continuous WDL，`0.2 z1 + 0.8 z2` | **70.802%** | **77.407%** | 当前主方法候选 |
@@ -1138,8 +1138,9 @@ weak entropy/target probability/value spectrum 就足够”的 H1 版本，并�
 semantic dark knowledge，因为 DynPerm 同时改变 affinity、fused target probability、Model2
 gradient 和后续 rollout trajectory。
 
-`rho=1` Jobs 230/231 仍在运行，本文不预写 terminal 结论；DynPerm common offline 也尚未
-完成。下一步不是再把 cyclic dose 曲线换个名字重复跑，而是在 fixed-M1 上实现同 revision
+`rho=1` 的 terminal evidence 已分化：Standard-C Job 231 正常完成，fixed-M1 Job 230
+退出码 1。因而完整双臂端点与 DynPerm common offline 仍未闭合，不能用单臂结果替代主比较。
+下一步不是再把 cyclic dose 曲线换个名字重复跑，而是在 fixed-M1 上实现同 revision
 的 `AlignSort / true RandomPerm / AntiAlignSort` P20/P30 pilot，再由 telemetry 与 endpoint
 是否共同呈现预注册方向决定是否延长 P60。`RankBinPerm` 是后续近似 geometry-matched 的
 semantic residual control。
@@ -1896,20 +1897,112 @@ $$
 
 ---
 
-## 附录 C：本地证据与实现锚点
+## 附录 C：实验事实、结果与单一真相源
 
-- 当前机制总方案：`docs/joint_training/plans/active/qwen3_1p7b_wdl_mechanism_program.md`
-- On-Policy SFT baseline 调研：`docs/joint_training/plans/active/qwen3_1p7b_on_policy_sft_baseline_extension.md`
-- Math Stage123 / A-B-C-D0 结果：`docs/joint_training/reports/qwen3_1p7b_math_stage123_matrix_results_20260723.md`
-- Math 主实验计划：`docs/joint_training/plans/active/qwen3_1p7b_math_stage123.md`
-- fused logits 实现：`verl/models/joint_model/modeling_joint_qwen3.py`
-- WDL loss 实现：`verl/trainer/ppo/core_algos.py`
-- fixed-M1 测试：`tests/on_policy_wdl_sft/test_math_wdl_fixed_m1_p60.py`（代码已准备；无正式 run receipt）
-- Dynamic Entropy-Matched Weak-Structure Ablation 飞书原方案：`NEIvdnwU0o0vszxi2wycfcTHnjd`
+本附录直接展示支撑本文机制判断的实验合同、观测结果和结论边界。读者不需要访问本地仓库或服务器即可理解主要证据。
 
-这些路径记录的是本文创建时的证据位置。实验状态会继续变化；任何“已运行”“已完成”或“已发布”的判断，都应以当时的 scheduler、container/GPU、日志、checkpoint、raw evaluation 和 release-gate 凭据重新核验。
+### C.1 共同实验合同与比较对象
 
----
+Math 主实验使用 Qwen3-1.7B。Model1 来自 Math cold-start SFT step 20；Model2 从同一节点继续完成 40 step Standard On-Policy SFT。随后各 arm 在相同有序 3,840 prompts、相同 seed、rollout source、batch size、每 prompt 采样数和 P60 post-Stage1 预算下分叉。
+
+| Arm | 训练目标与更新状态 | 回答的问题 |
+|-|-|-|
+| A | Model2 单模型继续 selected positive CE | 同预算 Standard On-Policy SFT baseline |
+| C | `0.2z1 + 0.8z2`，Model1/Model2 联合更新 | 完整 weak-logit treatment |
+| D0 | `0.8z2`，Model1 冻结 | 匹配 strong-logit scale 的 no-weak control |
+| fixed-M1 | `0.2z1 + 0.8z2`，Model1 冻结 | 静态 weak guidance 是否足够 |
+| Standard GRPO | 单 actor、strict scorer、P200 | 外部 RLVR baseline |
+| C→GRPO | Stage1 P40 + C P60 + GRPO P100 | WDL 后继续 RLVR 是否还有增益 |
+
+**Scorer 勘误：**历史 A 使用 permissive scorer，没有与 strict C/D0/fixed-M1 完全对齐。因此历史 A 数值只保留为诊断锚点；任何正式 C-A 方法比较都必须等待 strict-scorer A 重跑及共同 offline evaluation。C-D0、C-fixed-M1 和 strict-GRPO 比较不经过 A，不因该勘误自动失效。
+
+### C.2 Online validation：两个子模型怎样变化
+
+以下为 strict scorer、Math-7、每题 n=3 的在线轨迹摘要。C 与 D0 从相同 Stage1 source 启动，P0 到 P60 每 5 step 评测。
+
+| Arm / view | P0 | P60 | 变化 | 最佳点 | format success P0→P60 |
+|-|-|-|-|-|-|
+| C Model1 | 39.02% | 71.04% | +32.02 pp | P60 71.04% | 89.83%→95.21% |
+| C Model2 | 42.61% | 70.80% | +28.20 pp | P55 71.16% | 92.39%→95.58% |
+| D0 Model1（冻结诊断） | 38.80% | 38.77% | -0.03 pp | P10 39.39% | 89.82%→90.16% |
+| D0 Model2 | 42.50% | 67.39% | +24.90 pp | P50 67.86% | 92.74%→96.57% |
+
+C 中 Model1 从较弱初始化追平 Model2，且能力增益远大于格式改善，说明现象不能简化为格式修复。由于 rollout 由 Model2 生成，它更符合 verifier-filtered Model2 trajectory 驱动的共同学习；但单 seed、online n=3 不能证明双模型已经获得相同知识，也不能单独证明长期 co-adaptation 是必要机制。
+
+### C.3 Common n=256 offline evaluation
+
+共同 offline evaluation 使用完全相同的 Math-7 文件与顺序、strict scorer、thinking-enabled decoder、temperature 0.6、top-p 0.95、top-k 20、max tokens 4096、八个 TP=1 n=32 shards 和 seeds 20260811 至 20260818。每个 arm 覆盖 2,798 prompts、716,288 responses、每题 n=256。
+
+| Arm | pass@1 | pass@128 | pass@256 | maj@256 |
+|-|-|-|-|-|
+| A P60（历史 scorer，仅诊断） | 69.802% | 86.142% | 87.882% | 79.710% |
+| C P60 | 71.974% | 87.958% | 88.944% | 80.946% |
+| D0 P60 | 68.733% | 88.719% | 90.393% | 78.346% |
+| fixed-M1 Stage1 P60 | 71.713% | 85.604% | 86.452% | 82.330% |
+| Stage1→GRPO effective P200 | 70.682% | 85.235% | 86.037% | 81.717% |
+| Cold→GRPO P200 | 71.242% | 87.086% | 88.335% | 81.152% |
+| C-P60→GRPO effective P200 | 72.379% | 87.493% | 88.759% | 81.749% |
+
+10,000 次 paired bootstrap 给出 C-D0 pass@1 差值 +3.242 pp，95% CI [2.239, 4.307]；但 C-D0 pass@256 为 -1.448 pp，95% CI [-3.242, -0.045]。因此 C 的确认收益主要是单样本质量，不是对 D0 的全 k 支配，D0 反而保留更高 oracle coverage。
+
+fixed-M1 与 C 的 pass@1 只差 -0.261 pp，95% CI [-0.886, 0.348]，但 pass@128/256 分别低 2.355/2.492 pp。当前最稳妥的结论是：固定 weak guidance 足以解释主要 pass@1 收益；joint co-adaptation 不是该收益的必要条件，但可能影响 tail coverage、答案锐化或稳定性。fixed-M1 仍需要 Model1 forward，不能据此声称已经去掉 weak model。
+
+### C.4 GRPO、后续训练与预算含义
+
+纯 GRPO 的 Cold P200 和 Stage1 effective P200 在共同 offline evaluation 中都没有超过 effective P100 的 C。C 相比 Cold 的 pass@1 高 0.732 pp，相比 Stage1 GRPO 高 1.293 pp。这里的 effective P100 指共享 Stage1 P40 后继续 C P60；不是额外再训练 100 个 C step。
+
+在 C 后追加 100 个 GRPO step 得到最高 pass@1 72.379%，相对 C 增加 0.405 pp，95% CI [0.172, 0.648]；pass@128/256 没有显著改善且 truncation 增加。因此它是小幅 pass@1 refinement，不是新的 high-k 能力突破。该比较同时说明：只按 optimizer steps 比较会隐藏 rollout、old-policy、reference/KL、双模型 forward/backward 和 validation 的成本差异，训练预算必须分账报告。
+
+### C.5 Dynamic Permutation：现象与识别边界
+
+DynPerm 的 `rho` 是 non-target 置换剂量，不是 fusion `lambda`；当前 DynPerm arm 都固定 lambda=0.8。实现保留 weak target coordinate、weak entropy 和 weak value multiset，并保留双分支梯度路径；但它不保留 fused entropy、cross-model affinity、fused target probability 或 Model2 gradient magnitude。当前 MVP 使用 deterministic keyed cyclic reassignment，不是真正的 uniform RandomPerm。
+
+| Model1 状态 | rho=0 | rho=0.25 | rho=0.5 | 当前结果 |
+|-|-|-|-|-|
+| fixed-M1 | 69.72% | 43.35% | 47.59% | 保留 weak invariants 后仍严重退化 |
+| Standard C | 70.67% | 14.23% | 0.04% | Model1 可适应时闭环坍塌更强 |
+
+Standard C 的退化主要伴随 strict-format collapse：rho=0.25 的 raw answer correctness 仍约 31.3%，format success 只有 25.7%；rho=0.5 的 raw answer correctness 约 23.0%，format success 降至 0.13%。所有已完成中剂量 arm 的 requested/realized rho、target、entropy 和 multiset invariant 检查均通过。
+
+这排除了“weak entropy、target probability 和 value spectrum 已经足够”的简单解释，但只能说明真实 assignment 或与其绑定的 cross-model fusion geometry 对闭环训练重要；不能直接归因于 semantic dark knowledge。rho=1 的 terminal evidence 为：Standard-C Job 231 退出码 0；fixed-M1 Job 230 退出码 1，仍需恢复或重跑，因此完整 rho=1 双臂矩阵尚未完成。下一步必须使用 AlignSort、true RandomPerm、AntiAlignSort 和后续 RankBinPerm 逐层分离 rank geometry 与 token-specific residual。
+
+### C.6 Fusion lambda sweep：更早达峰，但稳定窗口缩短
+
+训练 logits 为 `(1-lambda)z1 + lambda z2`。降低 lambda 会增加 Model1 权重，同时改变 fused probability、两个分支梯度比例和后续 on-policy trajectory。Jobs 232/233 为 strict scorer、single-seed online reconnaissance；尚不能替代共同 offline evaluation。
+
+| lambda | 模型 | P40 | P45 | P50 | P55 | P60 |
+|-|-|-|-|-|-|-|
+| 0.4 | Model1 | 70.258% | 69.877% | 70.396% | 68.126% | 47.870% |
+| 0.4 | Model2 | 65.911% | 69.528% | 70.120% | 27.989% | 0.000% |
+| 0.5 | Model1 | 69.003% | 69.392% | 71.383% | 70.689% | 67.655% |
+| 0.5 | Model2 | 67.667% | 68.701% | 70.868% | 70.867% | 49.430% |
+| 0.8 | Model1 | 68.373% | 69.382% | 69.713% | 69.553% | 71.041% |
+| 0.8 | Model2 | 69.956% | 68.852% | 70.244% | 71.159% | 70.802% |
+
+lambda=0.4/0.5 的 Model2 都在 P50 达峰，lambda=0.8 在 P55 达峰；Model1 的提升也同步提前，因此不是 Model2 独立发生的普通早停。但峰值接近且 online 仅 n=3：lambda=0.5 P50 仍比 lambda=0.8 全程最佳低 0.291 pp，不能声称更低 lambda 提高了真实上限。
+
+失稳证据更加明确：lambda=0.4 在 P55 的 Model1/Model2 grad norm 增至 107.11/174.75，P60 Model2 extraction failure 达 81.35%；lambda=0.5 P60 grad norm 为 64.50/147.90，Model2 降至 49.430%，但 extraction failure 只有 6.25%。这说明低 lambda 会缩短稳定窗口，但 lambda=0.4 和 0.5 的失败形态并不相同。必须用 fixed-M1、D0 scale control、gradient-normalized control、共同 n=256 和第二 training seed 才能区分 adaptive feedback、scale/temperature 与有效梯度幅度。
+
+### C.7 梯度分析能够和不能够证明什么
+
+在固定 state、固定 teacher-forced tokens 下，梯度分析可以精确给出 Product-of-Experts / Chernoff 恒等式、目标与 non-target logit gradient 的方向和尺度、干预 invariants，以及 Align/Anti 等控制应产生的 telemetry 顺序。它能排除与公式矛盾的无条件解释，也能帮助设计可证伪实验。
+
+它不能从单个 batch、checkpoint 或局部梯度图推断长期 endpoint。On-policy 训练的每一步都会改变下一步 rollout、verifier-selected targets、format trajectory、clipping、optimizer moments 和两个模型本身。因此“局部梯度方向合理”不等于“长期机制已被证明”；最终因果证据必须来自预注册的纵向干预、matched controls、共同 offline evaluation 和多 training seed。
+
+### C.8 当前可以写入与不能写入的结论
+
+- 可以写：在当前 strict、matched、single-seed Math 合同下，C 相对 D0 提升 pass@1；固定 weak guidance 足以解释主要 pass@1 增益。
+- 可以写：pure GRPO P200 未超过 C effective P100；C 后续 GRPO 只带来小幅 pass@1 refinement。
+- 可以写：DynPerm 中剂量严重退化，说明真实 assignment 或被同时破坏的 fusion geometry 对闭环训练重要。
+- 不能写：历史 A 已严格证明 C 优于 Standard On-Policy SFT；历史 A scorer 未对齐。
+- 不能写：DynPerm 已证明 semantic dark knowledge，或已经证明可以去掉 Model1。
+- 不能写：局部梯度分析已经解释长期训练终点，或 lambda=0.4/0.5 已找到更高性能配置。
+
+### C.9 单一真相源与发布原则
+
+本 Markdown 是该机制文档的版本化单一真相源；飞书文档是面向读者的完整发布副本。两侧都必须包含实验合同、结果表和结论边界，任何链接都只能作为补充导航，不能替代正文。飞书更新必须回写本文件并进入 Git；本文件更新则必须同步到飞书，并在回读后确认目录、关键数值和附件一致。
+
+运行状态仍以 scheduler、日志、checkpoint、raw evaluation 和 release-gate receipt 为权威证据；文档只发布已经核验的状态，不反向替代运行凭据。
 
 ## 附录 D：相关工作与思想来源
 

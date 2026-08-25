@@ -771,12 +771,70 @@ answer-level sharpening 与长输出风险”，而不是“多样性完全无�
 - joint C 的额外训练/显存/通信成本尚未与 practical gain 一起量化；
 - 两个领域仍不足以建立普适性，其他 reasoning 与 tool-use 是独立外推问题。
 
-## 15. 2026-08-23 共同 offline 与机制实验更新
+## 15. strict-aligned GRPO 重训结果与 WDL 对比（2026-08-19）
+
+**结论摘要：**在 scorer、seed、数据身份与数据顺序对齐后，pure canonical GRPO 是有效 baseline，但没有超过 WDL C。WDL C 在更短预算下达到更高 online Math-7 mean@3；在 C-P60 checkpoint 上继续训练 100 个 GRPO local step 可以再提高约 1 pp peak，但计算开销显著增加，而且格式完成度变差。因此当前证据支持“WDL C 优于 pure GRPO，GRPO 可作为 WDL 后续 refinement”，不支持“GRPO 替代 WDL”。
+
+### 15.1 C-P60 → GRPO P100 的精确定义
+
+`C-P60 → GRPO P100` 的 pipeline 是：共同 Standard On-Policy SFT Stage1 训练 40 step，再用实验 C 的 WDL 方法训练 60 step，得到 effective P100 的 C-P60 Model2；随后切换为 fresh canonical GRPO optimizer，再训练 100 个 local step。因此最终模型记为 **effective P200**，即 `40 + 60 + 100`。
+
+这不是“先把 C 额外训练到 100 个 WDL post-Stage1 step，再跑 100 step GRPO”，也不是一个 optimizer 连续训练 200 step。GRPO 阶段从 frozen post-Stage1 `Stage2 → Stage3` parquet 的开头重新遍历数据，不继承 C 的 dataloader cursor。这个 arm 用来回答“WDL checkpoint 是否是更好的后续 RL warm start”，不是 `C vs GRPO` 的直接控制变量；直接外部 baseline 是同一 S1-P0 初始化的 `C P60 vs Stage1 → GRPO local P60`。
+
+### 15.2 strict-aligned online 结果
+
+| 实验 | 训练终点 | Math-7 terminal | Math-7 peak | 终点格式 / 截断 | 判读 |
+|-|-|-|-|-|-|
+| WDL C | post-Stage1 P60 / effective P100 | 70.802% | 71.159% @ P55 | 95.58% / 4.37% | 当前 pure-method 最强且短程效率最高 |
+| Stage1 → GRPO（Job 130） | local P160 / effective P200 | 68.420% | 68.999% @ local P155 | 75.24% / 24.74% | pure GRPO 未追平 C |
+| Cold → GRPO（Job 128） | GRPO P200 | 68.422% | 69.579% @ P190 | 77.51% / 22.42% | 有效，但 peak 仍低于 C 1.58 pp |
+| C-P60 → GRPO（Job 129） | GRPO local P100 / effective P200 | 71.439% | 72.261% @ local P70 | 80.94% / 19.06% | 当前最高 online score；属于 hybrid |
+
+**matched-budget 判读：**在相同 S1-P0 初始化和相同 post-Stage1 数据顺序下，C P60 的 terminal 比 Stage1 → GRPO local P60 高 **21.846 pp**（70.802% vs 48.956%），而两者核心训练预算几乎相同（17.67 vs 17.74 8×GPU-hours）。把 GRPO 延长到 local P160 / effective P200 后，C 仍高 2.382 pp terminal、2.160 pp peak。
+
+**hybrid 判读：**Job 129 在自己的 GRPO P0 re-eval 上是 71.095%，随后 peak 达到 72.261%，即 GRPO 阶段自身提高 1.166 pp；相对原始 C，peak 提高 1.102 pp，terminal 提高 0.637 pp。这个增益是真实的在线候选信号，但同时终点截断率从 C 的 4.37% 上升到 19.06%，所以不能把它描述为无条件质量提升。
+
+### 15.3 Compute budget 分账
+
+下表将核心训练与 online validation 分开。GPU-hours 来自 metrics 中的 step/testing timing，均按 8 卡累加，不是 Slurm accounting；FLOPs 使用 Qwen3-1.7B 精确参数量 1,720,574,976 的 dense-model proxy。`response/full tokens` 分别表示训练 rollout response tokens 与包含 prompt 的训练 full-sequence tokens。C、Stage1 → GRPO 和 hybrid 行都不重复计入共同的 40-step Stage1 前缀；Cold 行从 cold-start checkpoint 起计算。effective step 只表示数据/方法预算位置，不能代替真实 compute。
+
+| Arm | step 口径 | terminal / peak | 训练 response / full tokens | 8×GPU-hours train / val / total | FLOPs core / incl. val |
+|-|-|-|-|-|-|
+| WDL C | post-init 60 / effective P100 | 70.802 / 71.159% | 23.57M / 28.51M | 17.67 / 61.46 / 79.13 | 0.866 / 1.277 e18 |
+| Stage1 → GRPO | local P60 / effective P100 | 48.956 / — | 14.99M / 19.92M | 17.74 / 27.15 / 44.89 | 0.394 / 0.527 e18 |
+| Cold → GRPO | P100 | 51.557 / — | 43.69M / 51.94M | 41.23 / 41.14 / 82.37 | 1.044 / 1.265 e18 |
+| Stage1 → GRPO | local P160 / effective P200 | 68.420 / 68.999% | 83.61M / 96.78M | 68.26 / 75.15 / 143.40 | 1.953 / 2.496 e18 |
+| Cold → GRPO | P200 | 68.422 / 69.579% | 118.35M / 134.83M | 97.11 / 86.13 / 183.25 | 2.727 / 3.369 e18 |
+| C-P60 → GRPO：GRPO 增量 | local P100 | 71.439 / 72.261% | 75.43M / 83.66M | 58.37 / 44.35 / 102.72 | 1.699 / 2.119 e18 |
+| C + GRPO：组合预算 | post-Stage1 60 WDL + 100 GRPO / effective P200 | 71.439 / 72.261% | 99.00M / 112.17M | 76.04 / 105.81 / 181.85 | 2.565 / 3.397 e18 |
+
+相对纯 C，`C + GRPO` 的 peak 提高 1.10 pp，但核心训练 GPU-hours 是约 **4.30×**，训练 response tokens 是约 **4.20×**，核心训练 FLOPs 是约 **2.96×**。pure Stage1 → GRPO effective P200 的核心训练 GPU-hours 是 C 的约 3.86×、response tokens 是约 3.55×，但 peak 仍低 2.16 pp。Cold → GRPO P200 的核心训练 GPU-hours 是 C 的约 5.50×，peak 仍低 1.58 pp。
+
+online validation 开销受历史验证频率以及 WDL 双模型 / GRPO 单模型评测拓扑影响，应该作为“本次实验实际消耗”披露，但不能把 train+val total 直接解释为算法本身的单位训练成本。方法效率的主比较应优先看核心训练 GPU-hours、训练 tokens 和 core FLOPs。
+
+### 15.4 对预注册假设的判读
+
+- **H1：Stage1 → GRPO > A：**当前 terminal 68.42% 高于 A 的 66.35%，但 GRPO 使用 effective P200；这只支持长预算下 GRPO 最终超过 A，不支持 matched P100 下更高效。
+- **H2：C > Stage1 → GRPO：**支持。C 在 matched P100 预算和延长到 GRPO effective P200 两种比较中都更高，且前者 compute 基本相同。
+- **H3：Stage1 → GRPO > Cold → GRPO：**不支持。两者 P200 terminal 几乎相同，Cold peak 还高约 0.58 pp；当前证据没有显示 Stage1 warm start 能提高 pure GRPO 的最终 endpoint。
+- **WDL 与 GRPO 的互补性：**得到单 seed 在线支持。C-P60 → GRPO 是目前最高 online 路径，但收益约 1 pp、成本约为纯 C 的 4.30× train GPU-hours，并伴随更高截断率。
+
+### 15.5 scorer 结论与证据边界
+
+本轮 Math GRPO 使用与实验 C/D0 相同的 strict scorer：答案必须满足完整、唯一、有序的 `<think>...</think>` 与 `<answer>...\boxed{}...</answer>` 合同。三个 run 的 `reward_grader_success` 均为 1.0，seed、data seed、shuffle、rollout seed、batch、N、LR、KL/clip 和 fresh-run contract 也已由 admission receipt 锁定。strict scorer 的主要收益是恢复实验可比性；新旧分数量级接近，没有证据表明严格 scorer 本身带来大幅质量跃升。
+
+**当前发布状态：**C-P60 → GRPO 的 exact run release gate 已为 `ALLOWED`。Cold → GRPO 与 Stage1 → GRPO 虽已正常退出并具有 terminal checkpoint、完整 metrics、validation 与 common offline artifact，但 exact run name 尚无 terminal release event，registry/W&B publication 仍为 `BLOCKED`。本文可把两条 pure-GRPO 结果作为 source-backed local diagnostic，不得用文档替代 release gate。
+
+**当前证据边界：**共同 frozen Math-7 `n=256` 已完成，因此不再把 offline eval 写成待办。结果仍只有一个 training seed；paired prompt bootstrap 衡量共同 prompts 与 sampling 的不确定性，不能替代 optimization-seed uncertainty。当前可以说 C 的 pass@1 高于 pure GRPO、C + GRPO 带来小幅 pass@1 refinement；仍不能声称跨 seed 普遍成立或 hybrid 带来 high-k 能力突破。
+
+---
+
+## 16. Common n=256、fixed-M1 与后续机制更新（2026-08-25）
 
 本节覆盖第 12--14 节中“共同 offline 尚未完成”和“fixed-M1 尚未运行”的旧状态；历史
 online 表与 compute receipt 仍保留原样以便追溯。
 
-### 15.1 Common `n=256` 主结果
+### 16.1 Common `n=256` 主结果
 
 七个 arm 均使用同一 Math-7 文件与顺序、strict scorer、thinking-enabled decoder、八个
 TP=1 `n=32` shards、seeds `20260811...20260818`，并通过 `2,798 prompts / 716,288
@@ -792,8 +850,12 @@ responses / n=256` exact coverage。
 | Cold→GRPO P200 | 71.242% | 87.086% | 88.335% | 81.152% |
 | C-P60→GRPO effective P200 | 72.379% | 87.493% | 88.759% | 81.749% |
 
+其中 A 来自历史 permissive-scorer 训练，只能作为诊断锚点；C-A 数值和区间描述的是已有
+checkpoint 的共同 offline 差异，不能替代 strict-scorer matched training comparison。正式
+C-A 结论等待 strict-A 重跑及同合同 offline evaluation。
+
 10,000-rep paired bootstrap 确认 `C-A` pass@1 `+2.172 pp [1.631, 2.738]`、
-`C-D0` pass@1 `+3.242 pp [2.239, 4.307]`。但 `C-D0` pass@256 为
+`C-D0` pass@1 `+3.242 pp [2.239, 4.307]`。其中 C-A 仅作诊断；`C-D0` pass@256 为
 `-1.448 pp [-3.242, -0.045]`。因此 C 的确认收益是单样本质量，而不是对 D0 的全 `k`
 支配；D0 保留了更高的 oracle coverage。
 
@@ -801,7 +863,7 @@ fixed-M1 的 2,000-rep paired audit 显示，它与 C 的 pass@1 差 `-0.261 pp 
 `2.355/2.492 pp`。这把机制判断收窄为：固定 weak guidance 足以解释主要 pass@1 收益，
 joint co-adaptation 不是该收益的必要条件，但可能影响 tail coverage、锐化和稳定性。
 
-### 15.2 GRPO 与 WDL 的当前结论
+### 16.2 GRPO 与 WDL 的当前结论
 
 Cold 和 Stage1 两条 pure GRPO 在 effective P200 仍未超过 C effective P100。C 相比 Cold
 的 pass@1/128 分别高 `0.732/0.872 pp`，相比 Stage1 GRPO 的 pass@1/128/256 分别高
@@ -813,7 +875,7 @@ pass@1 refinement，不是新的 high-k 能力突破。C-P60→GRPO 的 gate 已
 pure-GRPO exact run name 尚无 terminal release event，registry/W&B publication 仍为
 `BLOCKED`，不能用本文替代 gate。
 
-### 15.3 DynPerm 对机制判断的新增信息
+### 16.3 DynPerm 对机制判断的新增信息
 
 DynPerm 的 `rho` 是置换剂量，不是 fusion `lambda`；当前所有 DynPerm arm 均固定
 `lambda=0.8`。已完成 `rho=0/0.25/0.5` 的 fixed-M1 与 Standard-C P60，弱 target、entropy、
@@ -823,11 +885,12 @@ Model1 会放大干预引起的闭环不稳定。
 
 这否定“weak entropy/target probability/value spectrum 已足够”的简单机制，但只能说明真实
 assignment 或与其绑定的 cross-model geometry 重要；它没有把 token semantics、rank affinity、
-fused target probability 和 gradient strength 分开。`rho=1` Jobs 230/231 尚在运行，DynPerm
-common offline 也尚未完成。下一步应实现 fixed-M1 上的 Align/true-Random/Anti P20/P30 pilot，
+fused target probability 和 gradient strength 分开。`rho=1` Standard-C Job 231 已正常完成，
+fixed-M1 Job 230 退出码 1；因此完整双臂 endpoint 与 DynPerm common offline 尚未闭合。下一步
+应恢复 fixed-M1 端点，并实现 fixed-M1 上的 Align/true-Random/Anti P20/P30 pilot，
 通过 telemetry ordering 后再决定 P60；RankBinPerm 后置为近似 geometry-matched semantic control。
 
-### 15.4 梯度分析的结论边界
+### 16.4 梯度分析的结论边界
 
 梯度分析可以给出 fixed-state 的精确 PoE/Chernoff 恒等式、局部 logit-gradient 方向与尺度、
 干预 invariants 和 sign-reversal 预测；它也可以排除与公式矛盾的无条件解释。但它不能从单个

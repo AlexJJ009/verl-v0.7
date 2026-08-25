@@ -41,6 +41,7 @@ live in `../completed/`.
 | `../../reports/deepcoder_kodcode_failure_analysis.md` | Postmortem for the DeepCoder data switch: compares KodCode and DeepCoder Stage1 results, identifies reward sparsity plus stdin/stdout-vs-function interface mismatch, and records the decision basis for returning the main code-task experiments to KodCode. |
 | `../../reports/qwen3_1p7b_math_stage123_matrix_results_20260723.md` | Result attachment for the completed 16-run Qwen3-1.7B Math Stage123 matrix: all validation steps, effective-step curves, fixed-order data analysis, training-dynamics analysis, and conclusions linked back to the design plan. |
 | `../../reports/qwen3_1p7b_wdl_mechanism_discovery_story_20260816.md` | Chinese long-form mechanism research narrative: reconstructs the evidence-to-hypothesis path from A/B/C/D0 and dual-model gains through reward-projected hard self-training, exact product-of-experts/Chernoff analysis, fixed-M1, Dynamic Permutation, geometry/semantic controls, no-online-WM1 controllers, reverse tests, and a Math-first execution contract. |
+| `../../reports/on_policy_wdl_feishu_ssot.md` | Single-source-of-truth map and synchronization gate for the Git Markdown and complete Feishu publication replicas, including the rule that CSV evidence must be uploaded as a real attachment. |
 
 ## Archived During This Cleanup
 

@@ -199,24 +199,36 @@ D0 的退化是结果，也是待解释的不稳定性；不能因为它退化�
 
 2026-08-11 复核：C 的 registry row 已按 ACD0 合同修正并验证，DB 发布已闭合。W&B gated sync 已实际尝试，但因容器内未配置 API key 而停止；安全注入 `WANDB_API_KEY` 或完成 `wandb login` 后，需重跑同一 gated sync，并以 synced marker 或 remote URL 作为完成证据。
 
-## 附录 D：Model1 / Model2 完整结果与动力学
+## 附录 D：Model1 / Model2 完整结果与子模型动力学
 
-Model1 与 Model2 是相同 Qwen3-1.7B 架构下的不同权重：Model1 来自 Code cold-start SFT step20，Model2 从该节点继续完成 40 step Stage1 standard on-policy positive-only SFT。C 的 `0.2z1 + 0.8z2` 同时更新两者；D0 只使用 `0.8z2` 且按设计冻结 Model1。C/D0 release gate 均为 `ALLOWED`。
+**补充日期：2026-08-16。**C 与 D0 release gate 均为 `ALLOWED`。D0 Model1 是冻结诊断线；其小幅 online 波动不是训练增益。
 
-| Arm / view | P0 Code-3 mean@3 | P60 Code-3 mean@3 | Δ | peak | native truncation P0→P60 | format success P0→P60 |
-|---|---:|---:|---:|---:|---:|---:|
-| C Model1 | 37.78% | 47.34% | +9.56 pp | P60 47.34% | 47.93%→27.75% | 52.04%→72.15% |
-| C Model2 | 39.50% | **49.01%** | +9.51 pp | P60 49.01% | 47.04%→27.17% | 52.86%→72.78% |
-| D0 Model1（冻结） | 36.62% | 37.51% | +0.89 pp | P55 38.53% | 49.05%→47.43% | 50.93%→52.48% |
-| D0 Model2 | 39.47% | 35.29% | -4.18 pp | P20 42.46% | 46.53%→44.21% | 53.42%→55.67% |
+### D.1 模型身份与完整端点
 
-![Code C/D0 Model1 与 Model2 曲线](figures/qwen3_1p7b_code_acd0_p60_submodel_dynamics.png)
+Model1 与 Model2 使用相同 Qwen3-1.7B 架构和 tokenizer/chat-template 合同，但权重不同。Model1 来自 Code cold-start SFT step20；Model2 从该节点继续完成 40 step Stage1 standard on-policy positive-only SFT。C 使用 `0.2z1 + 0.8z2` 且同时更新两者；D0 使用 `0.8z2` 并冻结 Model1。
 
-C 中两个子模型都提升约 9.5 pp，Model1 并非只作为静态弱模型存在。由于 rollout source 是 Model2，Model1 的提升与 verifier-filtered Model2 rollout 产生的在线隐式蒸馏/协同更新相容。与此同时，Model1 的原生截断下降 20.18 pp、format success 提升 20.11 pp，说明 Code 收益有很强的 completion/format 成分。
+| Arm / view | P0→P60 mean@3 | 变化 | best | 原生截断 P0→P60 | format success P0→P60 |
+|---|---:|---:|---:|---:|---:|
+| C Model1 | 37.78%→47.34% | +9.56 pp | P60 47.34% | 47.93%→27.75% | 52.04%→72.15% |
+| C Model2 | 39.50%→49.01% | +9.51 pp | P60 49.01% | 47.04%→27.17% | 52.86%→72.78% |
+| D0 Model1（冻结） | 36.62%→37.51% | +0.89 pp | P55 38.53% | 49.05%→47.43% | 50.93%→52.48% |
+| D0 Model2 | 39.47%→35.29% | -4.18 pp | P20 42.46% | 46.53%→44.21% | 53.42%→55.67% |
 
-D0 Model1 是冻结诊断线，其 +0.89 pp 和 P55 波动来自 online `n=3` 采样，不是训练增益；D0 Model2 的 -4.18 pp 才是训练退化。总分接近也不能证明两个子模型逐题知识或程序多样性相同。
+![Code C/D0：Model1 与 Model2 online mean@3 动力学（D0 Model1 冻结）](figures/qwen3_1p7b_code_acd0_p60_submodel_dynamics.png)
 
-高优先级后续验证：先用已有 raw validation 做逐 prompt/sample 正确性重叠、Model1-only/Model2-only、错误 Jaccard、paired bootstrap、长度/截断/format/答案相似度轨迹；再新增 matched `C-freeze-Model1` 与 C-joint/D0 比较，并在关键 checkpoint 同时评 Model1、Model2、fused policy。之后补第二 training seed 与两个子模型的 official `n=256` pass@k/diversity。role-swap、identical-init、freeze-Model2 作为较低优先级机制诊断。
+### D.2 当前分析
+
+- C 中两个子模型均提升约 9.5 pp，Model1 最终仅落后 Model2 1.67 pp。rollout source 是 Model2，因此该现象与 verifier-filtered rollout 驱动的在线隐式蒸馏/协同更新相容。
+- C Model1 的原生截断下降 20.18 pp、format success 提升 20.11 pp，说明 Code 收益有很强的 completion/format 成分，但不能据此排除语义学习。
+- D0 Model1 的 +0.89 pp 与 P55 波动来自冻结模型上的 online `n=3` 采样；D0 Model2 的 -4.18 pp 才是该 arm 的训练退化。
+- 总分接近不代表逐题正确集合、程序结构或 pass@k 多样性相同；当前仍是单 seed、online `n=3`。
+
+### D.3 高优先级后续机制实验
+
+1. 用现有 raw validation 做 prompt/sample 正确性重叠、Model1-only/Model2-only、错误 Jaccard、paired bootstrap、长度/截断/format 与答案相似度轨迹。
+2. 新增 matched C-freeze-Model1，对比 C-joint 与 D0，区分 fixed weak-logit guidance 和 adaptive Model1 co-training。
+3. 在关键 checkpoint 同时评 Model1、Model2、fused policy，再补第二 training seed。
+4. 对两个子模型共同冻结 official `n=256` pass@k/diversity；role-swap、identical-init、freeze-Model2 作为较低优先级诊断。
 
 完整数据与绘图入口：
 
