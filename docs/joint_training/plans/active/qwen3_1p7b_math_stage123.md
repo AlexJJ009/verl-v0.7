@@ -1,8 +1,9 @@
 # Qwen3-1.7B 数学任务：Cold-Start、Stage123 与 WDL-first 实验方案
 
-> 2026-08-23 status：2026-08-18 之前的历史 Math GRPO 数字仍为
-> diagnostic-only；strict-scorer aligned retrain 与共同 `n=256` 已完成，
-> 当前排序与证据边界见结果文档第 15 节。
+> 2026-08-24 status：历史实验 A 后验核查发现仍使用 permissive scorer，不能作为
+> strict C/D0/fixed-M1 的共同锚点。strict-scorer A P60 已冻结为一个独立重跑任务；在其
+> online 与共同 `n=256` 完成前，所有含 A 的方法差值降级为历史诊断结果。Math GRPO 的
+> strict-scorer retrain 与共同 `n=256` 本身不受此项影响。
 
 - 文档职责：只描述实验问题、实验变量、训练流程、评测协议和决策标准
 - 初始设计日期：2026-07-20
@@ -20,7 +21,8 @@
 `<think>...</think><answer>\boxed{...}</answer>` 输出契约，再运行 beta `0.0/0.1`、
 no-KL/model2-only-KL、extracted Model1/Model2 的 Stage123 16-run 矩阵。第二层在相同
 Stage1 source、相同 60-step post-Stage1 预算和相同数据顺序下，比较 A/B/C/D0，隔离
-continuous WDL 中 weak-logit contribution 的作用。
+continuous WDL 中 weak-logit contribution 的作用。A/C/D0/fixed-M1 的训练与在线验证必须
+绑定同一个 strict scorer 文件身份；仅输出格式相似不构成 scorer 对齐。
 
 ```mermaid
 flowchart TD
@@ -423,6 +425,7 @@ probe 验证 `<think>`、reasoning、`</think>`、`<answer>` 和 EOS 都进入 l
 3. pre-push/CI 运行 policy canary 与 regression test；
 4. `scripts/math_cold_start_queue.py` 在 optimizer step 前对全部 1,100 样本运行真实 tokenizer preflight；
 5. causal queue 绑定 strict scorer path/SHA256，并运行 missing-`<answer>` negative canary。
+6. 单模型 A 使用独立的 strict-scorer wrapper 和首步门禁；历史 permissive-scorer A 不得作为共同锚点。
 
 ## 附录 C：冻结的数据契约
 

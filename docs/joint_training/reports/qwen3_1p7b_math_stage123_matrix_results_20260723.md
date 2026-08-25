@@ -549,6 +549,14 @@ tokenizer regression test、1,100 行 preflight 和最早-passing-checkpoint sel
 
 ## 12. WDL-first causal P60 strict-scorer 结果
 
+> 2026-08-24 勘误：后验 provenance 审计确认历史 A（`b0-stage1-control`）仍使用
+> `recipe/on_policy_wdl_sft/custom_reward_function_latex_verify.py` permissive scorer，
+> 并未与 strict C/D0/fixed-M1 对齐。因此本节历史 A 曲线与所有 `C-A`、`D0-A`、
+> `fixed-M1-A` 差值只保留为诊断记录，不能支持方法级因果结论。新的 strict-scorer A P60
+> 从同一 Stage1 Model2、同一有序 3,840 prompts、相同 seeds 与 budget 重跑；其共同
+> `n=256` 完成后再替换本节 A 列。C-D0、C-fixed-M1 等不经过 A 的 matched comparison
+> 不因本次勘误自动失效。
+
 首轮 D0/C runtime 解析到 permissive scorer，允许缺少 `<answer>` 的 boxed response 获得正分，
 同时污染 validation 与训练 positive set，因此旧 D0 `69.84%`、C `70.66%` 只作 invalidated
 local diagnostic evidence。以下只报告 strict scorer 修复后从同一 Stage1 source 重跑的结果。
