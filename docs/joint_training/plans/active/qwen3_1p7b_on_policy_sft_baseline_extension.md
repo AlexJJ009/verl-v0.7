@@ -28,9 +28,9 @@
 
 `lambda` sweep 与 permutation geometry 是两套独立实验，首轮不能交叉成一个大网格。
 
-当前 Qwen3-1.7B Math 仍没有 `lambda=0.4/0.5` 的正式结果或 checkpoint；C-only 的
-launch-ready wrapper、manifest 和静态测试已经补齐，并于 2026-08-23 以 Jobs 232/233
-提交正式 P60 搜参。仓库中其他旧 `lambda=0.5` 属于 4B 或 Code/KodCode，不能复用。A 是 direct
+Qwen3-1.7B Math C-only `lambda=0.4/0.5` 已于 2026-08-23 通过 Jobs 232/233 完成 P60
+训练；两条轨迹都是 P50 附近见顶后下跌，因此目前只作为 single-seed online reconnaissance，
+不能代替共同 offline evaluation。仓库中其他旧 `lambda=0.5` 属于 4B 或 Code/KodCode，不能复用。A 是 direct
 Model2 On-Policy SFT，不含 fusion `lambda`，因此正确矩阵不是八条新训练，而是共享 A anchor，
 并在每个 `lambda` 下新增 C、D0、fixed-M1 三条，共六条新 run：
 
@@ -42,9 +42,16 @@ Model2 On-Policy SFT，不含 fusion `lambda`，因此正确矩阵不是八条�
 若要求同一 code revision，只需额外重跑一次 A，仍是七个 unique arms。所有新 run 必须继承
 causal-P60 的 Model1/Model2 hashes、3,840-row ordered shard、P60、strict scorer、LR、batch/N、
 seed `42`、rollout seed `0`、data seed `20260719`、`shuffle=false`，并使用 lambda-tagged
-run/cache/artifact identity。Jobs 232/233 只回答 C 的 primary lambda reconnaissance；D0 与
-fixed-M1 尚未实现或提交，因此完整的 scale/static-guidance 因果矩阵仍未完成，不能仅凭 C-only
-结果归因 weak guidance、joint adaptation 或 logit scale。
+run/cache/artifact identity。Jobs 232/233 只回答 C 的 primary lambda reconnaissance；仅凭
+C-only 结果仍不能归因 weak guidance、joint adaptation 或 logit scale。对应的 D0/fixed-M1
+`lambda=0.4/0.5` controls 已于 2026-08-24 实现并进入候选绑定 Slurm 发布流程。
+
+2026-08-24 的后续矩阵将搜参与因果拆分分开。已有 C `lambda=0.4/0.5/0.8` 不重复训练；
+首批新增 fixed-M1 `lambda=0.4/0.5`、D0 `lambda=0.4/0.5`，以及只用于 bracket search 的
+C `lambda=0.7/0.9`。若 `0.7/0.9` 都不能在相邻 checkpoint 上稳定超过 `0.8`，停止扩大
+lambda 搜索；只有通过 online stability、共同 `n=256` 和第二 training seed 的 C 候选，才补
+该 lambda 的 D0/fixed controls。gradient-normalized `lambda=0.5` 继续后置，直到有效 update
+norm 的定义和门禁被单独冻结。
 
 geometry pilot 则固定 `lambda=0.8`，先在 fixed-M1 上比较 `Real/AlignSort/true
 RandomPerm/AntiAlignSort` 的 P20/P30 trajectory 与 affinity、fused target probability、
