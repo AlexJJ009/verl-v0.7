@@ -41,7 +41,11 @@ Previous documents declared reverse SFT (β>0) permanently abandoned based on EX
 
 ## Environment
 
-The project runs inside Docker image `verl-harness` (no conda). All paths assume identical `/data-1` layout across servers.
+The project runs inside Docker image `verl-harness` (no conda). Select the
+outer launcher by host; do not assume the host itself has an identical
+`/data-1` layout. Follow
+`docs/joint_training/guides/training_host_launchers.md` before running Docker,
+training, evaluation, or queue commands.
 
 ```bash
 # Build or load the image (first time on a new server)
@@ -201,6 +205,7 @@ Documentation in `docs/joint_training/` was created during the parent branch's j
 | `courses/` | Educational docs on joint-training theory | ARCHIVAL — background reference |
 | `guides/` | Testing, tuning, migration guides | Partially applicable |
 | `guides/hf_model_weight_upload_playbook.md` | **Hugging Face model-weight upload playbook** — checkpoint-to-HF operational flow: proxy routing, queue launch, upload verification, manifest registration, and verified-only checkpoint cleanup. Mid-goal snapshot exists; update after the current migration queue completes | ACTIVE |
+| `guides/training_host_launchers.md` | **L40S vs A800 host-launcher guide** — mandatory launcher selection, A800 storage mappings, worktree selection, admission boundary, and legacy queue constraints | ACTIVE |
 | `guides/meituan_platform.md` | **Meituan AFO layered launch + cross-host portability playbook** — MUST follow when adding any experiment that will run on Meituan | ACTIVE |
 | `references/` | External articles and papers | ARCHIVAL — background reference |
 
@@ -219,13 +224,15 @@ Before launching any training, monitoring, checkpoint transfer, or large file op
 
 3. **Monitor in tmux**: If running a monitoring/tail script alongside training, put it in its own tmux pane or window.
 
-4. **Meituan-bound experiments follow the layered playbook**: When an experiment is confirmed to run on the Meituan AFO platform, it MUST be authored according to `docs/joint_training/guides/meituan_platform.md` — four-layer launch path, default-local-overridable-everything paths in `run_*.sh`, dolphinfs overrides isolated to `recipe/.../meituan/env.sh`. Local-only experiments don't need layers 1–3, but must still write `run_*.sh` by the same portability rules so migration later is a one-file change. Every experiment must run on BOTH the local box and Meituan without per-host branches in the experiment script itself.
+4. **Select the host launcher before running Docker-backed work**: Follow `docs/joint_training/guides/training_host_launchers.md`. Use `/data-1/verl07/run_train.sh` on L40S and `verl-dev-run` on the A800 development instance. An A800 development gate never reuses L40S formal admission evidence.
 
-5. **Training script index must stay current**: Follow `docs/joint_training/constraints/experiment_tracking/training_script_index_policy.md`. Whenever you create a runnable training/monitor script or use one for a real run, update this branch's own `docs/joint_training/guides/training_script_index.md`. Keep the index branch-local and factual; put full launch commands, monitor commands, and run playbooks in the relevant guide/workflow instead.
+5. **Meituan-bound experiments follow the layered playbook**: When an experiment is confirmed to run on the Meituan AFO platform, it MUST be authored according to `docs/joint_training/guides/meituan_platform.md` — four-layer launch path, default-local-overridable-everything paths in `run_*.sh`, dolphinfs overrides isolated to `recipe/.../meituan/env.sh`. Local-only experiments don't need layers 1–3, but must still write `run_*.sh` by the same portability rules so migration later is a one-file change. Every experiment must run on BOTH the local box and Meituan without per-host branches in the experiment script itself.
 
-6. **Training result release gate**: Follow `docs/joint_training/constraints/experiment_tracking/training_result_release_gate_policy.md`. Failed or incomplete training attempts must not be written to the local registry or uploaded to W&B cloud. A DB import or W&B sync must first pass `python3 scripts/training_result_release_gate.py check --run-name <RUN_NAME>`.
+6. **Training script index must stay current**: Follow `docs/joint_training/constraints/experiment_tracking/training_script_index_policy.md`. Whenever you create a runnable training/monitor script or use one for a real run, update this branch's own `docs/joint_training/guides/training_script_index.md`. Keep the index branch-local and factual; put full launch commands, monitor commands, and run playbooks in the relevant guide/workflow instead.
 
-7. **Keep the workspace clean**: Follow `docs/joint_training/constraints/principles/workspace_artifact_hygiene.md` before running generated code, benchmark samples, dry-runs, smoke tests, cleanup work, or any script that may write files. Never use repo root as scratch space; route scratch to `/data-1/tmp/verl_agent_scratch/...`, preserve W&B staging by default, and classify `/data-1/tmp` / `/data-1/ray_tmp` as runtime temp requiring live-process checks before cleanup.
+7. **Training result release gate**: Follow `docs/joint_training/constraints/experiment_tracking/training_result_release_gate_policy.md`. Failed or incomplete training attempts must not be written to the local registry or uploaded to W&B cloud. A DB import or W&B sync must first pass `python3 scripts/training_result_release_gate.py check --run-name <RUN_NAME>`.
+
+8. **Keep the workspace clean**: Follow `docs/joint_training/constraints/principles/workspace_artifact_hygiene.md` before running generated code, benchmark samples, dry-runs, smoke tests, cleanup work, or any script that may write files. Never use repo root as scratch space; route scratch to `/data-1/tmp/verl_agent_scratch/...`, preserve W&B staging by default, and classify `/data-1/tmp` / `/data-1/ray_tmp` as runtime temp requiring live-process checks before cleanup.
 
 ## Agent Guidelines
 
@@ -264,6 +271,7 @@ Before launching any training, monitoring, checkpoint transfer, or large file op
 - Workspace artifact hygiene policy: `docs/joint_training/constraints/principles/workspace_artifact_hygiene.md`
 - Training script index: `docs/joint_training/guides/training_script_index.md`
 - HF model-weight upload playbook: `docs/joint_training/guides/hf_model_weight_upload_playbook.md`
+- **Training host launcher guide** (L40S vs A800): `docs/joint_training/guides/training_host_launchers.md`
 - **Meituan platform playbook** (how to add experiments that run on both local + AFO): `docs/joint_training/guides/meituan_platform.md`
 - v1 vs v2 loss spec: `docs/joint_training/specs/wdl_sft_is.md`
 - v1 loss code: `verl/trainer/ppo/core_algos.py:1861` (wdl_sft)
