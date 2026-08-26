@@ -54,10 +54,13 @@ def test_strict_a_pins_every_common_causal_p60_variable() -> None:
         "../../joint_training/custom_reward_function_latex_verify.py",
         "actor_rollout_ref.actor.fsdp_config.seed=42",
         "actor_rollout_ref.actor.data_loader_seed=42",
-        "+actor_rollout_ref.rollout.seed=0",
     ):
         assert pin in wrapper
     assert "FUSION_LAMBDA=" not in wrapper
+    # ROLLOUT_SEED is consumed once by _common_ablation.sh. Passing the same
+    # Hydra append override here a second time makes composition fail before
+    # training starts.
+    assert "+actor_rollout_ref.rollout.seed=0" not in wrapper
 
 
 def test_strict_a_rejects_hydra_overrides_before_io() -> None:
