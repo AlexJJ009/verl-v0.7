@@ -1,5 +1,8 @@
 import importlib.util
+import json
 from pathlib import Path
+
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -32,6 +35,112 @@ def test_renderer_requires_all_candidate_bound_gate_evidence() -> None:
     assert '"full_gpu_submission_allowed": True' in text
     assert '"TOTAL_TRAINING_STEPS": "160"' in text
     assert '"TOTAL_EPOCHS": "3"' in text
+
+
+def full_ci_payload(module, root_candidate: str) -> dict:
+    return {
+        "evidence_kind": "root_full_ci_pass",
+        "root_candidate_sha": root_candidate,
+        "recipe_candidate_sha": module.RECIPE_CANDIDATE,
+        "status": "passed",
+    }
+
+
+def parity_payload(module, root_candidate: str) -> dict:
+    digest = "a" * 64
+    result = {
+        "tests": 10,
+        "passed": 8,
+        "failed": 1,
+        "skipped": 1,
+        "log_sha256": digest,
+        "junit_sha256": digest,
+    }
+    profile = {
+        "base": result,
+        "candidate": result,
+        "failure_set_sha256": digest,
+        "candidate_only_tests": 0,
+        "candidate_new_failures": 0,
+        "base_only_tests": 0,
+        "base_failures_resolved": 0,
+        "shared_failure_detail_changes": 0,
+    }
+    return {
+        "schema_version": 1,
+        "evidence_kind": "root_full_ci_base_candidate_parity",
+        "repository_full_name": "AlexJJ009/verl-v0.7",
+        "base": {"root_sha": module.ROOT_BASE, "recipe_sha": module.RECIPE_BASE},
+        "candidate": {"root_sha": root_candidate, "recipe_sha": module.RECIPE_CANDIDATE},
+        "runtime": {
+            "image": module.IMAGE,
+            "image_id": module.PARITY_IMAGE_ID,
+            "launcher": module.PARITY_LAUNCHER,
+            "launcher_sha256": module.PARITY_LAUNCHER_SHA256,
+            "payload": module.PARITY_PAYLOAD,
+            "repository_mount": module.PARITY_REPOSITORY_MOUNT,
+        },
+        "default_profile": profile,
+        "a800_dev_profile": profile,
+    }
+
+
+def write_json(path: Path, payload: dict) -> None:
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+
+def test_ci_admission_accepts_full_ci_pass(tmp_path: Path) -> None:
+    module = load_renderer()
+    root_candidate = "1" * 40
+    evidence = tmp_path / "full-ci.json"
+    write_json(evidence, full_ci_payload(module, root_candidate))
+    _, _, mode = module.load_ci_admission_evidence(
+        evidence,
+        root_candidate=root_candidate,
+        recipe_candidate=module.RECIPE_CANDIDATE,
+    )
+    assert mode == "full_ci_pass"
+
+
+def test_ci_admission_accepts_exact_base_relative_parity(tmp_path: Path) -> None:
+    module = load_renderer()
+    root_candidate = "2" * 40
+    evidence = tmp_path / "parity.json"
+    write_json(evidence, parity_payload(module, root_candidate))
+    _, _, mode = module.load_ci_admission_evidence(
+        evidence,
+        root_candidate=root_candidate,
+        recipe_candidate=module.RECIPE_CANDIDATE,
+    )
+    assert mode == "base_relative_parity"
+
+
+@pytest.mark.parametrize(
+    ("path", "value"),
+    [
+        (("candidate", "root_sha"), "3" * 40),
+        (("runtime", "payload"), "python -m pytest -q tests"),
+        (("default_profile", "candidate_new_failures"), 1),
+        (("a800_dev_profile", "shared_failure_detail_changes"), 1),
+    ],
+)
+def test_ci_admission_rejects_parity_identity_or_regression_drift(
+    tmp_path: Path,
+    path: tuple[str, str],
+    value: object,
+) -> None:
+    module = load_renderer()
+    root_candidate = "2" * 40
+    payload = parity_payload(module, root_candidate)
+    payload[path[0]][path[1]] = value
+    evidence = tmp_path / "parity.json"
+    write_json(evidence, payload)
+    with pytest.raises(SystemExit):
+        module.load_ci_admission_evidence(
+            evidence,
+            root_candidate=root_candidate,
+            recipe_candidate=module.RECIPE_CANDIDATE,
+        )
 
 
 def test_launcher_shim_only_translates_admitted_external_outputs() -> None:

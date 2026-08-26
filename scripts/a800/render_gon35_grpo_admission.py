@@ -16,8 +16,15 @@ from pathlib import Path
 from typing import Any
 
 RECIPE_CANDIDATE = "cb677ebded6558875949d10d8a79af9356cb681d"
+ROOT_BASE = "54fd91ae0cd8b44bded2c197a3be1e408ae027ab"
+RECIPE_BASE = "60e49934c3415fc9fc78887ec61f533cfc8d5e1b"
 IMAGE = "ghcr.io/alexjj009/verl-harness@sha256:d380888dc8a10796c7f841e341bd775c2d6500ede539f4ea16bb7bf0de92665d"
 IMAGE_DIGEST = IMAGE.rsplit("@", 1)[1]
+PARITY_IMAGE_ID = "sha256:126f9a69cd42c2f38688bc4e20daa3676dbb4b6f92f624299289c316634fc1c1"
+PARITY_LAUNCHER = "/data_storage/yl_test/lgx/home/.local/bin/verl-dev-run"
+PARITY_LAUNCHER_SHA256 = "4e6c6b569d5b2611ca4bcae00b160f38e8f6340e2cfdf4cba84644d9efaec684"
+PARITY_PAYLOAD = "python -m pytest -q tests/experiment_workflow tests/joint_training/regression/test_validation_generation_logging.py"
+PARITY_REPOSITORY_MOUNT = "/workspace/verl:ro"
 ENTRY = "on_policy_wdl_sft/standard_grpo/run_math_stage1_grpo.sh"
 ARTIFACT_OUTPUT_PREFIX = Path("/data_storage/yl_test/lgx/artifacts/verl/outputs")
 CONTAINER_OUTPUT_PREFIX = Path("/data-1/outputs")
@@ -64,6 +71,101 @@ def load_evidence(path: Path, label: str, expected: dict[str, Any]) -> tuple[dic
     if mismatches:
         fail(f"{label} evidence mismatch: {json.dumps(mismatches, sort_keys=True)}")
     return payload, sha256(path)
+
+
+def load_ci_admission_evidence(
+    path: Path,
+    *,
+    root_candidate: str,
+    recipe_candidate: str,
+) -> tuple[dict[str, Any], str, str]:
+    """Accept a passing full CI or an exact, no-regression Base/Candidate comparison."""
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        fail(f"cannot read CI admission evidence {path}: {exc}")
+
+    evidence_kind = payload.get("evidence_kind")
+    if evidence_kind in (None, "root_full_ci_pass"):
+        expected = {
+            "root_candidate_sha": root_candidate,
+            "recipe_candidate_sha": recipe_candidate,
+            "status": "passed",
+        }
+        mismatches = {
+            key: {"expected": value, "actual": payload.get(key)}
+            for key, value in expected.items()
+            if payload.get(key) != value
+        }
+        if mismatches:
+            fail(f"full CI evidence mismatch: {json.dumps(mismatches, sort_keys=True)}")
+        return payload, sha256(path), "full_ci_pass"
+
+    if evidence_kind != "root_full_ci_base_candidate_parity":
+        fail(f"unsupported CI admission evidence kind: {evidence_kind!r}")
+
+    expected_paths = {
+        "schema_version": 1,
+        "repository_full_name": "AlexJJ009/verl-v0.7",
+        "base.root_sha": ROOT_BASE,
+        "base.recipe_sha": RECIPE_BASE,
+        "candidate.root_sha": root_candidate,
+        "candidate.recipe_sha": recipe_candidate,
+        "runtime.image": IMAGE,
+        "runtime.image_id": PARITY_IMAGE_ID,
+        "runtime.launcher": PARITY_LAUNCHER,
+        "runtime.launcher_sha256": PARITY_LAUNCHER_SHA256,
+        "runtime.payload": PARITY_PAYLOAD,
+        "runtime.repository_mount": PARITY_REPOSITORY_MOUNT,
+    }
+
+    def nested_get(dotted: str) -> Any:
+        value: Any = payload
+        for part in dotted.split("."):
+            if not isinstance(value, dict):
+                return None
+            value = value.get(part)
+        return value
+
+    mismatches = {
+        key: {"expected": value, "actual": nested_get(key)}
+        for key, value in expected_paths.items()
+        if nested_get(key) != value
+    }
+    if mismatches:
+        fail(f"base-relative parity evidence mismatch: {json.dumps(mismatches, sort_keys=True)}")
+
+    for profile_name in ("default_profile", "a800_dev_profile"):
+        profile = payload.get(profile_name)
+        if not isinstance(profile, dict):
+            fail(f"base-relative parity evidence is missing {profile_name}")
+        for side in ("base", "candidate"):
+            result = profile.get(side)
+            count_names = ("tests", "passed", "failed", "skipped")
+            if not isinstance(result, dict) or any(
+                not isinstance(result.get(name), int) for name in count_names
+            ):
+                fail(f"{profile_name}.{side} must contain integer test counts")
+            for digest_name in ("log_sha256", "junit_sha256"):
+                if not re.fullmatch(r"[0-9a-f]{64}", str(result.get(digest_name, ""))):
+                    fail(f"{profile_name}.{side}.{digest_name} must be a SHA-256 digest")
+        required_zeroes = (
+            "candidate_new_failures",
+            "base_only_tests",
+            "shared_failure_detail_changes",
+        )
+        nonzero = {name: profile.get(name) for name in required_zeroes if profile.get(name) != 0}
+        if nonzero:
+            fail(f"{profile_name} is not a no-regression comparison: {json.dumps(nonzero, sort_keys=True)}")
+        if profile["base"]["failed"] != profile["candidate"]["failed"]:
+            fail(f"{profile_name} Base/Candidate failure counts differ")
+        if not isinstance(profile.get("candidate_only_tests"), int):
+            fail(f"{profile_name}.candidate_only_tests must be an integer")
+        for digest_name in ("failure_set_sha256",):
+            if not re.fullmatch(r"[0-9a-f]{64}", str(profile.get(digest_name, ""))):
+                fail(f"{profile_name}.{digest_name} must be a SHA-256 digest")
+
+    return payload, sha256(path), "base_relative_parity"
 
 
 def atomic_write(path: Path, content: str, mode: int = 0o600) -> None:
@@ -168,7 +270,11 @@ def main() -> None:
             "doctor_a800": "passed",
         },
     )
-    _, full_ci_digest = load_evidence(args.full_ci_evidence, "full CI", {**common, "status": "passed"})
+    _, ci_admission_digest, ci_admission_mode = load_ci_admission_evidence(
+        args.full_ci_evidence,
+        root_candidate=root_candidate,
+        recipe_candidate=recipe_candidate,
+    )
     review, review_digest = load_evidence(
         args.review_evidence,
         "independent review",
@@ -193,7 +299,9 @@ def main() -> None:
         "evidence": {
             "p0_config_sha256": p0_digest,
             "p1_review_sha256": p1_digest,
-            "full_ci_sha256": full_ci_digest,
+            "ci_admission_mode": ci_admission_mode,
+            "ci_admission_sha256": ci_admission_digest,
+            "full_ci_sha256": ci_admission_digest,
             "independent_review_sha256": review_digest,
         },
     }
@@ -243,7 +351,9 @@ def main() -> None:
         "scorer_sha256": SCORER_SHA256,
         "p0_config_evidence_sha256": p0_digest,
         "p1_review_evidence_sha256": p1_digest,
-        "full_ci_evidence_sha256": full_ci_digest,
+        "ci_admission_mode": ci_admission_mode,
+        "ci_admission_evidence_sha256": ci_admission_digest,
+        "full_ci_evidence_sha256": ci_admission_digest,
         "independent_review_evidence_sha256": review_digest,
         "full_gpu_submission_allowed": True,
         "runtime_env_sha256": sha256(runtime_env_path),

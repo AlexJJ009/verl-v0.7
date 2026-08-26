@@ -102,11 +102,15 @@ The existing Standard GRPO Bash remains unchanged.
 
 Run `scripts/a800/bootstrap_pueue.sh` on the host, then source the external
 `/data_storage/yl_test/lgx/runtime/verl/pueue/pueue.env`. After the exact root
-candidate passes targeted checks, full CI, and independent review, render the
+candidate passes targeted checks, CI admission, and independent review, render the
 one-shot admission with `scripts/a800/render_gon35_grpo_admission.py`. The
-renderer fails closed unless candidate-bound P0, P1, full-CI, and zero-finding
-review JSON evidence all pass. It writes the runtime environment, source
-snapshot, and admission receipt beneath the run's external receipt directory;
+CI admission accepts either a genuinely passing full-CI result or the approved
+exact-environment Base/Candidate parity evidence with zero candidate-only
+failures and zero shared-failure detail drift. The renderer fails closed on any
+candidate, Recipe, image, launcher, mount, payload, or comparison drift; parity
+does not claim that full CI passed. Candidate-bound P0, P1, CI-admission, and
+zero-finding review JSON evidence must all be present. It writes the runtime
+environment, source snapshot, and admission receipt beneath the run's external receipt directory;
 it never writes queue state or training artifacts into either repository.
 
 The task-specific `scripts/a800/gon35-bin/verl-dev-run` shim translates only
