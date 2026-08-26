@@ -119,11 +119,13 @@ single-sample success，不等同于 greedy accuracy，也不等同于在线 `T=
 
 | Task | Checkpoint | View | 状态 |
 | --- | --- | --- | --- |
-| Math | `CS0` cold-start selected checkpoint | single | 需评测 |
-| Math | `S1-P0` Stage1 final Model2 | single | 需 merge/核验后评测 |
-| Math | A P60 Standard On-Policy SFT | single | 需 merge/核验后评测 |
-| Math | C P60 | extracted Model2 | 需 merge + extract |
-| Math | D0 P60 | extracted Model2 | 需 merge + extract |
+| Math | `CS0` cold-start selected checkpoint | single | common `n=256` 已完成：2,798 prompts / 716,288 responses |
+| Math | `S1-P0` Stage1 final Model2 | single | 未找到权威 common `n=256` merge/release receipt；先查产物，确认缺失后补评测 |
+| Math | A P60 Standard On-Policy SFT | single | 历史 permissive-scorer A common `n=256` 已完成，仅作诊断；strict-scorer A seed 42/43 待共同评测 |
+| Math | C P60 | extracted Model2 | common `n=256` 已完成 |
+| Math | D0 P60 | extracted Model2 | common `n=256` 已完成 |
+| Math | fixed-M1 Stage1 P60 | extracted Model2 | common `n=256` 已完成 |
+| Math | Stage1/Cold/C-P60 GRPO endpoints | single actor | 三个 strict-GRPO common `n=256` 已完成 |
 | Code | `CS0` cold-start selected checkpoint | single | 需评测 |
 | Code | `S1-P0` Stage1 final Model2 | single | 已有 HF-format source，需核验 |
 | Code | A P60 Standard On-Policy SFT | single | 需 merge |

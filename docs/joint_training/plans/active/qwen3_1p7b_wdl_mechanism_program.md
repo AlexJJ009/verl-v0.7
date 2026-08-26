@@ -673,6 +673,50 @@ The immediate DynPerm batch is eight continuous P60 runs: four rho values for
 fixed-Model1 Stage1 and the same four for Standard C. Fixed-Model1 receives
 higher scheduling priority. The batch does not include M3 synthetic controls.
 
+### 7.1 2026-08-26 reprioritization: elicitation, replication, and lambda schedules
+
+The CS0/Model1 common `n=256` generation is already complete and must not be
+repeated. Its `pass@1=32.72%`, `pass@256=84.38%`, and the matched C values
+`71.97%/88.94%` establish both strong answer sharpening and a smaller
+finite-sample coverage increase. The remaining no-training work is to stratify
+the existing per-prompt samples by CS0 correct count. No authoritative common
+`n=256` receipt has yet been located for the Stage1-final Model2 (`S1-P0`), so
+that checkpoint is evaluated only after an artifact search proves the result is
+not merely missing from the registry. Strict-scorer A seed 42/43 checkpoints
+must enter the same common offline contract before replacing historical A.
+
+New training is admitted in the following order:
+
+| Priority | New runs | Frozen variables | Estimand and falsifier |
+| --- | --- | --- | --- |
+| P1 | seed-43 C, D0, fixed-M1 at `lambda=0.8`, P60 | seed-43 A anchor, source/data order, scorer, rollout, optimizer, budget | replicate C-D0, C-fixed, and fixed-D0; a sign reversal or materially different ordering rejects a single-seed mechanism claim |
+| P2 | D0 and fixed-M1 at `lambda=0.7/0.9`, P60 | reuse completed C `.7/.9` | complete the within-lambda three-arm factorial; distinguish strong scale, static weak guidance, and Model1 adaptation |
+| P3 | C at `lambda={0.5,0.8}`, `lr={1e-6,5e-7}` | reuse existing `1e-6` anchors, add only two `5e-7` runs | test whether low-lambda collapse is effective-step/update-norm stress; no terminal stabilization stops the LR expansion |
+| P4 | hard switch `.5→.8`, reverse `.8→.5`, optional linear `.5→.8`, P60 | same seed/data/optimizer; only lambda-by-global-step changes | test phase-dependent coupling; identical behavior conditional on terminal lambda rejects path dependence |
+| P5 | C/D0 proposer × C/D0 loss same-rollout 2×2 | exact detached rollout manifests and initial optimizer state | separate trajectory source from fused objective |
+| P6 | fixed-M1 Real/Align/true-Random/Anti | `lambda=0.8`, target and weak-tail invariants | separate cross-model rank geometry from token-specific assignment |
+
+For P4, lambda denotes the Model2 coefficient. A decreasing schedule increases
+weak-logit influence and is therefore a directional negative control, not a
+generic annealing default. The primary hard-switch boundary is local step 40:
+the existing low-lambda runs accelerate by P40--P50 and deteriorate after P50.
+Every schedule must be a deterministic function of global step, emit the
+resolved lambda at every update, and resume to the same sequence after a
+checkpoint restart.
+
+Short horizons are admission gates, not efficacy endpoints. P20/P30 may verify
+finite gradients, intervention invariants, telemetry ordering, and initial
+trajectory separation. When those gates pass, same-rollout and geometry arms
+must continue to the matched P60 endpoint before concluding that an objective
+cannot catch up. Report the full curve, AUC, time-to-threshold, peak, terminal,
+format, truncation, pre/post-clip gradient norms, update norm, and GPU-hours.
+
+Static-lambda search stops after the completed `.4/.5/.7/.8/.9` C curve and the
+matched P2 controls. `lambda=0.75` is admitted only if common offline evaluation
+and the second training seed both place a reproducible optimum inside the
+`.7--.8` interval. Otherwise schedule tests and causal controls have higher
+identification value than a denser static grid.
+
 ## 8. Metrics and validity contracts
 
 ### 8.1 Efficacy

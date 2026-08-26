@@ -2004,6 +2004,42 @@ lambda=0.4/0.5 的 Model2 都在 P50 达峰，lambda=0.8 在 P55 达峰；Model1
 
 运行状态仍以 scheduler、日志、checkpoint、raw evaluation 和 release-gate receipt 为权威证据；文档只发布已经核验的状态，不反向替代运行凭据。
 
+### C.10 “只是激发已有能力”假设：已有证据与尚未完成的判别
+
+“Qwen3-1.7B-Instruct 已经具备数学知识，post-training 主要是在激发和锐化已有能力”是一个真实的替代解释，不能仅凭 C 的 online validation 上升就排除。现有实验已经完成了这项审计所需的大部分 generation，但还没有完成全部 per-prompt 归因分析。
+
+**已经完成的部分。** cold-start selected checkpoint（CS0，即后续 C 所使用的 Model1 source）与 C-P60 已经使用完全相同的 Math-7、decoder、strict scorer、八个 generation seeds 和每题 `n=256` 合同评测。CS0 到 C 的 pass@1 从 32.72% 上升到 71.97%，maj@256 从 52.97% 上升到 80.95%，说明概率质量被大幅集中到正确答案；normalized-answer unique count 从 44.26 降到 3.96，也直接支持 answer-level sharpening。
+
+但 pass@256 同时从 84.38% 上升到 88.94%，增加 4.56 pp。有限采样下，这说明 C 不只是把已经频繁出现的正确答案重新排序，还让一部分原本在 256 次采样中没有命中的题进入了可观测正确支持。这个现象可以叫 **finite-sample behavioral coverage expansion**，不能据此证明模型参数中出现了全新的世界知识，也不能再把全部增益写成纯粹的 reweighting。
+
+**没有必要重复的部分。** 不再重新生成 CS0/Model1 `n=256`；已有 716,288 条 responses 足以做 latent-support 分层。下一步直接按 CS0 每题的正确样本数分层：`0/256`、`1--2/256`、`3--8/256`、`>8/256`，比较 C、D0、fixed-M1 和 strict A 在各层的 pass@1、pass@256、majority、格式与长度变化。若 C 的收益主要来自 CS0 已经偶尔答对的题，支持“激发/锐化”；若大量 CS0 `0/256` 题在 C 中稳定变为可解，只能支持“超过当前有限采样可见 support 的能力扩展”，仍不能证明初始概率严格为零。
+
+**仍缺的锚点。** 当前没有找到 Stage1-final Model2（`S1-P0`）共同 `n=256` 的权威 merge/release receipt；已有的是 online P0 `n=3` 与由该 checkpoint 出发的后续训练结果。它是判断“普通 On-Policy SFT 已经完成了多少激发”的关键中间锚点，应先核查是否存在未登记产物；确认不存在后只补这一项，不重复其他已完成 evaluation。strict-scorer A 的 seed 42/43 训练已完成，但也需要进入同一 common offline contract，才能替代历史 permissive-scorer A。
+
+因此，当前最准确的表述是：**现有结果强烈支持 sharpening，同时也观察到有限采样下的 coverage expansion；它们尚不能区分“恢复极低概率的已有能力”“形成更稳定的新推理程序”与“获得新知识”。** 要区分这些解释，优先使用已有样本做 per-prompt support 分层，再补 `S1-P0` 和 strict A 的共同 offline evaluation；不需要先启动新的大规模 generation。
+
+### C.11 2026-08-26 后续实验：分析先行，训练按可证伪价值排序
+
+下一轮不再把“搜到更高分”与“解释为什么有效”混为一个矩阵。每个新增训练必须预先写明它改变的变量、要排除的解释，以及什么结果会否定原假设。
+
+| 优先级 | 新增工作 | 训练量 | 主要比较 | 要验证或证伪的假设 |
+|-|-|-|-|-|
+| P0 | 复用 CS0 common `n=256` 做 per-prompt latent-support 分层；核查并按需补 `S1-P0`、strict A offline | 主要为 CPU 分析；最多 2 个 offline eval | CS0→S1-P0→A/C/D0/fixed | 收益是否主要来自已有低概率正确支持的锐化 |
+| P1 | seed 43 的 C、D0、fixed-M1，均固定 `lambda=0.8` | 3 个 P60 | C-D0、C-fixed、fixed-D0，跨 seed | weak-logit 增量、static guidance 与 co-adaptation 是否可复现 |
+| P2 | 补 D0/fixed-M1 的 `lambda=0.7/0.9` | 4 个 P60 | 同一 lambda 内 C/D0/fixed 三臂 | C 的 lambda 曲线究竟来自 strong-logit scale、固定 weak guidance，还是 Model1 自适应 |
+| P3 | C 的 `lambda={0.5,0.8} × lr={1e-6,5e-7}` 最小 2×2 | 新增 2 个 P60；复用两个 `1e-6` anchor | 同 lambda 改 lr、同 lr 改 lambda | 低 lambda 崩溃是否只是有效步长/更新幅度过大 |
+| P4 | phase-dependent lambda：`.5→.8` 与 `.8→.5` | 2--3 个 P60 | 两个方向与 constant `.5/.8` | weak coupling 是否“前期加速、后期致稳性风险”，而不是某个静态 lambda 最优 |
+| P5 | same-rollout 2×2，使用 C/D0 proposer 的冻结成功轨迹交叉 C/D0 loss | 先短程 validity，主判读延长到 P60 | 固定 trajectory 后比较 objective；固定 objective 后比较 proposer | 优势来自 trajectory discovery 还是 fused objective |
+| P6 | fixed-M1 下 Real/Align/true-Random/Anti geometry pilot | P20/P30 只作 manipulation gate；有分离才延长 P60 | rank affinity 的方向性操纵 | DynPerm 退化来自 cross-model geometry 还是 token-specific residual |
+
+**关于短程训练的边界。** P20/P30 只能验证实现有效、telemetry 顺序正确、曲线是否开始分离，不能用“短程尚未追上”判定某个 objective 无效。尤其 same-rollout 与 geometry controls 仍属于 On-Policy SFT 训练动力学；若 manipulation 有效但 endpoint 尚未拉开，主比较必须继续到与 C/D0 相同的 P60 budget，并同时报告整条曲线、AUC、time-to-threshold、peak 与 terminal。
+
+**关于 learning rate。** 不建议一次扩成 C/D0/fixed 的完整 lambda×LR 大网格。先用 C 的最小 2×2 判断把 lr 从 `1e-6` 降到 `5e-7` 是否能阻止 `lambda=0.5` 的 P60 崩溃；如果低 lr 只整体减慢而没有改善稳定性，就停止扩大 LR 搜索。如果它保留 P50 峰值并提高 P60，再补 fixed/D0 的 matched controls，区分 optimizer stabilization 与 coupling stabilization。
+
+**关于动态 lambda。** 这里的 lambda 是 Model2 权重，降低 lambda 等于提高 weak-logit 权重。最有信息量的首轮不是继续细扫静态小数点，而是方向相反的 schedule：前 40 step 使用 `lambda=0.5`、后 20 step 切到 `0.8`，与反向 `0.8→0.5` 比较；资源允许时再增加全程线性 `.5→.8`。若 `.5→.8` 同时保留早期加速和 P60 稳定，而反向 schedule 出现晚期退化，才支持“weak coupling 的作用具有训练阶段依赖性”。如果两种方向只由末端 lambda 决定，则否定 path-dependence，回到静态 scale/optimization 解释。
+
+**停止规则。** 静态 lambda 不做无边界 grid search。只有 common offline 与第二 seed 都显示 `0.7/0.8` 之间存在稳定、可复现的性能差异，才补 `lambda=0.75`；否则把 GPU 用于 multi-seed、schedule 和因果 controls。P1 是当前最优先启动的训练批次，P2 用于补齐现有 factorial，P3/P4 回答稳定性与阶段依赖，P5/P6 才承担机制因果判别。
+
 ## 附录 D：相关工作与思想来源
 
 1. [Weak-Driven Learning: How Weak Agents Make Strong Agents Stronger](https://arxiv.org/abs/2602.08222)：旧 SFT 梯度放大、branch sensitivity 与 weak-driven learning 背景。
