@@ -92,6 +92,48 @@ formal admission valid on A800. Before a formal A800 training campaign, create
 new A800 calibration evidence and a new manifest/admission bound to that
 profile.
 
+### GON-35 Pueue acceptance boundary
+
+The qualified GON-35 path is narrower than the general A800 development path.
+It pins Recipe candidate `cb677ebded6558875949d10d8a79af9356cb681d`, Pueue
+group `gpu8` at concurrency one, and image
+`ghcr.io/alexjj009/verl-harness@sha256:d380888dc8a10796c7f841e341bd775c2d6500ede539f4ea16bb7bf0de92665d`.
+The existing Standard GRPO Bash remains unchanged.
+
+Run `scripts/a800/bootstrap_pueue.sh` on the host, then source the external
+`/data_storage/yl_test/lgx/runtime/verl/pueue/pueue.env`. After the exact root
+candidate passes targeted checks, full CI, and independent review, render the
+one-shot admission with `scripts/a800/render_gon35_grpo_admission.py`. The
+renderer fails closed unless candidate-bound P0, P1, full-CI, and zero-finding
+review JSON evidence all pass. It writes the runtime environment, source
+snapshot, and admission receipt beneath the run's external receipt directory;
+it never writes queue state or training artifacts into either repository.
+
+The task-specific `scripts/a800/gon35-bin/verl-dev-run` shim translates only
+the admitted run's host output paths to the launcher's existing
+`/data-1/outputs/<run-name>` mount and then executes the machine-local
+`verl-dev-run`. It does not manage Pueue or add another container boundary.
+The Recipe submitter remains the sole owner of `pueue add` and its native task
+ID. A real submission must use the external values emitted by the renderer:
+
+```bash
+source /data_storage/yl_test/lgx/runtime/verl/pueue/pueue.env
+source <external-receipt-root>/runtime.env
+export PUEUE_GRPO_REPO_ROOT=<exact-clean-GON-35-worktree>
+export PUEUE_GRPO_OUTPUT_ROOT=<external-run-output-root>
+export PUEUE_GRPO_RECEIPT_ROOT=<external-run-output-root>/receipts
+export PUEUE_GRPO_RUNTIME_ENV_FILE=<external-receipt-root>/runtime.env
+export PUEUE_GRPO_A800_ADMISSION_RECEIPT=<external-receipt-root>/admission.json
+export PUEUE_GRPO_ALLOW_SUBMIT=1
+bash recipe/on_policy_wdl_sft/standard_grpo/pueue/submit_math_stage1_grpo.sh
+```
+
+All Pueue logs, task state, receipts, W&B files, caches, checkpoints, and
+training outputs stay below `/data_storage/yl_test/lgx`. The tmux server socket
+used to keep `pueued` detached is ordinary per-user runtime state; Pueue's own
+PID, Unix socket, logs, configuration, and state stay below the operation root.
+Do not reuse this admission for another candidate, image, run, or queue task.
+
 ## Queue and tmux rules
 
 Start every long-running launcher command inside tmux on the host:
