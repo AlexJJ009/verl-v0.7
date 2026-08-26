@@ -191,6 +191,7 @@ def test_math_grpo_formal_launch_is_gated_by_strict_reward_contract():
     assert "grpo_retrain_admission.py" in launcher
     assert '--runtime-image-digest "${GRPO_RUNTIME_IMAGE_DIGEST}"' in launcher
     assert '--seed-replicate "${GRPO_SEED_REPLICATE}"' in launcher
+    assert '"hydra.run.dir=${LOG_DIR}/hydra/${SLURM_JOB_ID:-manual}"' in launcher
     assert "--scheduler-managed" in launcher
     assert "GRPO_ROOT_COMMIT" in launcher
     assert "GRPO_RECIPE_COMMIT" in launcher
