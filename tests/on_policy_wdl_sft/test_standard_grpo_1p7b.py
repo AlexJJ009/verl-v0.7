@@ -110,6 +110,20 @@ def test_learning_rate_sensitivity_uses_the_same_math_entry(learning_rate):
     assert config["protected_ckpt_steps"] == "[20]"
 
 
+def test_explicit_second_seed_bundle_keeps_the_frozen_data_contract():
+    config = config_only(
+        "run_math_stage1_grpo.sh",
+        TRAINING_SEED="43",
+        ROLLOUT_SEED="1",
+        GRPO_SEED_REPLICATE="2",
+    )
+    assert config["actor_seed"] == "43"
+    assert config["rollout_seed"] == "1"
+    assert config["seed_replicate"] == "2"
+    assert config["data_seed"] == "20260719"
+    assert config["data_shuffle"] == "False"
+
+
 def test_c_wdl_p60_then_grpo_is_one_fresh_100_step_post_stage_run():
     config = config_only(
         "run_math_c_wdl_p60_then_grpo.sh",
@@ -176,6 +190,7 @@ def test_math_grpo_formal_launch_is_gated_by_strict_reward_contract():
     assert 'PYTHONPATH="${REPO_PYTHONPATH_ROOT:-${SCRIPT_DIR}/../../..}:${PYTHONPATH:-}"' in launcher
     assert "grpo_retrain_admission.py" in launcher
     assert '--runtime-image-digest "${GRPO_RUNTIME_IMAGE_DIGEST}"' in launcher
+    assert '--seed-replicate "${GRPO_SEED_REPLICATE}"' in launcher
     assert "--scheduler-managed" in launcher
     assert "GRPO_ROOT_COMMIT" in launcher
     assert "GRPO_RECIPE_COMMIT" in launcher

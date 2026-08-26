@@ -168,6 +168,7 @@ def main() -> int:
     parser.add_argument("--expected-image-digest", required=True)
     parser.add_argument("--actor-seed", type=int, required=True)
     parser.add_argument("--rollout-seed", type=int, required=True)
+    parser.add_argument("--seed-replicate", type=int, choices=(1, 2, 3), required=True)
     parser.add_argument("--data-seed", type=int, required=True)
     parser.add_argument("--data-shuffle", choices=("True", "False"), required=True)
     parser.add_argument("--train-prompt-bsz", type=int, required=True)
@@ -189,10 +190,16 @@ def main() -> int:
     ):
         if value < 0:
             raise ValueError(f"{label} must be non-negative")
+    expected_actor_seed, expected_rollout_seed = {
+        1: (42, 0),
+        2: (43, 1),
+        3: (44, 2),
+    }[args.seed_replicate]
     expected_randomness = {
-        "math": {"actor_seed": 42, "rollout_seed": 0, "data_seed": 20260719},
-        "code": {"actor_seed": 42, "rollout_seed": 0, "data_seed": 20260706},
-    }[args.task]
+        "actor_seed": expected_actor_seed,
+        "rollout_seed": expected_rollout_seed,
+        "data_seed": {"math": 20260719, "code": 20260706}[args.task],
+    }
     observed_randomness = {
         "actor_seed": args.actor_seed,
         "rollout_seed": args.rollout_seed,
@@ -243,6 +250,7 @@ def main() -> int:
         "task": args.task,
         "pipeline": args.pipeline,
         "randomness": {
+            "seed_replicate": args.seed_replicate,
             "actor_seed": args.actor_seed,
             "rollout_seed": args.rollout_seed,
             "data_seed": args.data_seed,

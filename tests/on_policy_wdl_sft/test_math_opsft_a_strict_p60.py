@@ -39,10 +39,10 @@ def test_strict_a_pins_every_common_causal_p60_variable() -> None:
         "export WDL_SFT_BETA=0.0",
         "export LOSS_MODE=wdl_sft",
         "export LR=1e-6",
-        "export DATA_SEED=20260719",
+        "export DATA_SEED=${DATA_SEED:-20260719}",
         "export DATA_SHUFFLE=False",
-        "export TRAINING_SEED=42",
-        "export ROLLOUT_SEED=0",
+        "export TRAINING_SEED=${TRAINING_SEED:-42}",
+        "export ROLLOUT_SEED=${ROLLOUT_SEED:-0}",
         "export JOINT_TRAINING=False",
         "export ROLLOUT_CALCULATE_LOG_PROBS=False",
         "export TRAIN_PROMPT_BSZ=64",
@@ -52,8 +52,8 @@ def test_strict_a_pins_every_common_causal_p60_variable() -> None:
         "export VAL_N=3",
         'export PROTECTED_CKPT_STEPS="[20,40,45,50,55,60]"',
         "../../joint_training/custom_reward_function_latex_verify.py",
-        "actor_rollout_ref.actor.fsdp_config.seed=42",
-        "actor_rollout_ref.actor.data_loader_seed=42",
+        'actor_rollout_ref.actor.fsdp_config.seed="${TRAINING_SEED}"',
+        'actor_rollout_ref.actor.data_loader_seed="${TRAINING_SEED}"',
     ):
         assert pin in wrapper
     assert "FUSION_LAMBDA=" not in wrapper
