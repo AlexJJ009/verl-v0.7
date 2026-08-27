@@ -40,7 +40,7 @@ expected_container_output="/data-1/outputs/${run_leaf}"
 # per-run output tree so concurrent or retried jobs cannot observe stale
 # metadata from the machine-wide cache. These directories are created on the
 # host because the container only receives the existing /data-1 bind mount.
-for cache_dir in triton torchinductor matplotlib; do
+for cache_dir in processes matplotlib; do
   mkdir -p -- "${GON35_HOST_OUTPUT_ROOT}/cache/${cache_dir}"
 done
 
@@ -79,5 +79,5 @@ launcher_args=("${args[@]:0:command_index}")
 # entry from the admitted mutable output root so Hydra's default outputs/
 # directory also remains external to both repositories.
 exec "${launcher}" --no-code-overlay "${launcher_args[@]}" \
-  bash -c 'set -euo pipefail; cd -- "$1"; export TRITON_CACHE_DIR="$1/cache/triton" TORCHINDUCTOR_CACHE_DIR="$1/cache/torchinductor" MPLCONFIGDIR="$1/cache/matplotlib"; exec bash /workspace/verl/recipe/on_policy_wdl_sft/standard_grpo/run_math_stage1_grpo.sh' \
+  bash -c 'set -euo pipefail; cd -- "$1"; export GON35_COMPILER_CACHE_ROOT="$1/cache/processes" MPLCONFIGDIR="$1/cache/matplotlib" PYTHONPATH="/workspace/verl/scripts/a800/gon35-python-startup${PYTHONPATH:+:$PYTHONPATH}"; exec bash /workspace/verl/recipe/on_policy_wdl_sft/standard_grpo/run_math_stage1_grpo.sh' \
   gon35-container-cwd "${GON35_CONTAINER_OUTPUT_ROOT}"

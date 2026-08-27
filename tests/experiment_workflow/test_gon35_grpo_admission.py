@@ -1,6 +1,9 @@
 import importlib.util
 import json
+import os
 from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
@@ -8,6 +11,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 RENDERER = ROOT / "scripts/a800/render_gon35_grpo_admission.py"
 SHIM = ROOT / "scripts/a800/gon35-bin/verl-dev-run"
+PYTHON_STARTUP = ROOT / "scripts/a800/gon35-python-startup"
 
 
 def load_renderer():
@@ -157,10 +161,50 @@ def test_launcher_shim_only_translates_admitted_external_outputs() -> None:
     assert 'expected_container_output="/data-1/outputs/${run_leaf}"' in text
     assert '"${GON35_CONTAINER_OUTPUT_ROOT}" == "${expected_container_output}"' in text
     assert 'mkdir -p -- "${GON35_HOST_OUTPUT_ROOT}/cache/${cache_dir}"' in text
-    assert 'TRITON_CACHE_DIR="$1/cache/triton"' in text
-    assert 'TORCHINDUCTOR_CACHE_DIR="$1/cache/torchinductor"' in text
+    assert 'GON35_COMPILER_CACHE_ROOT="$1/cache/processes"' in text
+    assert "/workspace/verl/scripts/a800/gon35-python-startup" in text
     assert 'MPLCONFIGDIR="$1/cache/matplotlib"' in text
     assert "GRPO_EXPECTED_LAUNCHER_SHA256" in text
     assert "sha256sum" in text
     assert "pueue " not in text.lower()
     assert "slurm" not in text.lower()
+
+
+def test_compiler_cache_namespace_changes_after_fork(tmp_path: Path) -> None:
+    code = """
+import json
+import os
+
+read_fd, write_fd = os.pipe()
+child_pid = os.fork()
+if child_pid == 0:
+    os.close(read_fd)
+    payload = [os.environ["TRITON_CACHE_DIR"], os.environ["TORCHINDUCTOR_CACHE_DIR"]]
+    os.write(write_fd, json.dumps(payload).encode())
+    os.close(write_fd)
+    os._exit(0)
+
+os.close(write_fd)
+child = json.loads(os.read(read_fd, 8192))
+os.close(read_fd)
+os.waitpid(child_pid, 0)
+parent = [os.environ["TRITON_CACHE_DIR"], os.environ["TORCHINDUCTOR_CACHE_DIR"]]
+print(json.dumps({"parent": parent, "child": child}))
+"""
+    env = os.environ.copy()
+    env["GON35_COMPILER_CACHE_ROOT"] = str(tmp_path / "compiler")
+    env["PYTHONPATH"] = str(PYTHON_STARTUP)
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    payload = json.loads(result.stdout)
+    assert payload["parent"] != payload["child"]
+    for paths in payload.values():
+        assert paths[0].endswith("/triton")
+        assert paths[1].endswith("/torchinductor")
+        assert Path(paths[0]).is_dir()
+        assert Path(paths[1]).is_dir()
