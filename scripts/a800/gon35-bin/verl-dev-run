@@ -15,12 +15,24 @@ actual_launcher_sha256=$(sha256sum -- "${launcher}" | awk '{print $1}')
   echo "ERROR: real verl-dev-run bytes drifted after GON-35 admission" >&2
   exit 78
 }
-[[ "${GON35_HOST_OUTPUT_ROOT}" == /data_storage/yl_test/lgx/artifacts/verl/outputs/* ]] || {
+artifact_output_root=/data_storage/yl_test/lgx/artifacts/verl/outputs
+canonical_host_output=$(realpath -e -- "${GON35_HOST_OUTPUT_ROOT}")
+[[ "${canonical_host_output}" == "${GON35_HOST_OUTPUT_ROOT}" ]] || {
+  echo "ERROR: GON-35 host output root must already be canonical" >&2
+  exit 64
+}
+[[ "${canonical_host_output}" == "${artifact_output_root}/"* ]] || {
   echo "ERROR: GON-35 host output root escaped the admitted artifact namespace" >&2
   exit 64
 }
-[[ "${GON35_CONTAINER_OUTPUT_ROOT}" == /data-1/outputs/* ]] || {
-  echo "ERROR: GON-35 container output root escaped the launcher output mount" >&2
+run_leaf=${canonical_host_output#"${artifact_output_root}/"}
+[[ "${run_leaf}" != */* && "${run_leaf}" =~ ^GON35-MATH-QWEN3-1P7B-STAGE1-GRPO-[0-9]{8}T[0-9]{6}Z$ ]] || {
+  echo "ERROR: GON-35 host output root has an invalid run leaf" >&2
+  exit 64
+}
+expected_container_output="/data-1/outputs/${run_leaf}"
+[[ "${GON35_CONTAINER_OUTPUT_ROOT}" == "${expected_container_output}" ]] || {
+  echo "ERROR: GON-35 container output root does not match the canonical host run" >&2
   exit 64
 }
 

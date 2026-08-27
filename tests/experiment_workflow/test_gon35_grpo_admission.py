@@ -153,6 +153,9 @@ def test_launcher_shim_only_translates_admitted_external_outputs() -> None:
     assert "exec bash /workspace/verl/recipe/on_policy_wdl_sft/standard_grpo/run_math_stage1_grpo.sh" in text
     assert '"${GON35_CONTAINER_OUTPUT_ROOT}"' in text
     assert "only admits the exact Math Stage1 GRPO entry" in text
+    assert 'canonical_host_output=$(realpath -e -- "${GON35_HOST_OUTPUT_ROOT}")' in text
+    assert 'expected_container_output="/data-1/outputs/${run_leaf}"' in text
+    assert '"${GON35_CONTAINER_OUTPUT_ROOT}" == "${expected_container_output}"' in text
     assert "GRPO_EXPECTED_LAUNCHER_SHA256" in text
     assert "sha256sum" in text
     assert "pueue " not in text.lower()
