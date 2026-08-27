@@ -95,7 +95,7 @@ profile.
 ### GON-35 Pueue acceptance boundary
 
 The qualified GON-35 path is narrower than the general A800 development path.
-It pins Recipe candidate `df641ed14d8fb0de9942165ec5d1820d14eeb6a9`, Pueue
+It pins Recipe candidate `3a2e015af455727e0adc60749211a81ae9e5a391`, Pueue
 group `gpu8` at concurrency one, and image
 `ghcr.io/alexjj009/verl-harness@sha256:d380888dc8a10796c7f841e341bd775c2d6500ede539f4ea16bb7bf0de92665d`.
 The existing Standard GRPO Bash remains unchanged.

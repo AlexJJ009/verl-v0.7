@@ -20,7 +20,7 @@ def load_renderer():
 
 def test_renderer_pins_recipe_image_and_p0_identities() -> None:
     module = load_renderer()
-    assert module.RECIPE_CANDIDATE == "df641ed14d8fb0de9942165ec5d1820d14eeb6a9"
+    assert module.RECIPE_CANDIDATE == "3a2e015af455727e0adc60749211a81ae9e5a391"
     assert module.IMAGE.endswith("@sha256:d380888dc8a10796c7f841e341bd775c2d6500ede539f4ea16bb7bf0de92665d")
     assert module.MODEL_SHA256 == "ff8ff12d311bcc862247bd1d13f4380ec53f8af87095b183cf393147222d94b0"
     assert module.DATA_SHA256 == "88d3accf25f54933b5776bfb0a4c07f5719a25199abc0ed800ccfc68eae15d66"

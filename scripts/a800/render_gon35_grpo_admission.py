@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-RECIPE_CANDIDATE = "df641ed14d8fb0de9942165ec5d1820d14eeb6a9"
+RECIPE_CANDIDATE = "3a2e015af455727e0adc60749211a81ae9e5a391"
 ROOT_BASE = "3a553e73549d5a2bc8f03defb0fffdfbe7249443"
 RECIPE_BASE = "a752d9edb8e2c4582d95ba2c507ba173ed8d7d11"
 IMAGE = "ghcr.io/alexjj009/verl-harness@sha256:d380888dc8a10796c7f841e341bd775c2d6500ede539f4ea16bb7bf0de92665d"
