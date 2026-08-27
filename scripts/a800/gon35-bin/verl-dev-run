@@ -45,4 +45,19 @@ for variable in BASE_CKPT_DIR LOG_DIR WANDB_DIR GRPO_ADMISSION_RECEIPT; do
   translate_output_path "${variable}"
 done
 
-exec "${launcher}" --no-code-overlay "$@"
+entry=recipe/on_policy_wdl_sft/standard_grpo/run_math_stage1_grpo.sh
+args=("$@")
+(( ${#args[@]} >= 2 )) || { echo "ERROR: GON-35 launcher command is incomplete" >&2; exit 64; }
+command_index=$((${#args[@]} - 2))
+[[ "${args[command_index]}" == bash && "${args[command_index + 1]}" == "${entry}" ]] || {
+  echo "ERROR: GON-35 launcher only admits the exact Math Stage1 GRPO entry" >&2
+  exit 64
+}
+launcher_args=("${args[@]:0:command_index}")
+
+# The repository is intentionally read-only. Run the unchanged scientific
+# entry from the admitted mutable output root so Hydra's default outputs/
+# directory also remains external to both repositories.
+exec "${launcher}" --no-code-overlay "${launcher_args[@]}" \
+  bash -c 'set -euo pipefail; cd -- "$1"; exec bash /workspace/verl/recipe/on_policy_wdl_sft/standard_grpo/run_math_stage1_grpo.sh' \
+  gon35-container-cwd "${GON35_CONTAINER_OUTPUT_ROOT}"

@@ -149,7 +149,10 @@ def test_launcher_shim_only_translates_admitted_external_outputs() -> None:
     assert "/data-1/outputs/" in text
     for variable in ("BASE_CKPT_DIR", "LOG_DIR", "WANDB_DIR", "GRPO_ADMISSION_RECEIPT"):
         assert variable in text
-    assert 'exec "${launcher}" --no-code-overlay "$@"' in text
+    assert 'cd -- "$1"' in text
+    assert "exec bash /workspace/verl/recipe/on_policy_wdl_sft/standard_grpo/run_math_stage1_grpo.sh" in text
+    assert '"${GON35_CONTAINER_OUTPUT_ROOT}"' in text
+    assert "only admits the exact Math Stage1 GRPO entry" in text
     assert "GRPO_EXPECTED_LAUNCHER_SHA256" in text
     assert "sha256sum" in text
     assert "pueue " not in text.lower()
