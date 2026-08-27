@@ -36,6 +36,19 @@ def _isolate_compiler_caches() -> None:
         cache_clear()
 
 
-_isolate_compiler_caches()
+def _isolate_or_exit() -> None:
+    try:
+        _isolate_compiler_caches()
+    except BaseException as error:
+        message = f"FATAL: GON-35 compiler-cache isolation failed: {error}\n"
+        try:
+            os.write(2, message.encode(errors="backslashreplace"))
+        finally:
+            # Exceptions from sitecustomize and at-fork callbacks are otherwise
+            # non-fatal. Never continue with an inherited shared cache.
+            os._exit(70)
+
+
+_isolate_or_exit()
 if hasattr(os, "register_at_fork"):
-    os.register_at_fork(after_in_child=_isolate_compiler_caches)
+    os.register_at_fork(after_in_child=_isolate_or_exit)

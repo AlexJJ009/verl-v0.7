@@ -161,6 +161,8 @@ def test_launcher_shim_only_translates_admitted_external_outputs() -> None:
     assert 'expected_container_output="/data-1/outputs/${run_leaf}"' in text
     assert '"${GON35_CONTAINER_OUTPUT_ROOT}" == "${expected_container_output}"' in text
     assert 'mkdir -p -- "${GON35_HOST_OUTPUT_ROOT}/cache/${cache_dir}"' in text
+    assert 'TRITON_CACHE_DIR="$1/cache/bootstrap/triton"' in text
+    assert 'TORCHINDUCTOR_CACHE_DIR="$1/cache/bootstrap/torchinductor"' in text
     assert 'GON35_COMPILER_CACHE_ROOT="$1/cache/processes"' in text
     assert "/workspace/verl/scripts/a800/gon35-python-startup" in text
     assert 'MPLCONFIGDIR="$1/cache/matplotlib"' in text
@@ -208,3 +210,20 @@ print(json.dumps({"parent": parent, "child": child}))
         assert paths[1].endswith("/torchinductor")
         assert Path(paths[0]).is_dir()
         assert Path(paths[1]).is_dir()
+
+
+def test_compiler_cache_namespace_fails_closed(tmp_path: Path) -> None:
+    blocker = tmp_path / "not-a-directory"
+    blocker.write_text("blocked")
+    env = os.environ.copy()
+    env["GON35_COMPILER_CACHE_ROOT"] = str(blocker / "compiler")
+    env["PYTHONPATH"] = str(PYTHON_STARTUP)
+    result = subprocess.run(
+        [sys.executable, "-c", "raise AssertionError('application code must not run')"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert result.returncode == 70
+    assert "compiler-cache isolation failed" in result.stderr
+    assert "application code must not run" not in result.stderr
