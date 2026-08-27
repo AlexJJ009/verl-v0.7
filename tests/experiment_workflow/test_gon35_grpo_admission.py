@@ -145,7 +145,7 @@ def test_ci_admission_rejects_parity_identity_or_regression_drift(
 
 def test_launcher_shim_only_translates_admitted_external_outputs() -> None:
     text = SHIM.read_text()
-    assert "/data_storage/yl_test/lgx/artifacts/verl/outputs/" in text
+    assert "artifact_output_root=/data_storage/yl_test/lgx/artifacts/verl/outputs" in text
     assert "/data-1/outputs/" in text
     for variable in ("BASE_CKPT_DIR", "LOG_DIR", "WANDB_DIR", "GRPO_ADMISSION_RECEIPT"):
         assert variable in text
