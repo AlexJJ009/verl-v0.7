@@ -95,7 +95,7 @@ profile.
 ### GON-35 Pueue acceptance boundary
 
 The qualified GON-35 path is narrower than the general A800 development path.
-It pins Recipe candidate `cb677ebded6558875949d10d8a79af9356cb681d`, Pueue
+It pins Recipe candidate `4cd5f36a7183da2027ba0665040c7cb5a51be156`, Pueue
 group `gpu8` at concurrency one, and image
 `ghcr.io/alexjj009/verl-harness@sha256:d380888dc8a10796c7f841e341bd775c2d6500ede539f4ea16bb7bf0de92665d`.
 The existing Standard GRPO Bash remains unchanged.
@@ -117,6 +117,10 @@ The task-specific `scripts/a800/gon35-bin/verl-dev-run` shim translates only
 the admitted run's host output paths to the launcher's existing
 `/data-1/outputs/<run-name>` mount and then executes the machine-local
 `verl-dev-run`. It does not manage Pueue or add another container boundary.
+For linked Git worktrees, the machine-local launcher mounts the shared Git
+common directory read-only at its original absolute path. This preserves the
+container-side clean-checkout and exact-SHA admission checks without granting
+write access to repository metadata.
 The Recipe submitter remains the sole owner of `pueue add` and its native task
 ID. A real submission must use the external values emitted by the renderer:
 
