@@ -92,6 +92,59 @@ formal admission valid on A800. Before a formal A800 training campaign, create
 new A800 calibration evidence and a new manifest/admission bound to that
 profile.
 
+### GON-35 Pueue acceptance boundary
+
+The qualified GON-35 path is narrower than the general A800 development path.
+It pins Recipe candidate `57bc5478ac33b4d476f66dd534e9b9a4d86dcf36`, Pueue
+group `gpu8` at concurrency one, and image
+`ghcr.io/alexjj009/verl-harness@sha256:d380888dc8a10796c7f841e341bd775c2d6500ede539f4ea16bb7bf0de92665d`.
+The existing Standard GRPO Bash remains unchanged.
+
+Run `scripts/a800/bootstrap_pueue.sh` on the host, then source the external
+`/data_storage/yl_test/lgx/runtime/verl/pueue/pueue.env`. After the exact root
+candidate passes targeted checks, CI admission, and independent review, render the
+one-shot admission with `scripts/a800/render_gon35_grpo_admission.py`. The
+CI admission accepts either a genuinely passing full-CI result or the approved
+exact-environment Base/Candidate parity evidence with zero candidate-only
+failures and zero shared-failure detail drift. The renderer fails closed on any
+candidate, Recipe, image, launcher, mount, payload, or comparison drift; parity
+does not claim that full CI passed. Candidate-bound P0, P1, CI-admission, and
+zero-finding review JSON evidence must all be present. It writes the runtime
+environment, source snapshot, and admission receipt beneath the run's external receipt directory;
+it never writes queue state or training artifacts into either repository.
+
+The task-specific `scripts/a800/gon35-bin/verl-dev-run` shim translates only
+the admitted run's host output paths to the launcher's existing
+`/data-1/outputs/<run-name>` mount and then executes the machine-local
+`verl-dev-run`. It does not manage Pueue or add another container boundary.
+For linked Git worktrees, the machine-local launcher mounts the shared Git
+common directory read-only at its original absolute path. This preserves the
+container-side clean-checkout and exact-SHA admission checks without granting
+write access to repository metadata.
+The GON-35 Math shim also selects `--no-code-overlay`; the A800 machine gate
+still applies, but the unrelated code-task overlay cannot make the reviewed
+Recipe checkout appear dirty inside the container.
+The Recipe submitter remains the sole owner of `pueue add` and its native task
+ID. A real submission must use the external values emitted by the renderer:
+
+```bash
+source /data_storage/yl_test/lgx/runtime/verl/pueue/pueue.env
+source <external-receipt-root>/runtime.env
+export PUEUE_GRPO_REPO_ROOT=<exact-clean-GON-35-worktree>
+export PUEUE_GRPO_OUTPUT_ROOT=<external-run-output-root>
+export PUEUE_GRPO_RECEIPT_ROOT=<external-run-output-root>/receipts
+export PUEUE_GRPO_RUNTIME_ENV_FILE=<external-receipt-root>/runtime.env
+export PUEUE_GRPO_A800_ADMISSION_RECEIPT=<external-receipt-root>/admission.json
+export PUEUE_GRPO_ALLOW_SUBMIT=1
+bash recipe/on_policy_wdl_sft/standard_grpo/pueue/submit_math_stage1_grpo.sh
+```
+
+All Pueue logs, task state, receipts, W&B files, caches, checkpoints, and
+training outputs stay below `/data_storage/yl_test/lgx`. The tmux server socket
+used to keep `pueued` detached is ordinary per-user runtime state; Pueue's own
+PID, Unix socket, logs, configuration, and state stay below the operation root.
+Do not reuse this admission for another candidate, image, run, or queue task.
+
 ## Queue and tmux rules
 
 Start every long-running launcher command inside tmux on the host:

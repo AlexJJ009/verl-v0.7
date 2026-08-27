@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# GON-35's Recipe worker creates host-visible paths before crossing the
+# verl-dev-run boundary. Translate only those admitted mutable paths to the
+# existing /data-1/outputs mount; all other launcher behavior stays native.
+: "${GON35_HOST_OUTPUT_ROOT:?GON-35 host output root is required}"
+: "${GON35_CONTAINER_OUTPUT_ROOT:?GON-35 container output root is required}"
+
+launcher=${VERL_DEV_RUN_REAL:-/data_storage/yl_test/lgx/home/.local/bin/verl-dev-run}
+[[ -x "${launcher}" ]] || { echo "ERROR: real verl-dev-run is unavailable: ${launcher}" >&2; exit 69; }
+: "${GRPO_EXPECTED_LAUNCHER_SHA256:?admitted machine-launcher checksum is required}"
+actual_launcher_sha256=$(sha256sum -- "${launcher}" | awk '{print $1}')
+[[ "${actual_launcher_sha256}" == "${GRPO_EXPECTED_LAUNCHER_SHA256}" ]] || {
+  echo "ERROR: real verl-dev-run bytes drifted after GON-35 admission" >&2
+  exit 78
+}
+artifact_output_root=/data_storage/yl_test/lgx/artifacts/verl/outputs
+canonical_host_output=$(realpath -e -- "${GON35_HOST_OUTPUT_ROOT}")
+[[ "${canonical_host_output}" == "${GON35_HOST_OUTPUT_ROOT}" ]] || {
+  echo "ERROR: GON-35 host output root must already be canonical" >&2
+  exit 64
+}
+[[ "${canonical_host_output}" == "${artifact_output_root}/"* ]] || {
+  echo "ERROR: GON-35 host output root escaped the admitted artifact namespace" >&2
+  exit 64
+}
+run_leaf=${canonical_host_output#"${artifact_output_root}/"}
+[[ "${run_leaf}" != */* && "${run_leaf}" =~ ^GON35-MATH-QWEN3-1P7B-STAGE1-GRPO-[0-9]{8}T[0-9]{6}Z$ ]] || {
+  echo "ERROR: GON-35 host output root has an invalid run leaf" >&2
+  exit 64
+}
+expected_container_output="/data-1/outputs/${run_leaf}"
+[[ "${GON35_CONTAINER_OUTPUT_ROOT}" == "${expected_container_output}" ]] || {
+  echo "ERROR: GON-35 container output root does not match the canonical host run" >&2
+  exit 64
+}
+
+# Compiler caches are mutable run artifacts. Keep them inside the canonical
+# per-run output tree so concurrent or retried jobs cannot observe stale
+# metadata from the machine-wide cache. These directories are created on the
+# host because the container only receives the existing /data-1 bind mount.
+for cache_dir in triton torchinductor matplotlib; do
+  mkdir -p -- "${GON35_HOST_OUTPUT_ROOT}/cache/${cache_dir}"
+done
+
+translate_output_path() {
+  local name=$1 value suffix
+  value=${!name-}
+  [[ -n "${value}" ]] || { echo "ERROR: ${name} is required at the GON-35 launcher boundary" >&2; exit 64; }
+  case "${value}/" in
+    "${GON35_HOST_OUTPUT_ROOT}/"*)
+      suffix=${value#"${GON35_HOST_OUTPUT_ROOT}"}
+      printf -v "${name}" '%s' "${GON35_CONTAINER_OUTPUT_ROOT}${suffix}"
+      export "${name}"
+      ;;
+    *)
+      echo "ERROR: ${name} escaped the admitted GON-35 output root: ${value}" >&2
+      exit 64
+      ;;
+  esac
+}
+
+for variable in BASE_CKPT_DIR LOG_DIR WANDB_DIR GRPO_ADMISSION_RECEIPT; do
+  translate_output_path "${variable}"
+done
+
+entry=recipe/on_policy_wdl_sft/standard_grpo/run_math_stage1_grpo.sh
+args=("$@")
+(( ${#args[@]} >= 2 )) || { echo "ERROR: GON-35 launcher command is incomplete" >&2; exit 64; }
+command_index=$((${#args[@]} - 2))
+[[ "${args[command_index]}" == bash && "${args[command_index + 1]}" == "${entry}" ]] || {
+  echo "ERROR: GON-35 launcher only admits the exact Math Stage1 GRPO entry" >&2
+  exit 64
+}
+launcher_args=("${args[@]:0:command_index}")
+
+# The repository is intentionally read-only. Run the unchanged scientific
+# entry from the admitted mutable output root so Hydra's default outputs/
+# directory also remains external to both repositories.
+exec "${launcher}" --no-code-overlay "${launcher_args[@]}" \
+  bash -c 'set -euo pipefail; cd -- "$1"; export TRITON_CACHE_DIR="$1/cache/triton" TORCHINDUCTOR_CACHE_DIR="$1/cache/torchinductor" MPLCONFIGDIR="$1/cache/matplotlib"; exec bash /workspace/verl/recipe/on_policy_wdl_sft/standard_grpo/run_math_stage1_grpo.sh' \
+  gon35-container-cwd "${GON35_CONTAINER_OUTPUT_ROOT}"
