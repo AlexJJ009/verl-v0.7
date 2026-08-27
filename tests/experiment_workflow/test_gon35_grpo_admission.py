@@ -166,6 +166,10 @@ def test_launcher_shim_only_translates_admitted_external_outputs() -> None:
     assert 'GON35_COMPILER_CACHE_ROOT="$1/cache/processes"' in text
     assert "/workspace/verl/scripts/a800/gon35-python-startup" in text
     assert 'MPLCONFIGDIR="$1/cache/matplotlib"' in text
+    assert 'WANDB_DIR="$1/wandb"' in text
+    assert 'WANDB_DATA_DIR="$1/cache/wandb/data"' in text
+    assert 'WANDB_CACHE_DIR="$1/cache/wandb/cache"' in text
+    assert 'WANDB_CONFIG_DIR="$1/cache/wandb/config"' in text
     assert "GRPO_EXPECTED_LAUNCHER_SHA256" in text
     assert "sha256sum" in text
     assert "pueue " not in text.lower()
