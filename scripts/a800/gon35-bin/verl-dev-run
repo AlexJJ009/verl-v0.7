@@ -9,6 +9,12 @@ set -euo pipefail
 
 launcher=${VERL_DEV_RUN_REAL:-/data_storage/yl_test/lgx/home/.local/bin/verl-dev-run}
 [[ -x "${launcher}" ]] || { echo "ERROR: real verl-dev-run is unavailable: ${launcher}" >&2; exit 69; }
+: "${GRPO_EXPECTED_LAUNCHER_SHA256:?admitted machine-launcher checksum is required}"
+actual_launcher_sha256=$(sha256sum -- "${launcher}" | awk '{print $1}')
+[[ "${actual_launcher_sha256}" == "${GRPO_EXPECTED_LAUNCHER_SHA256}" ]] || {
+  echo "ERROR: real verl-dev-run bytes drifted after GON-35 admission" >&2
+  exit 78
+}
 [[ "${GON35_HOST_OUTPUT_ROOT}" == /data_storage/yl_test/lgx/artifacts/verl/outputs/* ]] || {
   echo "ERROR: GON-35 host output root escaped the admitted artifact namespace" >&2
   exit 64
@@ -39,4 +45,4 @@ for variable in BASE_CKPT_DIR LOG_DIR WANDB_DIR GRPO_ADMISSION_RECEIPT; do
   translate_output_path "${variable}"
 done
 
-exec "${launcher}" "$@"
+exec "${launcher}" --no-code-overlay "$@"

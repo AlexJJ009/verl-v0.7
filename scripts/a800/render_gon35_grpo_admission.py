@@ -15,14 +15,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-RECIPE_CANDIDATE = "4cd5f36a7183da2027ba0665040c7cb5a51be156"
+RECIPE_CANDIDATE = "df641ed14d8fb0de9942165ec5d1820d14eeb6a9"
 ROOT_BASE = "3a553e73549d5a2bc8f03defb0fffdfbe7249443"
 RECIPE_BASE = "a752d9edb8e2c4582d95ba2c507ba173ed8d7d11"
 IMAGE = "ghcr.io/alexjj009/verl-harness@sha256:d380888dc8a10796c7f841e341bd775c2d6500ede539f4ea16bb7bf0de92665d"
 IMAGE_DIGEST = IMAGE.rsplit("@", 1)[1]
 PARITY_IMAGE_ID = "sha256:126f9a69cd42c2f38688bc4e20daa3676dbb4b6f92f624299289c316634fc1c1"
 PARITY_LAUNCHER = "/data_storage/yl_test/lgx/home/.local/bin/verl-dev-run"
-PARITY_LAUNCHER_SHA256 = "0fac6c447d2ec8244bc8fccc49b2a8a0dbeaf132335512def7bb4df807b4c460"
+PARITY_LAUNCHER_SHA256 = "58ad5632d4d8ad9a9568e0df81fe5fa000a526793e0865036efe047f9b977c55"
 PARITY_PAYLOAD = "python -m pytest -q tests/experiment_workflow tests/joint_training/regression/test_validation_generation_logging.py"
 PARITY_REPOSITORY_MOUNT = "/workspace/verl:ro"
 ENTRY = "on_policy_wdl_sft/standard_grpo/run_math_stage1_grpo.sh"
@@ -317,6 +317,7 @@ def main() -> None:
         "LGX_ROOT": "/data_storage/yl_test/lgx",
         "DOCKER_IMAGE": IMAGE,
         "EXPECTED_IMAGE_ID": image_id,
+        "GRPO_EXPECTED_LAUNCHER_SHA256": PARITY_LAUNCHER_SHA256,
         "GRPO_RUNTIME_IMAGE_DIGEST": IMAGE_DIGEST,
         "GRPO_EXPECTED_IMAGE_DIGEST": IMAGE_DIGEST,
         "GRPO_ROOT_COMMIT": root_candidate,
