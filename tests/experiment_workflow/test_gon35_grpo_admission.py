@@ -156,6 +156,10 @@ def test_launcher_shim_only_translates_admitted_external_outputs() -> None:
     assert 'canonical_host_output=$(realpath -e -- "${GON35_HOST_OUTPUT_ROOT}")' in text
     assert 'expected_container_output="/data-1/outputs/${run_leaf}"' in text
     assert '"${GON35_CONTAINER_OUTPUT_ROOT}" == "${expected_container_output}"' in text
+    assert 'mkdir -p -- "${GON35_HOST_OUTPUT_ROOT}/cache/${cache_dir}"' in text
+    assert 'TRITON_CACHE_DIR="$1/cache/triton"' in text
+    assert 'TORCHINDUCTOR_CACHE_DIR="$1/cache/torchinductor"' in text
+    assert 'MPLCONFIGDIR="$1/cache/matplotlib"' in text
     assert "GRPO_EXPECTED_LAUNCHER_SHA256" in text
     assert "sha256sum" in text
     assert "pueue " not in text.lower()
