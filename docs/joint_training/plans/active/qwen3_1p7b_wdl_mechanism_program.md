@@ -1,13 +1,13 @@
 # Qwen3-1.7B On-Policy WDL Mechanism Program
 
-- Status: **ACTIVE RESEARCH PROGRAM / DYNPERM PARTIAL MATRIX COMPLETE** —
+- Status: **ACTIVE RESEARCH PROGRAM / LAMBDA FACTORIAL COMPLETE ONLINE** —
   fixed-Model1 and Standard-C `rho={0,0.25,0.5}` P60 trajectories are complete;
-  the two `rho=1` confirmation arms are still running as Jobs 230/231 on
-  2026-08-23. Completed arms passed the intervention invariants, but common
-  offline evaluation is still pending. Here `rho` is the permutation dose;
+  `rho=1` Standard-C completed but fixed-M1 failed, so the DynPerm endpoint is
+  still incomplete. The `lambda={0.7,0.9}` Standard-C/D0/fixed-M1 P60 online
+  factorial is now complete and release-gated. The planned `lr=5e-7` controls
+  did not produce formal P60 endpoints. Here `rho` is the permutation dose and
   every DynPerm arm retains fusion `lambda=0.8`. The next discriminating
-  intervention is the M3 Align/true-Random/Anti pilot, which is designed but
-  not yet implemented or launch-ready.
+  intervention remains the M3 Align/true-Random/Anti pilot.
 - Created: 2026-08-16
 - Primary method result: `qwen3_1p7b_math_stage123.md`
 - Result attachment: `../../reports/qwen3_1p7b_math_stage123_matrix_results_20260723.md`
@@ -696,6 +696,28 @@ New training is admitted in the following order:
 | P5 | C/D0 proposer × C/D0 loss same-rollout 2×2 | exact detached rollout manifests and initial optimizer state | separate trajectory source from fused objective |
 | P6 | fixed-M1 Real/Align/true-Random/Anti | `lambda=0.8`, target and weak-tail invariants | separate cross-model rank geometry from token-specific assignment |
 
+Execution update on 2026-08-27:
+
+| Work item | Formal outcome | Result boundary |
+| --- | --- | --- |
+| P2 `lambda=0.7` | C Job 236 P60 `71.052%`; fixed-M1 Job 250 P60 `60.693%`; D0 Job 259 P60 `33.023%` | `C > fixed > D0`; scale-only D0 collapse proves adaptive Model1 feedback is not necessary for instability |
+| P2 `lambda=0.9` | C Job 242 P60 `68.060%`; fixed-M1 Job 260 P60 `70.603%`; D0 Job 261 P60 `68.871%` | `fixed > D0 ≈ C`; Model1 adaptation is not uniformly beneficial |
+| P3 C `lambda=0.5, lr=5e-7` | Job 254 stopped at 0 steps on storage admission | infrastructure failure; no scientific result |
+| P3 C `lambda=0.8, lr=5e-7` | Job 255 has complete P50 but failed saving P55 | diagnostic slow-learning trajectory only; no P60/release-gated result |
+
+All successful P2 follow-up runs have first-step gradient receipts, P60
+completion records, exit code zero, and `ALLOWED` release gates. Job 261 resumed
+from the last complete P55 checkpoint after the original P60 save failure; the
+resumed run completed P60 without changing the matched experiment contract.
+
+The P2 result rejects a one-factor story. At `lambda=0.7`, strong-logit scaling
+alone is sufficient to cause severe late failure, while static weak guidance
+recovers part of the trajectory and joint adaptation recovers both level and
+stability. At `lambda=0.9`, fixed weak guidance is the strongest arm and joint
+adaptation does not help. These are online `n=3`, single-seed endpoints; common
+offline evaluation and a second seed remain required before choosing `0.7` over
+the stable `0.8` baseline.
+
 For P4, lambda denotes the Model2 coefficient. A decreasing schedule increases
 weak-logit influence and is therefore a directional negative control, not a
 generic annealing default. The primary hard-switch boundary is local step 40:
@@ -712,7 +734,7 @@ cannot catch up. Report the full curve, AUC, time-to-threshold, peak, terminal,
 format, truncation, pre/post-clip gradient norms, update norm, and GPU-hours.
 
 Static-lambda search stops after the completed `.4/.5/.7/.8/.9` C curve and the
-matched P2 controls. `lambda=0.75` is admitted only if common offline evaluation
+now-complete matched P2 controls. `lambda=0.75` is admitted only if common offline evaluation
 and the second training seed both place a reproducible optimum inside the
 `.7--.8` interval. Otherwise schedule tests and causal controls have higher
 identification value than a denser static grid.

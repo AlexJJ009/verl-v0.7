@@ -5,7 +5,7 @@
 - 文档类型：机制调研与实验设计沉淀
 - 创建日期：2026-08-16
 - 适用范围：Qwen3-1.7B、Math-first、`beta=0` 的 On-Policy WDL-SFT 主实验
-- 当前状态：共同 `n=256` 已覆盖历史 A、C、D0、fixed-M1 与 strict-GRPO；历史 A 的 scorer 未与其余 arm 对齐，strict-A 重跑仍待完成。DynPerm `rho=0/0.25/0.5` 双臂 P60 已完成；`rho=1` Standard-C（Job 231）正常完成，fixed-M1（Job 230）失败，完整双臂端点仍未闭合。fusion `lambda=0.4/0.5` 的 C reconnaissance 已完成，matched D0/fixed-M1 controls 正在补齐。本文只把有 terminal evidence 的 arm 写为完成，并把 `rho`（置换剂量）与 `lambda`（融合权重）严格分开。
+- 当前状态：共同 `n=256` 已覆盖历史 A、C、D0、fixed-M1 与 strict-GRPO；历史 A 的 scorer 未与其余 arm 对齐，strict-A 重跑仍待完成。DynPerm `rho=0/0.25/0.5` 双臂 P60 已完成；`rho=1` Standard-C（Job 231）正常完成，fixed-M1（Job 230）失败，完整双臂端点仍未闭合。fusion `lambda=0.7/0.9` 的 C/D0/fixed-M1 三臂 P60 online 矩阵已经闭合；两个 `lr=5e-7` 的 Standard-C control 未形成正式端点。本文只把有 terminal evidence 和通过 release gate 的 arm 写为正式完成，并把 `rho`（置换剂量）与 `lambda`（融合权重）严格分开。
 - 相关方法论文：[Weak-Driven Learning: How Weak Agents Make Strong Agents Stronger](https://arxiv.org/abs/2602.08222)
 - 原始同熵实验草案：[动态同熵 Weak-Structure Ablation](https://ocnwds5io8yp.feishu.cn/docx/NEIvdnwU0o0vszxi2wycfcTHnjd)
 - 审稿记录：[OpenReview](https://openreview.net/forum?id=WAqz1qihuI)
@@ -1983,6 +1983,31 @@ lambda=0.4/0.5 的 Model2 都在 P50 达峰，lambda=0.8 在 P55 达峰；Model1
 
 失稳证据更加明确：lambda=0.4 在 P55 的 Model1/Model2 grad norm 增至 107.11/174.75，P60 Model2 extraction failure 达 81.35%；lambda=0.5 P60 grad norm 为 64.50/147.90，Model2 降至 49.430%，但 extraction failure 只有 6.25%。这说明低 lambda 会缩短稳定窗口，但 lambda=0.4 和 0.5 的失败形态并不相同。必须用 fixed-M1、D0 scale control、gradient-normalized control、共同 n=256 和第二 training seed 才能区分 adaptive feedback、scale/temperature 与有效梯度幅度。
 
+#### C.6.1 `lambda=0.7/0.9` 三臂因果矩阵（2026-08-27）
+
+本轮补齐了同一 Stage1 source、seed、固定数据顺序、P60 budget、strict scorer 和 `lr=1e-6` 下的 Standard-C、D0 与 fixed-M1。C 使用 mixture 并更新两个模型；fixed-M1 保留相同 mixture 但冻结 Model1；D0 使用 `strong_scaled=lambda` 且 Model1 梯度为零。Jobs 259、260、261 均训练到 P60、退出码为 0，并通过 first-step gradient gate、completion gate 和正式 release gate。
+
+| lambda | Arm | Job | Model2 peak | Model2 P60 | Model1 P60 | 正式状态 |
+|-|-|-|-|-|-|-|
+| 0.7 | Standard C | 236 | P55 71.474% | 71.052% | 71.071% | 完成 |
+| 0.7 | fixed-M1 | 250 | P35 68.581% | 60.693% | 38.643% | 完成；后期退化 |
+| 0.7 | D0 | 259 | P10 42.339% | 33.023% | 38.905% | 完成；P25 后持续退化 |
+| 0.9 | Standard C | 242 | P55 68.995% | 68.060% | 67.418% | 完成 |
+| 0.9 | fixed-M1 | 260 | P55 70.717% | 70.603% | 37.864% | 完成 |
+| 0.9 | D0 | 261 | P55 69.507%* | 68.871% | 38.335% | 完成 |
+
+`*` Job 261 是从 P55 完整 checkpoint 恢复到 P60；当前登记证据保留 P55/P60，不把未重新汇总的更早点写成全程 peak。
+
+这组结果把原来的解释收窄了。第一，`lambda=0.7` 的 D0 在没有 weak logits、没有 Model1 更新时仍发生严重退化，因此低 lambda 的崩溃不能全部归因于 adaptive weak-model feedback；单独改变 strong-logit scale、有效 temperature 和优化动力学就足以产生晚期不稳定。第二，在同一 `lambda=0.7` 下，C 明显优于 fixed-M1，fixed-M1 又明显优于 D0，说明 static weak guidance 和 joint co-adaptation 在这个点都贡献了可见的 online 效果，同时 co-adaptation 还显著延长了稳定窗口。第三，在 `lambda=0.9` 下，fixed-M1 反而高于 C，D0 与 C 接近，说明 Model1 自适应更新不是普遍必要条件，其作用随融合权重改变，不能概括成“joint 总是优于 fixed”。
+
+这仍不是 publication-level 的 lambda 最优性结论。`lambda=0.7` 的 C online peak/P60 只比 `lambda=0.8` 高 0.315/0.250 pp，处于单 seed、online `n=3` 的噪声尺度内；在 common offline 与第二 training seed 之前，不能声称 `lambda=0.7` 已经超过 `0.8`。更合理的判读是：`0.7` 成为需要重点复核的候选，而不是继续无边界细扫静态 lambda。
+
+#### C.6.2 `lr=5e-7` 最小 2×2 尚未闭合
+
+Job 254（C，`lambda=0.5`，`lr=5e-7`）在训练前因 controller checkpoint 盘低于 100 GiB admission threshold 退出，0 step、无 first-step/completion/release-gate 事件。Job 255（C，`lambda=0.8`，`lr=5e-7`）通过 first-step gate 并计算到 P55，但保存 P55 时 node B 磁盘空间不足；最后完整 checkpoint 为 P50，training exit code 为 1，无 completion event，release gate 为 BLOCKED。其 Model2 online validation 到 P50 仅升至 44.506%，可以记录为“低学习率下前 50 step 学习明显更慢”的诊断现象，但不能判定最终是否更稳定。
+
+因此，当前没有证据支持“把 lr 降到 `5e-7` 可以修复低-lambda 崩溃”，也没有证据否定它；这两个失败 run 不进入正式效果表。若后续机器释放前不恢复，P3 状态必须保留为未完成。
+
 ### C.7 梯度分析能够和不能够证明什么
 
 在固定 state、固定 teacher-forced tokens 下，梯度分析可以精确给出 Product-of-Experts / Chernoff 恒等式、目标与 non-target logit gradient 的方向和尺度、干预 invariants，以及 Align/Anti 等控制应产生的 telemetry 顺序。它能排除与公式矛盾的无条件解释，也能帮助设计可证伪实验。
@@ -1994,9 +2019,12 @@ lambda=0.4/0.5 的 Model2 都在 P50 达峰，lambda=0.8 在 P55 达峰；Model1
 - 可以写：在当前 strict、matched、single-seed Math 合同下，C 相对 D0 提升 pass@1；固定 weak guidance 足以解释主要 pass@1 增益。
 - 可以写：pure GRPO P200 未超过 C effective P100；C 后续 GRPO 只带来小幅 pass@1 refinement。
 - 可以写：DynPerm 中剂量严重退化，说明真实 assignment 或被同时破坏的 fusion geometry 对闭环训练重要。
+- 可以写：D0 `lambda=0.7` 在 Model1 梯度为零时仍崩溃，排除了“低-lambda 退化完全由 adaptive Model1 feedback 引起”的单因解释。
+- 可以写：`lambda=0.7` 呈现 C > fixed-M1 > D0，而 `lambda=0.9` 呈现 fixed-M1 > D0 ≈ C；fixed guidance 与 co-adaptation 的作用具有 lambda 依赖性。
 - 不能写：历史 A 已严格证明 C 优于 Standard On-Policy SFT；历史 A scorer 未对齐。
 - 不能写：DynPerm 已证明 semantic dark knowledge，或已经证明可以去掉 Model1。
-- 不能写：局部梯度分析已经解释长期训练终点，或 lambda=0.4/0.5 已找到更高性能配置。
+- 不能写：局部梯度分析已经解释长期训练终点，或当前单 seed online sweep 已证明 `lambda=0.7` 是更高性能配置。
+- 不能写：`lr=5e-7` 已经解决或不能解决低-lambda 崩溃；两个计划 control 都没有形成 P60 正式端点。
 
 ### C.9 单一真相源与发布原则
 
@@ -2026,8 +2054,8 @@ lambda=0.4/0.5 的 Model2 都在 P50 达峰，lambda=0.8 在 P55 达峰；Model1
 |-|-|-|-|-|
 | P0 | 复用 CS0 common `n=256` 做 per-prompt latent-support 分层；核查并按需补 `S1-P0`、strict A offline | 主要为 CPU 分析；最多 2 个 offline eval | CS0→S1-P0→A/C/D0/fixed | 收益是否主要来自已有低概率正确支持的锐化 |
 | P1 | seed 43 的 C、D0、fixed-M1，均固定 `lambda=0.8` | 3 个 P60 | C-D0、C-fixed、fixed-D0，跨 seed | weak-logit 增量、static guidance 与 co-adaptation 是否可复现 |
-| P2 | 补 D0/fixed-M1 的 `lambda=0.7/0.9` | 4 个 P60 | 同一 lambda 内 C/D0/fixed 三臂 | C 的 lambda 曲线究竟来自 strong-logit scale、固定 weak guidance，还是 Model1 自适应 |
-| P3 | C 的 `lambda={0.5,0.8} × lr={1e-6,5e-7}` 最小 2×2 | 新增 2 个 P60；复用两个 `1e-6` anchor | 同 lambda 改 lr、同 lr 改 lambda | 低 lambda 崩溃是否只是有效步长/更新幅度过大 |
+| P2 | D0/fixed-M1 的 `lambda=0.7/0.9` | **已完成**：4 个 P60 | 同一 lambda 内 C/D0/fixed 三臂 | 已排除单一 adaptive-feedback 解释；观察到 guidance/co-adaptation 的 lambda 依赖性 |
+| P3 | C 的 `lambda={0.5,0.8} × lr={1e-6,5e-7}` 最小 2×2 | **未闭合**：Job 254 为 0 step；Job 255 仅有完整 P50 | 同 lambda 改 lr、同 lr 改 lambda | 低 lambda 崩溃是否只是有效步长/更新幅度过大 |
 | P4 | phase-dependent lambda：`.5→.8` 与 `.8→.5` | 2--3 个 P60 | 两个方向与 constant `.5/.8` | weak coupling 是否“前期加速、后期致稳性风险”，而不是某个静态 lambda 最优 |
 | P5 | same-rollout 2×2，使用 C/D0 proposer 的冻结成功轨迹交叉 C/D0 loss | 先短程 validity，主判读延长到 P60 | 固定 trajectory 后比较 objective；固定 objective 后比较 proposer | 优势来自 trajectory discovery 还是 fused objective |
 | P6 | fixed-M1 下 Real/Align/true-Random/Anti geometry pilot | P20/P30 只作 manipulation gate；有分离才延长 P60 | rank affinity 的方向性操纵 | DynPerm 退化来自 cross-model geometry 还是 token-specific residual |
@@ -2038,7 +2066,7 @@ lambda=0.4/0.5 的 Model2 都在 P50 达峰，lambda=0.8 在 P55 达峰；Model1
 
 **关于动态 lambda。** 这里的 lambda 是 Model2 权重，降低 lambda 等于提高 weak-logit 权重。最有信息量的首轮不是继续细扫静态小数点，而是方向相反的 schedule：前 40 step 使用 `lambda=0.5`、后 20 step 切到 `0.8`，与反向 `0.8→0.5` 比较；资源允许时再增加全程线性 `.5→.8`。若 `.5→.8` 同时保留早期加速和 P60 稳定，而反向 schedule 出现晚期退化，才支持“weak coupling 的作用具有训练阶段依赖性”。如果两种方向只由末端 lambda 决定，则否定 path-dependence，回到静态 scale/optimization 解释。
 
-**停止规则。** 静态 lambda 不做无边界 grid search。只有 common offline 与第二 seed 都显示 `0.7/0.8` 之间存在稳定、可复现的性能差异，才补 `lambda=0.75`；否则把 GPU 用于 multi-seed、schedule 和因果 controls。P1 是当前最优先启动的训练批次，P2 用于补齐现有 factorial，P3/P4 回答稳定性与阶段依赖，P5/P6 才承担机制因果判别。
+**停止规则。** 静态 lambda 不做无边界 grid search。当前 `lambda=0.7` 的 C 比 `0.8` 仅高 0.315 pp peak / 0.250 pp P60，先做 common offline 和第二 seed；只有两者都把可复现最优点放在 `0.7/0.8` 之间，才补 `lambda=0.75`。P2 已闭合；P3 因两次基础设施失败仍未回答 LR 假设。此后优先级回到 P0/P1 的证据确认，以及 P4--P6 的 schedule 和因果 controls。
 
 ## 附录 D：相关工作与思想来源
 

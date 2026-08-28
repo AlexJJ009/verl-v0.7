@@ -1054,3 +1054,26 @@ D0 Model1 的 -0.03 pp 变化验证了冻结边界；不能把这条线描述成
 - `docs/joint_training/reports/data/qwen3_1p7b_acd0_submodel_online_validation.csv`；
 - `docs/joint_training/reports/scripts/plot_qwen3_1p7b_acd0_submodel_dynamics.py`；
 - `docs/joint_training/reports/figures/qwen3_1p7b_math_acd0_p60_submodel_dynamics.{png,pdf}`。
+
+## 附录 C：Fusion lambda 三臂控制与学习率诊断（2026-08-27）
+
+这批 follow-up 固定 Qwen3-1.7B Stage1 source、training/data seed、ordered 3,840-prompt post-Stage1 shard、Model2-only rollout、strict scorer、`beta=0`、P60 budget 和 `lr=1e-6`，只在同一 lambda 内改变 loss topology：Standard C 为 mixture 且更新两个模型；fixed-M1 保留 mixture 但冻结 Model1；D0 为 `strong_scaled=lambda`，Model1 梯度为零。Jobs 259/260/261 的 first-step、completion 与 release gate 均通过。
+
+| lambda | Arm | Job | Model2 peak | Model2 P60 | Model1 P60 | 结论状态 |
+|---:|---|---:|---:|---:|---:|---|
+| 0.7 | Standard C | 236 | P55 71.474% | 71.052% | 71.071% | 正式完成 |
+| 0.7 | fixed-M1 | 250 | P35 68.581% | 60.693% | 38.643% | 正式完成；后期退化 |
+| 0.7 | D0 | 259 | P10 42.339% | 33.023% | 38.905% | 正式完成；P25 后持续退化 |
+| 0.9 | Standard C | 242 | P55 68.995% | 68.060% | 67.418% | 正式完成 |
+| 0.9 | fixed-M1 | 260 | P55 70.717% | 70.603% | 37.864% | 正式完成 |
+| 0.9 | D0 | 261 | P55 69.507%* | 68.871% | 38.335% | 正式完成 |
+
+`*` Job 261 从完整 P55 checkpoint 恢复到 P60；当前登记证据保留 P55/P60，不把未重新汇总的更早点写成全程 peak。
+
+`lambda=0.7` 的排序为 C > fixed-M1 > D0，而且 D0 在 Model1 梯度为零时仍然崩溃。这排除了“低-lambda 崩溃完全由 adaptive Model1 feedback 引起”的解释：strong-logit scale、有效 temperature 与优化动力学本身就足以造成不稳定；同时 fixed-M1 相对 D0 的恢复和 C 相对 fixed-M1 的恢复说明 static weak guidance 与 co-adaptation 在该点都有贡献。
+
+`lambda=0.9` 的排序变为 fixed-M1 > D0 ≈ C。fixed-M1 在 P60 达到 70.603%，说明高 strong weight 下固定 weak signal 已足以保持主要 online 收益；Model1 co-adaptation 不是普遍必要条件，也不是在每个 lambda 上都正向。两个 lambda 的排序反转说明 λ 同时改变 mixture geometry、分支梯度尺度和后续 on-policy trajectory，不能把它解释成单调的“weak 越多越好”旋钮。
+
+Standard C `lambda=0.7` 比稳定 `lambda=0.8` 基线只高 0.315 pp peak、0.250 pp P60。这个差异来自单 training seed、online `n=3`，不足以宣布新的最佳配置。下一步应先做 common offline evaluation 和第二 seed；只有两者都把稳定最优点放在 `0.7/0.8` 之间，才有理由补 `lambda=0.75`。
+
+学习率 control 尚未完成。Job 254（C，`lambda=0.5`，`lr=5e-7`）因 controller checkpoint 盘低于 admission threshold，在 0 step 退出；Job 255（C，`lambda=0.8`，`lr=5e-7`）计算到 P55，但保存时 node B 磁盘不足，最后完整 checkpoint 为 P50、Model2 为 44.506%，无 completion event，release gate 为 BLOCKED。二者只能记录为基础设施失败和慢学习诊断，不能支持或否定“低 lr 能修复低-lambda 崩溃”。
